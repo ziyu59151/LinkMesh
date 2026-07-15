@@ -3,9 +3,9 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 v1.1
+- 文档状态：正式版 v1.2
 - 最高依据：本文档自身即为 LinkMesh 项目的最高技术依据；开发纪律与协作规范见 CONTEXT.md
-- 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
+- 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认事实】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
 - 主要用途：本文档为 LinkMesh 项目的单事实真理源（Single Source of Truth），不作为人类泛读材料，专门用于指导 Aider 自动化编码、RAG 知识库精准检索以及下游模块的硬核参数对齐。凡 Aider 在执行编码、新建文件、修改具体业务代码前，必须查阅并严格对齐本文档。
 - 场外架构师检索用途：当场外架构师需要判断 LinkMesh 某模块的职责边界、某数据结构的字段定义、某输出格式的对齐标准，或某开发阶段的验收条件时，应优先召回本文档。
 - Aider 执行用途：Aider 必须以本文档为最高技术权威。编写任何 `.py` 业务源码前，必须先核对本文档对应章节的接口定义、数据结构字段和验收标准。如发现实际需求与本文档不符，必须先在对话中提出蓝图迭代建议，待主管确认并更新本文档后，方可动手编写代码。
@@ -86,7 +86,7 @@ LinkMesh/
 | `cli.py` | 解析命令行参数；按顺序调用 reader → mesher → writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑；不得直接操作文件 |
 | `readers/gfile_reader.py` | 读取 EQDSK/GFile 文件；提取 LCFS 边界坐标、磁轴坐标、第一壁点集、基本平衡参数 | GFile 文件路径（`str`） | `GFileData` dataclass | 不得调用 Triangle；不得写文件 |
 | `mesher/triangle_wrapper.py` | **唯一网格生成底座**：接收边界点集和区域配置；调用 `triangle` Python 包（TokaMaker 封装风格）生成二维三角网格；返回统一内存网格对象 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎 |
-| `writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；对照 `loadfemmesh_h5.m` 与真实 `.h5` 样例，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑 |
+| `writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑 |
 | `writers/smb_writer.py` | **第二战役**：接收 `Mesh2D` 对象；通过逆向分析 SCOREC/PUMI 开源 C++ 源码的二进制字节流协议，用 Python `struct` 打包写出 M3DC1 可消费的 `.smb` 文件 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；未完成侦察前不得实现 |
 | `utils/plotter.py` | 绘制 LCFS 边界与生成三角网格的叠加图；输出 `.png` 自检图 | `GFileData`，`Mesh2D`，输出路径 | `.png` 文件（副作用） | 不得修改任何数据对象 |
 
@@ -190,6 +190,7 @@ class Mesh2D:
 
     # 三角形连接表（三角形顶点索引，逆时针方向）
     triangles: np.ndarray            # shape=(T, 3)，三角形三顶点节点索引，dtype=int32
+                                     # 索引为 0-based（Python 约定）
 
     # 三角形区域标记（来自 Triangle triangleattributelist）
     # 约定：1=plasma, 2=vacuum, 3=wall
@@ -197,6 +198,7 @@ class Mesh2D:
 
     # 边界线段连接表
     boundary_segments: np.ndarray    # shape=(S, 2)，边界线段端点节点索引，dtype=int32
+                                     # 索引为 0-based（Python 约定）
 
     # 边界线段标记（来自 Triangle segmentmarkerlist）
     # 约定：1=LCFS, 2=first_wall, 3=outer_boundary
@@ -240,11 +242,11 @@ readers/gfile_reader.py
 mesher/triangle_wrapper.py  (TokaMaker / Triangle 唯一底座)
   │
   ↓ [生成统一内存网格对象]
-Mesh2D  (内存核心数据结构)
+Mesh2D  (内存核心数据结构，所有索引 0-based)
   │
   ├──→ [第一阶段战役：HDF5 映射对齐]
   │      writers/hdf5_writer.py
-  │      (对照 loadfemmesh_h5.m 与真实 .h5 样例)
+  │      (严格对照 docs/trimeg/loadfemmesh_h5.m 黄金标尺)
   │        │
   │        ↓
   │      TRIMEG 求解器消费的 HDF5 静态网格
@@ -285,36 +287,78 @@ Mesh2D  (内存核心数据结构)
 
 ### 4.1 第一战役：TokaMaker → TRIMEG HDF5 格式映射
 
-**【已确认】战役定性**：这是两场战役中相对容易的一场。HDF5 是通用开放格式，TRIMEG 侧已有现成的 MATLAB 读取脚本 `loadfemmesh_h5.m` 和真实 `.h5` 样例文件作为黄金对照标尺，格式完全透明可读。
+**【已确认事实】战役定性**：HDF5 是通用开放格式，TRIMEG 侧已有现成的 MATLAB 读取脚本 `docs/trimeg/loadfemmesh_h5.m` 作为黄金对照标尺，格式完全透明可读。以下所有规范均直接从该脚本逐行逆向提取，无任何推断成分。
 
-**对齐方法**：
+#### 4.1.1 转置规律（核心机制，必须理解）
 
-1. **黄金标尺**：以卢志鑫老师提供的 `docs/trimeg/loadfemmesh_h5.m` 脚本为唯一权威参考。该脚本明确列出了 TRIMEG 读取 HDF5 时期望的所有数据集路径与形状。
-2. **字段逐一映射**：`writers/hdf5_writer.py` 的任务就是把 `Mesh2D` 对象的各字段，按照 `loadfemmesh_h5.m` 中 `h5read` 调用的路径名和形状，逐一写入 HDF5 文件。
-3. **关键索引转换**：`Mesh2D` 内部所有索引均为 0-based（Python 约定）。写出 HDF5 时，三角形连接表 `triangles` 和边界线段连接表 `boundary_segments` 中的节点索引必须 **+1 转换为 1-based**（Fortran/MATLAB 约定），以匹配 TRIMEG 读取侧的期望。
-4. **Fortran 列优先转置**：`loadfemmesh_h5.m` 中注释明确指出 `vert` 在 Fortran 中为 `(2, nvert)` 但在 MATLAB 中读取后为 `(nvert, 2)`（`.`转置）。`writers/hdf5_writer.py` 写出坐标时，必须按 HDF5 实际存储的列优先顺序处理，确保 MATLAB 读取后形状正确。
+【已确认事实】`loadfemmesh_h5.m` 中凡是末尾带 `.'`（非共轭转置运算符）的 `h5read` 调用，均说明该数组在 HDF5 文件中以 **Fortran 列优先（column-major）顺序**存储。
 
-**`loadfemmesh_h5.m` 揭示的 TRIMEG HDF5 数据集清单**：
+- MATLAB `h5read` 读取 HDF5 时，会将 C 行优先的存储顺序自动解释为 Fortran 列优先，因此读出的矩阵维度与 HDF5 中存储的维度**行列互换**。
+- Python `h5py` 写入时，若要让 MATLAB 读取后得到 `(nvert, 2)` 的矩阵，必须在 HDF5 中存储 `(2, nvert)` 的数组。
+- **实现公式**：`h5file.create_dataset(key, data=array.T)` —— 即写入前先转置。
 
-| HDF5 数据集路径 | MATLAB 读取后形状 | 对应 `Mesh2D` 字段 | 索引约定 |
-|---|---|---|---|
-| `/femmesh/nvert` | 标量 | `mesh.n_nodes` | — |
-| `/femmesh/ntria` | 标量 | `mesh.n_triangles` | — |
-| `/femmesh/nvert_in` | 标量 | 内部节点数（`node_markers==0` 的计数） | — |
-| `/femmesh/nvert_ex` | 标量 | 边界节点数（`node_markers!=0` 的计数） | — |
-| `/femmesh/vert` | `(nvert, 2)`（MATLAB 转置后） | `mesh.nodes`，列顺序 `[R, Z]` | — |
-| `/femmesh/idxivert` | `(nvert_in,)` | 内部节点的全局索引列表 | **1-based** |
-| `/femmesh/idxevert` | `(nvert_ex,)` | 边界节点的全局索引列表 | **1-based** |
-| `/femmesh/tria` | `(ntria, 4)`（MATLAB 转置后） | `mesh.triangles`（前3列）+ `mesh.region_ids`（第4列） | **1-based**（节点索引列） |
-| `/femmesh/nbcRZ` | 标量 | `mesh.n_boundary_segments` | — |
-| `/femmesh/Rbc` | `(nbcRZ,)` | 边界节点 R 坐标（从 `mesh.nodes` 按边界标记提取） | — |
-| `/femmesh/Zbc` | `(nbcRZ,)` | 边界节点 Z 坐标（从 `mesh.nodes` 按边界标记提取） | — |
+涉及转置的字段：`/femmesh/vert`（需转置）、`/femmesh/tria`（需转置）。
+不涉及转置的字段：所有标量、所有一维数组（`idxivert`、`idxevert`、`Rbc`、`Zbc` 等）。
 
-**【重要】`/femmesh/tria` 的列结构**：根据 `loadfemmesh_h5.m` 中 `femmesh.tria=h5read(...).′` 的用法，`tria` 在 HDF5 中存储为 `(4, ntria)`（Fortran 列优先），MATLAB 转置后得到 `(ntria, 4)`，其中前 3 列为三角形三顶点节点索引（1-based），第 4 列为区域标记 `region_id`。
+#### 4.1.2 索引偏置规律（核心机制，必须理解）
+
+【已确认事实】MATLAB 使用 1-based 索引，`Mesh2D` 内部使用 0-based 索引（Python 约定）。
+
+凡是写入 HDF5 的**节点索引**字段，必须执行 `+1` 偏置转换：
+
+- `mesh.triangles`（0-based）→ 写入 `/femmesh/tria` 前三行时 `+1` → 1-based
+- `mesh.node_markers` 中内部节点的全局位置索引 → 写入 `/femmesh/idxivert` 时 `+1` → 1-based
+- `mesh.node_markers` 中边界节点的全局位置索引 → 写入 `/femmesh/idxevert` 时 `+1` → 1-based
+
+`region_id`（`/femmesh/tria` 第4行）**不需要** `+1`，它是物理标记值而非节点索引。
+
+#### 4.1.3 完整字段映射契约（Field Mapping Contract）
+
+以下表格是 `writers/hdf5_writer.py` 的唯一实现依据，每一行均为【已确认事实】，直接来自 `docs/trimeg/loadfemmesh_h5.m` 逐行解析。
+
+| HDF5 数据集路径 | HDF5 中存储的 shape | MATLAB 读取后 shape | dtype | 数据来源（Python `Mesh2D` 字段） | 转换公式 |
+|---|---|---|---|---|---|
+| `/femmesh/nvert` | 标量 | 标量 | int32 | `mesh.n_nodes` | 无转换 |
+| `/femmesh/ntria` | 标量 | 标量 | int32 | `mesh.n_triangles` | 无转换 |
+| `/femmesh/nvert_in` | 标量 | 标量 | int32 | `np.sum(mesh.node_markers == 0)` | 无转换 |
+| `/femmesh/nvert_ex` | 标量 | 标量 | int32 | `np.sum(mesh.node_markers != 0)` | 无转换 |
+| `/femmesh/vert` | `(2, nvert)` | `(nvert, 2)` | float64 | `mesh.nodes`，列顺序 `[R, Z]` | **转置写入**：`mesh.nodes.T` |
+| `/femmesh/idxivert` | `(nvert_in,)` | `(nvert_in,)` | int32 | 满足 `mesh.node_markers == 0` 的节点全局位置（0-based 下标） | **+1 偏置**：`np.where(mesh.node_markers == 0)[0] + 1` |
+| `/femmesh/idxevert` | `(nvert_ex,)` | `(nvert_ex,)` | int32 | 满足 `mesh.node_markers != 0` 的节点全局位置（0-based 下标） | **+1 偏置**：`np.where(mesh.node_markers != 0)[0] + 1` |
+| `/femmesh/tria` | `(4, ntria)` | `(ntria, 4)` | int32 | 前3行：`mesh.triangles`（节点索引）；第4行：`mesh.region_ids` | **前3行 +1 偏置 + 整体转置写入**：见下方详细说明 |
+| `/femmesh/nbcRZ` | 标量 | 标量 | int32 | `np.sum(mesh.node_markers != 0)`（与 `nvert_ex` 相同） | 无转换 |
+| `/femmesh/Rbc` | `(nbcRZ,)` | `(nbcRZ,)` | float64 | `mesh.nodes[mesh.node_markers != 0, 0]`（边界节点的 R 坐标） | 无转换 |
+| `/femmesh/Zbc` | `(nbcRZ,)` | `(nbcRZ,)` | float64 | `mesh.nodes[mesh.node_markers != 0, 1]`（边界节点的 Z 坐标） | 无转换 |
+
+#### 4.1.4 `/femmesh/tria` 的精确构造公式
+
+【已确认事实】`/femmesh/tria` 是最复杂的字段，需要同时处理多列拼接、索引偏置和转置。精确构造步骤如下：
+
+```python
+# Step 1：将三角形连接表从 0-based 转换为 1-based
+tria_nodes_1based = mesh.triangles + 1          # shape=(T, 3)，dtype=int32
+
+# Step 2：将 region_ids 扩展为列向量
+region_col = mesh.region_ids.reshape(-1, 1)     # shape=(T, 1)，dtype=int32
+
+# Step 3：水平拼接，构造 (T, 4) 矩阵
+# 列顺序：[node0_1based, node1_1based, node2_1based, region_id]
+tria_4col = np.hstack([tria_nodes_1based, region_col])  # shape=(T, 4)
+
+# Step 4：转置后写入 HDF5，使 HDF5 中存储为 (4, T)
+# MATLAB h5read 后自动转置得到 (T, 4)，与 loadfemmesh_h5.m 期望一致
+h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
+```
+
+#### 4.1.5 可选字段处理规范
+
+【已确认事实】`loadfemmesh_h5.m` 中 `nbcRZ`、`Rbc`、`Zbc` 三个字段被包裹在 `try...catch` 块中，读取失败时仅打印 warning 而不报错。这说明这三个字段在 TRIMEG 中是**可选字段**。
+
+`writers/hdf5_writer.py` 的处理策略：**始终写出这三个字段**（因为 `Mesh2D` 中 `node_markers` 始终存在，边界节点坐标可以直接提取），不需要做条件判断。
 
 ### 4.2 第二战役：TokaMaker → M3DC1 PUMI .smb 二进制格式逆向
 
-**【已确认】战役定性**：`.smb` 并非商业公司私有保密格式，而是开源 `SCOREC/PUMI` 库的通用二进制网格格式。这意味着我们可以通过只读侦察项目中已引入的 `m3dc1_scorec` 和 `scorec/pumi` 开源 C++ 源码，完整逆向推导出其二进制字节流协议。
+**【已确认事实】战役定性**：`.smb` 并非商业公司私有保密格式，而是开源 `SCOREC/PUMI` 库的通用二进制网格格式。这意味着我们可以通过只读侦察项目中已引入的 `m3dc1_scorec` 和 `scorec/pumi` 开源 C++ 源码，完整逆向推导出其二进制字节流协议。
 
 **逆向方法**：
 
@@ -539,37 +583,126 @@ mesh = Mesh2D(
 
 ## 8. writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
 
-### 8.1 实现依据
+### 8.1 实现依据与黄金标尺
 
-`writers/hdf5_writer.py` 的实现以 `docs/trimeg/loadfemmesh_h5.m` 为唯一黄金标尺。所有 HDF5 数据集路径名、形状约定和索引转换规则，均以该脚本的 `h5read` 调用为准。详细字段清单见第 4.1 节。
+【已确认事实】`writers/hdf5_writer.py` 的唯一实现依据是 `docs/trimeg/loadfemmesh_h5.m`。该脚本是 TRIMEG 求解器读取网格 HDF5 文件的 MATLAB 实现，其每一行 `h5read` 调用直接揭示了 TRIMEG 对 HDF5 文件结构的期望。所有数据集路径名、存储形状、数据类型和索引约定均以该脚本为最终裁决依据，不得凭推断自行补充。
 
-### 8.2 `write_hdf5()` 函数接口
+### 8.2 TRIMEG HDF5 物理文件结构树
+
+【已确认事实】以下结构树直接来自 `loadfemmesh_h5.m` 逐行解析，所有字段均为已确认事实：
+
+```text
+mesh.h5
+└── /femmesh/                          # 唯一顶层组，名称固定为 "femmesh"
+    │
+    ├── nvert        [标量, int32]      # 节点总数 N
+    ├── ntria        [标量, int32]      # 三角形总数 T
+    ├── nvert_in     [标量, int32]      # 内部节点数（node_markers == 0 的节点数）
+    ├── nvert_ex     [标量, int32]      # 边界节点数（node_markers != 0 的节点数）
+    │
+    ├── vert         [shape=(2,N), float64]   # 节点坐标，HDF5 中存 (2,N)
+    │                                          # MATLAB h5read 后转置得 (N,2)
+    │                                          # 行顺序：第0行=R坐标，第1行=Z坐标
+    │
+    ├── idxivert     [shape=(nvert_in,), int32]  # 内部节点全局索引，1-based
+    ├── idxevert     [shape=(nvert_ex,), int32]  # 边界节点全局索引，1-based
+    │
+    ├── tria         [shape=(4,T), int32]     # 三角形数据，HDF5 中存 (4,T)
+    │                                          # MATLAB h5read 后转置得 (T,4)
+    │                                          # 行顺序：第0行=节点0索引(1-based)
+    │                                          #         第1行=节点1索引(1-based)
+    │                                          #         第2行=节点2索引(1-based)
+    │                                          #         第3行=region_id（无偏置）
+    │
+    ├── nbcRZ        [标量, int32]      # 边界节点坐标点数（等于 nvert_ex）
+    ├── Rbc          [shape=(nbcRZ,), float64]  # 边界节点 R 坐标 [m]（可选但始终写出）
+    └── Zbc          [shape=(nbcRZ,), float64]  # 边界节点 Z 坐标 [m]（可选但始终写出）
+```
+
+### 8.3 精确字段映射契约（Field Mapping Contract）
+
+【已确认事实】以下每一行均为从 `loadfemmesh_h5.m` 直接提取的确凿映射规则，Aider 实现 `write_hdf5()` 时必须逐行严格执行：
+
+| HDF5 路径 | HDF5 存储 shape | dtype | Python 计算表达式 | 转换说明 |
+|---|---|---|---|---|
+| `/femmesh/nvert` | 标量 | int32 | `np.int32(mesh.n_nodes)` | 无转换 |
+| `/femmesh/ntria` | 标量 | int32 | `np.int32(mesh.n_triangles)` | 无转换 |
+| `/femmesh/nvert_in` | 标量 | int32 | `np.int32(np.sum(mesh.node_markers == 0))` | 无转换 |
+| `/femmesh/nvert_ex` | 标量 | int32 | `np.int32(np.sum(mesh.node_markers != 0))` | 无转换 |
+| `/femmesh/vert` | `(2, N)` | float64 | `mesh.nodes.T.astype(np.float64)` | **转置**：Python 中 `nodes` 为 `(N,2)`，转置后写入得 `(2,N)` |
+| `/femmesh/idxivert` | `(nvert_in,)` | int32 | `(np.where(mesh.node_markers == 0)[0] + 1).astype(np.int32)` | **+1 偏置**：0-based 下标转 1-based 全局索引 |
+| `/femmesh/idxevert` | `(nvert_ex,)` | int32 | `(np.where(mesh.node_markers != 0)[0] + 1).astype(np.int32)` | **+1 偏置**：0-based 下标转 1-based 全局索引 |
+| `/femmesh/tria` | `(4, T)` | int32 | 见下方 §8.4 精确构造公式 | **+1 偏置（节点列）+ 转置** |
+| `/femmesh/nbcRZ` | 标量 | int32 | `np.int32(np.sum(mesh.node_markers != 0))` | 无转换（等于 nvert_ex） |
+| `/femmesh/Rbc` | `(nbcRZ,)` | float64 | `mesh.nodes[mesh.node_markers != 0, 0].astype(np.float64)` | 无转换，提取边界节点 R 列 |
+| `/femmesh/Zbc` | `(nbcRZ,)` | float64 | `mesh.nodes[mesh.node_markers != 0, 1].astype(np.float64)` | 无转换，提取边界节点 Z 列 |
+
+### 8.4 `/femmesh/tria` 精确构造公式
+
+【已确认事实】`/femmesh/tria` 需要同时处理多列拼接、节点索引偏置和整体转置，精确步骤如下：
+
+```python
+# Step 1：节点索引从 0-based 转换为 1-based
+tria_nodes_1based = (mesh.triangles + 1).astype(np.int32)  # shape=(T, 3)
+
+# Step 2：region_ids 扩展为列向量（不需要偏置，region_id 是物理标记非节点索引）
+region_col = mesh.region_ids.reshape(-1, 1).astype(np.int32)  # shape=(T, 1)
+
+# Step 3：水平拼接为 (T, 4) 矩阵
+# 列顺序：[node0(1-based), node1(1-based), node2(1-based), region_id]
+tria_4col = np.hstack([tria_nodes_1based, region_col])  # shape=(T, 4)
+
+# Step 4：转置后写入 HDF5，HDF5 中存储为 (4, T)
+# MATLAB h5read 读取后自动转置得到 (T, 4)，符合 loadfemmesh_h5.m 期望
+data_to_write = tria_4col.T  # shape=(4, T)，dtype=int32
+```
+
+### 8.5 `write_hdf5()` 完整函数签名与实现框架
 
 ```python
 import h5py
 import numpy as np
+from linkmesh.mesher.triangle_wrapper import Mesh2D
+
 
 def write_hdf5(mesh: Mesh2D, filepath: str) -> None:
     """将 Mesh2D 对象写出为 TRIMEG 标准 HDF5 静态网格文件。
 
-    以 docs/trimeg/loadfemmesh_h5.m 为黄金标尺，逐一对齐数据集路径与形状。
+    黄金标尺：docs/trimeg/loadfemmesh_h5.m
+    所有数据集路径、形状、dtype 和索引约定均以该脚本为唯一依据。
 
     参数：
-        mesh: Mesh2D 对象（索引 0-based）
-        filepath: 输出 .h5 文件路径
+        mesh: Mesh2D 对象（内部索引全部为 0-based）
+        filepath: 输出 .h5 文件路径（若已存在则覆盖）
 
-    实现要点：
-        1. 使用 h5py 创建 HDF5 文件（mode='w'，覆盖已有文件）
-        2. 写入 /femmesh/nvert、ntria、nvert_in、nvert_ex 标量
-        3. 写入 /femmesh/vert：shape=(2, nvert)，Fortran 列优先存储
-           （MATLAB h5read 后转置得到 (nvert, 2)）
-        4. 写入 /femmesh/idxivert、idxevert：内部/边界节点全局索引，1-based
-        5. 写入 /femmesh/tria：shape=(4, ntria)，Fortran 列优先存储
-           前3行为三角形三顶点节点索引（1-based），第4行为 region_id
-           （MATLAB h5read 后转置得到 (ntria, 4)）
-        6. 写入 /femmesh/nbcRZ、Rbc、Zbc：边界节点坐标
-        7. 写入完成后打印验证信息（节点数、三角形数）
+    写出后验证（verbose 模式）：
+        打印 "HDF5 写出完成：{filepath}，节点数: {N}，三角形数: {T}"
+
+    关键约定（不得违反）：
+        1. 所有节点索引写入 HDF5 前必须 +1（0-based → 1-based）
+        2. vert 和 tria 必须转置后写入（Fortran 列优先存储）
+        3. region_id 不需要 +1（物理标记值，非节点索引）
+        4. Rbc/Zbc 始终写出（不做条件判断）
     """
+    with h5py.File(filepath, 'w') as f:
+        grp = f.create_group('femmesh')
+
+        # --- 标量元数据 ---
+        # （按 §8.3 映射契约逐一写入）
+
+        # --- vert：转置写入 ---
+        # （按 §8.3 映射契约执行 mesh.nodes.T）
+
+        # --- idxivert / idxevert：+1 偏置 ---
+        # （按 §8.3 映射契约执行 np.where + 1）
+
+        # --- tria：+1 偏置 + 转置 ---
+        # （按 §8.4 精确构造公式执行）
+
+        # --- nbcRZ / Rbc / Zbc ---
+        # （按 §8.3 映射契约提取边界节点坐标）
+
+        pass  # 占位，待 M3 里程碑实现
 ```
 
 ---
@@ -604,13 +737,12 @@ def write_smb(mesh: Mesh2D, filepath: str) -> None:
            → 确认是否需要在写出前生成边中点（高阶节点）
 
     侦察完成后，使用 Python struct 模块按逆向得到的字节流协议打包写出。
-
-    当前占位实现：
-        raise NotImplementedError(
-            "smb_writer 尚待完成 PUMI .smb 格式逆向侦察后实现。"
-            "请参考 LinkMesh_Architecture_Plan.md 第 4.2 节和第 9 节。"
-        )
     """
+    raise NotImplementedError(
+        "write_smb() 尚待完成 PUMI .smb 格式逆向侦察后实现。"
+        "请参考 LinkMesh_Architecture_Plan.md 第 4.2 节和第 9 节。"
+        "前置条件：M3 里程碑必须先完全验收通过。"
+    )
 ```
 
 ### 9.3 配套 model .txt 文件规范（占位）
@@ -723,9 +855,9 @@ pytest>=7.0.0
 **验收标准**：
 1. `python -m linkmesh --gfile sample.geqdsk --output mesh.h5` 能够运行；
 2. 生成的 `mesh.h5` 文件可用 `h5py` 正常打开；
-3. `h5py` 读取验证：`/femmesh/vert` shape=(2,N)，`/femmesh/tria` shape=(4,T)，`/femmesh/nvert`=N，`/femmesh/ntria`=T；
-4. 使用 `loadfemmesh_h5.m` 在 MATLAB 中读取 `mesh.h5`，`femmesh.vert` shape=(N,2)，`femmesh.tria` shape=(T,4)，无报错；
-5. 节点索引为 1-based（`femmesh.tria` 前3列最小值为 1，最大值为 N）；
+3. `h5py` 读取验证：`/femmesh/vert` shape=`(2,N)`，`/femmesh/tria` shape=`(4,T)`，`/femmesh/nvert`=N，`/femmesh/ntria`=T；
+4. 使用 `loadfemmesh_h5.m` 在 MATLAB 中读取 `mesh.h5`，`femmesh.vert` shape=`(N,2)`，`femmesh.tria` shape=`(T,4)`，无报错；
+5. 节点索引为 1-based（`femmesh.tria(:,1:3)` 最小值为 1，最大值为 N）；
 6. 终端打印：`HDF5 写出完成：mesh.h5，节点数: N，三角形数: T`。
 
 **涉及模块**：`writers/hdf5_writer.py`
@@ -739,7 +871,7 @@ pytest>=7.0.0
 **前置条件**：
 1. M3 里程碑已完全验收通过；
 2. 已完成对 `m3dc1_mesh.cc`、`m3dc1_model.cc`、`m3dc1_field.cc` 的只读侦察；
-3. 侦察结果已经主管确认，`.smb` 字节流格式已从【待源码确认】转为【已确认】。
+3. 侦察结果已经主管确认，`.smb` 字节流格式已从【待源码确认】转为【已确认事实】。
 
 **验收标准**：
 1. `python -m linkmesh --gfile sample.geqdsk --smb mesh.smb` 能够运行；
@@ -782,7 +914,7 @@ linkmesh \
 2. 修改任何数据结构的字段定义（`GFileData`、`BoundaryConfig`、`Mesh2D`）；
 3. 修改区域标记或边界标记的整数约定；
 4. 修改 HDF5 文件结构或数据集路径名；
-5. 确认 `.smb` 二进制格式的任何细节（将【待源码确认】转为【已确认】）；
+5. 确认 `.smb` 二进制格式的任何细节（将【待源码确认】转为【已确认事实】）；
 6. 新增任何 CLI 参数；
 7. 调整任何里程碑的验收标准。
 
