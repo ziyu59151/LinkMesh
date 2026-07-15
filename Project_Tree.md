@@ -13,9 +13,13 @@
 
 ## 1. 这个项目是什么？
 
-LinkMesh 是一个**轻量级独立命令行工具**，专门用于把托卡马克等离子体平衡文件（GFile/EQDSK）转换成物理模拟程序可以直接读取的静态网格文件。
+LinkMesh 是一个**轻量级独立命令行工具**，它的角色是一个**"翻译官"**。
 
-用一句话说：**给它一个平衡文件，它帮你生成网格，然后导出给 TRIMEG 或 M3DC1 用。**
+网格生成底座**有且仅有** TokaMaker（底层为开源 Triangle 库）。LinkMesh 不包含多余的生成引擎，它的全部核心职责就是：
+
+1. 从托卡马克平衡文件（GFile/EQDSK）中读取等离子体边界；
+2. 调用 TokaMaker/Triangle 生成二维非结构化三角网格；
+3. 将算好的网格数据，准确翻译为两大目标物理求解器能直接读取的文件格式。
 
 整个工具链路如下：
 
@@ -23,17 +27,42 @@ LinkMesh 是一个**轻量级独立命令行工具**，专门用于把托卡马�
 GFile/EQDSK 平衡文件
         ↓  读取边界
 readers/gfile_reader.py
-        ↓  生成二维三角网格
-mesher/triangle_wrapper.py
-        ↓  导出静态网格文件
-writers/hdf5_writer.py   →  TRIMEG 用的 HDF5 文件
-writers/smb_writer.py    →  M3DC1 用的 .smb 二进制文件
-utils/plotter.py         →  可视化自检图（可选）
+        ↓  生成二维三角网格（唯一底座）
+mesher/triangle_wrapper.py  (TokaMaker / Triangle)
+        ↓  统一内存网格对象 Mesh2D
+        │
+        ├──→ [第一战役] writers/hdf5_writer.py
+        │     → TRIMEG 求解器消费的 HDF5 静态网格
+        │
+        └──→ [第二战役] writers/smb_writer.py
+              → M3DC1 求解器消费的 .smb 二进制静态网格
 ```
 
 ---
 
-## 2. 顶层目录结构
+## 2. 两阶段战略：先易后难
+
+LinkMesh 的开发顺序严格遵循"先易后难"原则，分两个阶段攻克两大输出格式：
+
+### 第一战役：TRIMEG HDF5 模块（快速打通）
+
+HDF5 是通用开放格式，TRIMEG 侧已有现成的 MATLAB 读取脚本（`loadfemmesh_h5.m`）和真实样例文件作为对照标尺，格式完全透明。
+
+**目标**：把 TokaMaker 生成的网格数组，按照 `loadfemmesh_h5.m` 脚本期望的数据集路径和形状，格式化写入 HDF5 文件，快速实现打通与验证。
+
+**验证方式**：用 MATLAB 运行 `loadfemmesh_h5.m` 读取生成的 `mesh.h5`，确认网格几何物理质量完全合格。
+
+### 第二战役：M3DC1 .smb 模块（逆向攻坚）
+
+`.smb` 是开源 `SCOREC/PUMI` 库的二进制网格格式。我们通过只读分析项目中已引入的 `m3dc1_scorec` 和 `scorec/pumi` 开源 C++ 源码，逆向推导出其二进制字节流协议，再用 Python `struct` 模块打包生成对齐的二进制文件。
+
+**目标**：生成能被 M3DC1 的 `pumi_mesh_load` 顺畅读取的 `.smb` 静态网格文件。
+
+**开发顺序铁律**：必须在第一战役完全验收通过、网格质量确认合格后，才能开始第二战役。
+
+---
+
+## 3. 顶层目录结构
 
 ```text
 LinkMesh/
@@ -48,16 +77,16 @@ LinkMesh/
 │   ├── __init__.py
 │   └── gfile_reader.py
 │
-├── mesher/                          # 2D 网格底座封装 (开源 Triangle 库)
+├── mesher/                          # 2D 网格底座封装（唯一底座：TokaMaker / Triangle）
 │   ├── __init__.py
 │   └── triangle_wrapper.py
 │
-├── writers/                         # 静态网格导出 (攻坚 TRIMEG HDF5 & Pumi .smb)
+├── writers/                         # 静态网格翻译导出（两阶段战役核心）
 │   ├── __init__.py
-│   ├── hdf5_writer.py
-│   └── smb_writer.py
+│   ├── hdf5_writer.py               # 第一战役：TRIMEG HDF5 格式映射
+│   └── smb_writer.py                # 第二战役：M3DC1 PUMI .smb 二进制逆向
 │
-├── utils/                           # 辅助自检工具 (如基于 matplotlib 的网格画图)
+├── utils/                           # 辅助自检工具（基于 matplotlib 的网格画图）
 │   ├── __init__.py
 │   └── plotter.py
 │
@@ -76,6 +105,7 @@ LinkMesh/
 ├── docs/                            # [技术情报区] 调研报告与 RAG 规范文档
 │   ├── linkmesh/                    # 本地前哨开发清单与 RAG 规范
 │   ├── m3dc1/                       # M3DC1 调研报告与 .smb 接口参考事实
+│   ├── trimeg/                      # TRIMEG HDF5 读取脚本与样例（loadfemmesh_h5.m）
 │   └── tokamaker/                   # TokaMaker 封装架构与三角剖分参考
 │
 ├── M3DC1/                           # [绝对只读参考区] M3DC1 官方/Scorec 接口源码
@@ -84,39 +114,35 @@ LinkMesh/
 
 ---
 
-## 3. 各模块直观职责说明
+## 4. 各模块直观职责说明
 
 ### 控制文档（根目录）
 
 | 文件 | 一句话说明 |
 |---|---|
-| `CONTEXT.md` | 项目最高行为宪法。规定了 Aider 的角色、开发纪律、禁止事项和协作规范。人类主管和 AI 都必须遵守。 |
-| `LinkMesh_Architecture_Plan.md` | 项目最高技术蓝图。所有模块接口、数据结构、输出格式和验收标准都在这里定义。Aider 写代码前必须查阅。 |
+| `CONTEXT.md` | 项目最高行为宪法。规定了 Aider 的角色、开发纪律、禁止事项和协作规范。 |
+| `LinkMesh_Architecture_Plan.md` | 项目最高技术蓝图。所有模块接口、数据结构、输出格式和验收标准都在这里定义。 |
 | `History.md` | 战术战果归档。每攻克一个里程碑，就在这里追加一条记录。 |
 | `requirements.txt` | Python 依赖清单。运行 `pip install -r requirements.txt` 安装所有依赖。 |
 
 ### `readers/`：读取平衡文件
 
-这个模块负责读取托卡马克平衡文件（GFile/EQDSK），提取出网格生成所需的边界信息。
+- **`gfile_reader.py`**：读取 EQDSK 格式的平衡文件，提取最后闭合磁面（LCFS）坐标、第一壁坐标、磁轴位置等信息，返回 `GFileData` 数据对象。
 
-- **`gfile_reader.py`**：读取 EQDSK 格式的平衡文件，提取最后闭合磁面（LCFS）坐标、第一壁坐标、磁轴位置等信息，返回一个 `GFileData` 数据对象。
+### `mesher/`：TokaMaker/Triangle 唯一网格生成底座
 
-### `mesher/`：生成二维三角网格
+- **`triangle_wrapper.py`**：封装 `triangle` Python 包（TokaMaker 风格），接收边界配置，生成二维非结构化三角网格，返回 `Mesh2D` 数据对象。这是 LinkMesh 唯一的网格生成引擎，不存在第二种。
 
-这个模块负责调用开源 Triangle 库，把边界点集转换成二维非结构化三角网格。
+### `writers/`：两阶段战役核心——翻译导出
 
-- **`triangle_wrapper.py`**：封装 `triangle` Python 包的调用细节，接收边界配置，返回包含节点坐标、三角形连接表、区域标记和边界标记的 `Mesh2D` 数据对象。
+这是 LinkMesh 最核心的攻坚方向，负责把统一的 `Mesh2D` 对象翻译为两种目标格式：
 
-### `writers/`：导出静态网格文件
-
-这个模块负责把内存中的 `Mesh2D` 对象写出为目标物理求解器可以读取的文件格式。这是 LinkMesh 最核心的攻坚方向。
-
-- **`hdf5_writer.py`**：按 TRIMEG 标准写出 HDF5 格式的静态网格文件（`.h5`）。
-- **`smb_writer.py`**：按 PUMI 协议写出 M3DC1 可消费的二进制静态网格文件（`.smb`）。这是难度最高的部分，需要逆向分析 PUMI 的私有二进制格式。
+- **`hdf5_writer.py`**（第一战役）：对照 `loadfemmesh_h5.m` 脚本，将 `Mesh2D` 字段格式化写入 HDF5 文件，供 TRIMEG 求解器消费。格式透明，相对容易。
+- **`smb_writer.py`**（第二战役）：通过逆向分析 SCOREC/PUMI 开源 C++ 源码，用 Python `struct` 打包写出 M3DC1 可消费的 `.smb` 二进制文件。难度最高，必须在第一战役验收通过后才能开始。
 
 ### `utils/`：辅助自检工具
 
-- **`plotter.py`**：用 `matplotlib` 绘制 LCFS 边界与生成三角网格的叠加图，输出 PNG 自检图，方便人眼快速判断网格质量是否正常。
+- **`plotter.py`**：用 `matplotlib` 绘制 LCFS 边界与三角网格的叠加图，输出 PNG 自检图，方便人眼快速判断网格质量。
 
 ### `cli.py`：命令行入口
 
@@ -137,40 +163,37 @@ linkmesh \
 
 ### `docs/`：技术情报区
 
-存放调研报告、架构白皮书和 RAG 规范文档，不包含任何业务源码。
-
 | 子目录 | 内容 |
 |---|---|
-| `docs/linkmesh/` | LinkMesh 本地开发清单、RAG 友好化文档规范（`RAG_Friendly_Documentation_Guide.md`）等。 |
+| `docs/linkmesh/` | LinkMesh 本地开发清单、RAG 友好化文档规范等。 |
+| `docs/trimeg/` | TRIMEG HDF5 读取脚本（`loadfemmesh_h5.m`）与真实样例文件——第一战役的黄金标尺。 |
 | `docs/m3dc1/` | M3DC1 宏观架构白皮书、`.smb` 接口调研报告、源码侦察清单等。 |
 | `docs/tokamaker/` | TokaMaker/OFT 网格生成链路白皮书、Triangle 集成规范等。 |
 
 ### `M3DC1/` 和 `TOKAMAKER/`：只读参考区
 
-这两个目录存放外部参考工程的源码，**绝对只读，严禁修改**。
+**绝对只读，严禁修改任何文件。**
 
-- **`M3DC1/`**：M3DC1 官方源码与 `m3dc1_scorec` 接口库。LinkMesh 通过只读侦察这里的代码来逆向推导 `.smb` 文件格式。
-- **`TOKAMAKER/`**：TokaMaker/OpenFUSION Toolkit 源码。LinkMesh 通过只读侦察这里的代码来学习 Triangle 库的调用方式。
-
----
-
-## 4. MVP 开发里程碑（当前进度参考）
-
-LinkMesh 按以下顺序逐步攻克各个里程碑：
-
-| 里程碑 | 目标 | 核心模块 |
-|---|---|---|
-| M1 | 从 GFile 提取 LCFS 边界并可视化 | `readers/gfile_reader.py`，`utils/plotter.py` |
-| M2 | 从 LCFS 边界生成二维三角网格并可视化 | `mesher/triangle_wrapper.py`，`utils/plotter.py` |
-| M3 | 将三角网格写出为 TRIMEG HDF5 文件 | `writers/hdf5_writer.py` |
-| M4 | 将三角网格写出为 M3DC1 可消费的 `.smb` 文件 | `writers/smb_writer.py` |
-| M5 | 一条命令完成完整端到端转换链路 | `cli.py` + 全部模块 |
-
-详细验收标准请查阅 `LinkMesh_Architecture_Plan.md` 第 11 节。
+- **`M3DC1/`**：M3DC1 官方源码与 `m3dc1_scorec` 接口库。第二战役通过只读侦察这里的 C++ 代码来逆向推导 `.smb` 字节流格式。
+- **`TOKAMAKER/`**：TokaMaker/OpenFUSION Toolkit 源码。`mesher/triangle_wrapper.py` 的封装风格参考这里的 `meshing.py` 实现。
 
 ---
 
-## 5. 阅读建议
+## 5. MVP 开发里程碑（当前进度参考）
+
+| 里程碑 | 目标 | 核心模块 | 备注 |
+|---|---|---|---|
+| M1 | 从 GFile 提取 LCFS 边界并可视化 | `readers/gfile_reader.py`，`utils/plotter.py` | — |
+| M2 | 调用 TokaMaker/Triangle 生成二维三角网格并可视化 | `mesher/triangle_wrapper.py`，`utils/plotter.py` | — |
+| M3 | 写出 TRIMEG HDF5 文件并用 `loadfemmesh_h5.m` 验证 | `writers/hdf5_writer.py` | **第一战役闭环** |
+| M4 | 逆向写出 M3DC1 可消费的 `.smb` 文件 | `writers/smb_writer.py` | **第二战役攻坚，必须在 M3 后** |
+| M5 | 一条命令完成完整端到端转换链路 | `cli.py` + 全部模块 | P0 完成 |
+
+详细验收标准请查阅 `LinkMesh_Architecture_Plan.md` 第 12 节。
+
+---
+
+## 6. 阅读建议
 
 如果你是**人类主管或研究员**，建议按以下顺序阅读：
 
