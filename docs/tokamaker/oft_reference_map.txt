@@ -1,0 +1,850 @@
+================================================================================
+[PATH ALIAS DECLARATION / 物理路径映射表]
+为优化 AI 读取效率与 Token 占用，本文档对超长嵌套目录使用了别名缩写。
+Aider 在查阅接口或需要关联物理文件时，请按照以下映射还原真实相对路径：
+
+  <PY_ROOT>  <=> TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/TokaMaker
+  <EXT_ROOT> <=> TOKAMAKER/OpenFUSIONToolkit/src/ext_libs
+  <OFT_SRC>  <=> TOKAMAKER/OpenFUSIONToolkit/src
+================================================================================
+
+=================== [1. TOKAMAKER PYTHON API SURFACE & EXPORTS] ===================
+<PY_ROOT>/bootstrap.py:12:import numpy
+<PY_ROOT>/bootstrap.py:13:import warnings
+<PY_ROOT>/bootstrap.py:14:from ._interface import *
+<PY_ROOT>/bootstrap.py:15:from OpenFUSIONToolkit.TokaMaker.util import get_jphi_from_GS
+<PY_ROOT>/bootstrap.py:17:def parameterize_edge_jBS(psi, amp, center, width, offset, sk, y_sep=0.0, blend_width=0.03, tail_alpha=1.5):
+<PY_ROOT>/bootstrap.py:31:    from scipy.optimize import root_scalar
+<PY_ROOT>/bootstrap.py:32:    from scipy.stats import skewnorm
+<PY_ROOT>/bootstrap.py:34:    def generate_baseline_prof(psi, amp, center, width, offset, sk, y_sep, blend_width, tail_alpha):
+<PY_ROOT>/bootstrap.py:36:        def raw_shape(x):
+<PY_ROOT>/bootstrap.py:119:    def objective_function(alpha, psi, amp, center, width, offset, sk, y_sep, blend_width, tail_alpha):
+<PY_ROOT>/bootstrap.py:155:def Hmode_profiles(edge=0.08, ped=0.4, core=2.5, rgrid=201, expin=1.5, expout=1.5, widthp=0.04, xphalf=None):
+<PY_ROOT>/bootstrap.py:193:def analyze_bootstrap_edge_spike(psi_N, j_bootstrap, diagnostic_plots=False):
+<PY_ROOT>/bootstrap.py:202:    from scipy.signal import find_peaks, peak_widths
+<PY_ROOT>/bootstrap.py:203:    from scipy.optimize import curve_fit
+<PY_ROOT>/bootstrap.py:204:    import matplotlib.pyplot as plt
+<PY_ROOT>/bootstrap.py:211:    def _no_edge_spike_result(reason):
+<PY_ROOT>/bootstrap.py:391:def solve_jphi(mygs,ffp_prof,pp_prof,Ip_target,pax_target):
+<PY_ROOT>/bootstrap.py:410:def find_optimal_scale(mygs, psi_N, pressure, ffp_prof, pp_prof, j_inductive,
+<PY_ROOT>/bootstrap.py:429:    import matplotlib.pyplot as plt
+<PY_ROOT>/bootstrap.py:437:    def get_j0_error(scale_val, n):
+<PY_ROOT>/bootstrap.py:544:def calculate_ln_lambda(Te, Ti, ne, ni, Zeff=1.0,
+<PY_ROOT>/bootstrap.py:576:def redl_bootstrap(
+<PY_ROOT>/bootstrap.py:678:    def F31_poly(X):
+<PY_ROOT>/bootstrap.py:798:def solve_with_bootstrap(mygs,
+<PY_ROOT>/bootstrap.py:835:    from scipy.optimize import root_scalar
+<PY_ROOT>/bootstrap.py:836:    import matplotlib.pyplot as plt
+<PY_ROOT>/bootstrap.py:840:            from omfit_classes.utils_fusion import sauter_bootstrap
+<PY_ROOT>/bootstrap.py:868:    def current_scaling_objective(alpha, j_inductive, j_spike, psi_N, target_ip):
+<PY_ROOT>/bootstrap.py:874:    def calculate_profiles_and_bootstrap(psi_N, include_jBS):
+<PY_ROOT>/eqdsk.py:19:import io
+<PY_ROOT>/eqdsk.py:20:import os
+<PY_ROOT>/eqdsk.py:21:import re
+<PY_ROOT>/eqdsk.py:22:import tempfile
+<PY_ROOT>/eqdsk.py:23:import warnings
+<PY_ROOT>/eqdsk.py:24:from collections import OrderedDict
+<PY_ROOT>/eqdsk.py:26:import numpy as np
+<PY_ROOT>/eqdsk.py:27:from scipy import constants, integrate, interpolate
+<PY_ROOT>/eqdsk.py:39:def _cocos_params(cocos_index):
+<PY_ROOT>/eqdsk.py:67:def _read_geqdsk(filename):
+<PY_ROOT>/eqdsk.py:76:    def splitter(text, step=16):
+<PY_ROOT>/eqdsk.py:79:    def merge(lines):
+<PY_ROOT>/eqdsk.py:217:def _write_fortran_block(stream, values):
+<PY_ROOT>/eqdsk.py:231:def _write_geqdsk_to_stream(g, stream):
+<PY_ROOT>/eqdsk.py:296:def write_geqdsk(g, filename):
+<PY_ROOT>/eqdsk.py:310:def _trace_contours(R, Z, PSI, levels):
+<PY_ROOT>/eqdsk.py:319:    import contourpy
+<PY_ROOT>/eqdsk.py:328:def _select_main_contour(segments, R0, Z0, sigma_RpZ, sigma_rhotp):
+<PY_ROOT>/eqdsk.py:382:def _crop_at_xpoint(seg, R0, Z0):
+<PY_ROOT>/eqdsk.py:405:    from scipy.ndimage import uniform_filter1d
+<PY_ROOT>/eqdsk.py:455:def _flux_geometry(R, Z):
+<PY_ROOT>/eqdsk.py:466:    def _parabola_extremum(idx, main, other):
+<PY_ROOT>/eqdsk.py:527:def _resample_contour(R, Z, npts=257, periodic=True):
+<PY_ROOT>/eqdsk.py:568:def _detect_xpoint_angle(R, Z, R0, Z0):
+<PY_ROOT>/eqdsk.py:601:def _resample_contour_theta(R, Z, R0, Z0, npts=257, theta_xpt=None):
+<PY_ROOT>/eqdsk.py:673:class GEQDSKEquilibrium:
+<PY_ROOT>/eqdsk.py:680:    def __init__(self, filename, cocos=1, nlevels=None, resample="theta",
+<PY_ROOT>/eqdsk.py:707:    def from_bytes(cls, raw_bytes, cocos=1, nlevels=None, resample="theta",
+<PY_ROOT>/eqdsk.py:733:    def from_raw(cls, raw_dict, cocos=1, nlevels=None, resample="theta",
+<PY_ROOT>/eqdsk.py:763:    def R_grid(self):
+<PY_ROOT>/eqdsk.py:775:    def Z_grid(self):
+<PY_ROOT>/eqdsk.py:787:    def psi_RZ(self):
+<PY_ROOT>/eqdsk.py:792:    def psi_N_RZ(self):
+<PY_ROOT>/eqdsk.py:797:    def psi_axis(self):
+<PY_ROOT>/eqdsk.py:802:    def psi_boundary(self):
+<PY_ROOT>/eqdsk.py:807:    def psi_N(self):
+<PY_ROOT>/eqdsk.py:817:    def psi_N_levels(self):
+<PY_ROOT>/eqdsk.py:828:    def fpol(self):
+<PY_ROOT>/eqdsk.py:833:    def pres(self):
+<PY_ROOT>/eqdsk.py:838:    def pprime(self):
+<PY_ROOT>/eqdsk.py:843:    def ffprim(self):
+<PY_ROOT>/eqdsk.py:848:    def qpsi(self):
+<PY_ROOT>/eqdsk.py:853:    def Ip(self):
+<PY_ROOT>/eqdsk.py:858:    def R_mag(self):
+<PY_ROOT>/eqdsk.py:863:    def Z_mag(self):
+<PY_ROOT>/eqdsk.py:868:    def R_center(self):
+<PY_ROOT>/eqdsk.py:873:    def B_center(self):
+<PY_ROOT>/eqdsk.py:878:    def boundary_R(self):
+<PY_ROOT>/eqdsk.py:883:    def boundary_Z(self):
+<PY_ROOT>/eqdsk.py:888:    def limiter_R(self):
+<PY_ROOT>/eqdsk.py:893:    def limiter_Z(self):
+<PY_ROOT>/eqdsk.py:898:    def rhovn(self):
+<PY_ROOT>/eqdsk.py:912:    def cocos(self):
+<PY_ROOT>/eqdsk.py:918:    def cocosify(self, cocos_out, copy=False):
+<PY_ROOT>/eqdsk.py:965:    def flip_Bt_Ip(self, copy=False):
+<PY_ROOT>/eqdsk.py:990:    def _copy_for_mutation(self):
+<PY_ROOT>/eqdsk.py:999:    def save(self, filename):
+<PY_ROOT>/eqdsk.py:1006:    def to_bytes(self):
+<PY_ROOT>/eqdsk.py:1017:    def _compute_fields(self):
+<PY_ROOT>/eqdsk.py:1044:    def _trace_surfaces(self):
+<PY_ROOT>/eqdsk.py:1207:            def flx_avg(quantity):
+<PY_ROOT>/eqdsk.py:1386:    def j_tor_averaged(self):
+<PY_ROOT>/eqdsk.py:1393:    def j_tor_averaged_direct(self):
+<PY_ROOT>/eqdsk.py:1399:    def j_tor_averaged_numerical(self):
+<PY_ROOT>/eqdsk.py:1405:    def j_tor_over_R(self):
+<PY_ROOT>/eqdsk.py:1411:    def q_profile(self):
+<PY_ROOT>/eqdsk.py:1417:    def li(self):
+<PY_ROOT>/eqdsk.py:1423:    def geometry(self):
+<PY_ROOT>/eqdsk.py:1433:    def averages(self):
+<PY_ROOT>/eqdsk.py:1451:    def midplane(self):
+<PY_ROOT>/eqdsk.py:1457:    def betas(self):
+<PY_ROOT>/eqdsk.py:1463:    def contours(self):
+<PY_ROOT>/eqdsk.py:1470:    def volume_integral(self, what):
+<PY_ROOT>/eqdsk.py:1483:    def surface_integral(self, what):
+<PY_ROOT>/eqdsk.py:1497:    def flux_integral(self, psi_N_val, profile):
+<PY_ROOT>/eqdsk.py:1563:    def keys(self):
+<PY_ROOT>/eqdsk.py:1567:    def describe(self, verbose=False):
+<PY_ROOT>/eqdsk.py:1580:        def _shape_str(val):
+<PY_ROOT>/eqdsk.py:1697:def _read_pfile(filename):
+<PY_ROOT>/eqdsk.py:1761:def _write_pfile(profiles, filename):
+<PY_ROOT>/eqdsk.py:1797:class PFile:
+<PY_ROOT>/eqdsk.py:1810:    def __init__(self, filename):
+<PY_ROOT>/eqdsk.py:1818:    def from_bytes(cls, raw_bytes):
+<PY_ROOT>/eqdsk.py:1838:    def save(self, filename):
+<PY_ROOT>/eqdsk.py:1845:    def to_bytes(self):
+<PY_ROOT>/eqdsk.py:1869:    def keys(self):
+<PY_ROOT>/eqdsk.py:1873:    def __contains__(self, key):
+<PY_ROOT>/eqdsk.py:1876:    def __getitem__(self, key):
+<PY_ROOT>/eqdsk.py:1879:    def __iter__(self):
+<PY_ROOT>/eqdsk.py:1882:    def __len__(self):
+<PY_ROOT>/eqdsk.py:1887:    def psinorm_for(self, key):
+<PY_ROOT>/eqdsk.py:1898:    def derivative_for(self, key):
+<PY_ROOT>/eqdsk.py:1909:    def units_for(self, key):
+<PY_ROOT>/eqdsk.py:1922:    def _get_data(self, key):
+<PY_ROOT>/eqdsk.py:1929:    def ne(self):
+<PY_ROOT>/eqdsk.py:1934:    def te(self):
+<PY_ROOT>/eqdsk.py:1939:    def ni(self):
+<PY_ROOT>/eqdsk.py:1944:    def ti(self):
+<PY_ROOT>/eqdsk.py:1949:    def nb(self):
+<PY_ROOT>/eqdsk.py:1954:    def pb(self):
+<PY_ROOT>/eqdsk.py:1959:    def ptot(self):
+<PY_ROOT>/eqdsk.py:1964:    def omeg(self):
+<PY_ROOT>/eqdsk.py:1969:    def omegp(self):
+<PY_ROOT>/eqdsk.py:1974:    def omgvb(self):
+<PY_ROOT>/eqdsk.py:1979:    def omgpp(self):
+<PY_ROOT>/eqdsk.py:1984:    def omgeb(self):
+<PY_ROOT>/eqdsk.py:1989:    def er(self):
+<PY_ROOT>/eqdsk.py:1994:    def kpol(self):
+<PY_ROOT>/eqdsk.py:1999:    def omghb(self):
+<PY_ROOT>/eqdsk.py:2004:    def ion_species(self):
+<PY_ROOT>/eqdsk.py:2011:    def new(cls):
+<PY_ROOT>/eqdsk.py:2020:    def set_profile(self, key, psinorm, data, derivative=None, units=None):
+<PY_ROOT>/eqdsk.py:2046:    def set_ion_species(self, N, Z, A):
+<PY_ROOT>/eqdsk.py:2059:    def compute_derivatives(self):
+<PY_ROOT>/eqdsk.py:2068:    def compute_pressure(self):
+<PY_ROOT>/eqdsk.py:2092:    def compute_quasineutrality(self):
+<PY_ROOT>/eqdsk.py:2121:    def compute_zeff(self):
+<PY_ROOT>/eqdsk.py:2170:    def compute_diamagnetic_rotations(self, psi, nI=None, TI=None):
+<PY_ROOT>/eqdsk.py:2230:    def compute_rotation_decomposition(self, R=None, Bp=None, Bt=None,
+<PY_ROOT>/eqdsk.py:2275:                from scipy.signal import savgol_filter
+<PY_ROOT>/eqdsk.py:2294:    def remap(self, psinorm=None, key="ne"):
+<PY_ROOT>/eqdsk.py:2340:    def __repr__(self):
+<PY_ROOT>/eqdsk.py:2350:    def describe(self):
+<PY_ROOT>/eqdsk.py:2430:def read_geqdsk(filename, cocos=1, nlevels=None, resample="theta",
+<PY_ROOT>/eqdsk.py:2449:def read_pfile(filename):
+<PY_ROOT>/meshing.py:12:import sys
+<PY_ROOT>/meshing.py:13:import json
+<PY_ROOT>/meshing.py:14:import numpy
+<PY_ROOT>/meshing.py:15:from .._interface import *
+<PY_ROOT>/meshing.py:16:from ..util import oft_warning, run_shell_command
+<PY_ROOT>/meshing.py:19:class triangle_struct(c_struct):
+<PY_ROOT>/meshing.py:52:def run_triangle(alpha):
+<PY_ROOT>/meshing.py:84:def run_cubit(cubit_path):
+<PY_ROOT>/meshing.py:93:import json
+<PY_ROOT>/meshing.py:94:import numpy as np
+<PY_ROOT>/meshing.py:217:    import h5py
+<PY_ROOT>/meshing.py:225:class gs_Domain:
+<PY_ROOT>/meshing.py:227:    def __init__(self,rextent=None,zextents=[None,None],rpad=1.2,zpad=[1.2,1.2],json_filename=None):
+<PY_ROOT>/meshing.py:278:    def define_region(self,name,dx,reg_type,eta=None,noncontinuous=None,nTurns=None,coil_set=None,allow_xpoints=False,inner_limiter=False):
+<PY_ROOT>/meshing.py:350:    def add_annulus(self,inner_countour,inner_name,outer_contour,annulus_name,parent_name=None,angle_tol=30.0,sliver_tol=120.0,small_thresh=None):
+<PY_ROOT>/meshing.py:414:    def add_polygon(self,contour,name,parent_name=None,angle_tol=30.0,sliver_tol=120.0,small_thresh=None):
+<PY_ROOT>/meshing.py:455:    def add_rectangle(self,rc,zc,w,h,name,parent_name=None, rot=None):
+<PY_ROOT>/meshing.py:484:    def add_enclosed(self,in_point,name):
+<PY_ROOT>/meshing.py:495:    def get_coils(self):
+<PY_ROOT>/meshing.py:514:    def get_conductors(self):
+<PY_ROOT>/meshing.py:545:    def build_mesh(self,debug=False,merge_thresh=1.E-4,require_boundary=True,setup_only=False,cubit_path=None,cubit_gradation=1.05):
+<PY_ROOT>/meshing.py:631:    def save_json(self,filename):
+<PY_ROOT>/meshing.py:655:    def plot_topology(self,fig,ax,linewidth=None,rotate=False):
+<PY_ROOT>/meshing.py:673:    def plot_mesh(self,fig,ax,lw=0.5,show_legends=True,col_max=10,split_coil_sets=False,rotate=False):
+<PY_ROOT>/meshing.py:789:def save_gs_mesh(pts,tris,regions,coil_dict,cond_dict,filename,use_hdf5=True):
+<PY_ROOT>/meshing.py:800:            import h5py
+<PY_ROOT>/meshing.py:823:def load_gs_mesh(filename,use_hdf5=True):
+<PY_ROOT>/meshing.py:830:            import h5py
+<PY_ROOT>/meshing.py:848:class Mesh:
+<PY_ROOT>/meshing.py:850:    def __init__(self,region_list,merge_thresh=1.E-4,debug=False,extra_reg_defs=[]):
+<PY_ROOT>/meshing.py:1068:    def get_mesh(self):
+<PY_ROOT>/meshing.py:1086:class Region:
+<PY_ROOT>/meshing.py:1088:    def __init__(self,points,dx=None,dx_curve=None,angle_tol=30.0,sliver_tol=120.0,small_thresh=None,id=0,load_dict=None):
+<PY_ROOT>/meshing.py:1162:    def get_resampled_points(self):
+<PY_ROOT>/meshing.py:1187:    def check_in_poly(self,pt):
+<PY_ROOT>/meshing.py:1213:    def get_in_point(self,i,dx):
+<PY_ROOT>/meshing.py:1238:    def get_segments(self):
+<PY_ROOT>/meshing.py:1244:    def plot_segments(self,fig,ax,linewidth=None,rotate=False):
+<PY_ROOT>/meshing.py:1257:    def get_json(self):
+<PY_ROOT>/pulse_design.py:19:import copy
+<PY_ROOT>/pulse_design.py:20:import json
+<PY_ROOT>/pulse_design.py:21:import logging
+<PY_ROOT>/pulse_design.py:22:import os
+<PY_ROOT>/pulse_design.py:23:import platform
+<PY_ROOT>/pulse_design.py:24:import pprint
+<PY_ROOT>/pulse_design.py:25:import shutil
+<PY_ROOT>/pulse_design.py:26:import subprocess
+<PY_ROOT>/pulse_design.py:27:import sys
+<PY_ROOT>/pulse_design.py:28:import tempfile
+<PY_ROOT>/pulse_design.py:29:import time
+<PY_ROOT>/pulse_design.py:30:from contextlib import contextmanager
+<PY_ROOT>/pulse_design.py:31:from datetime import datetime
+<PY_ROOT>/pulse_design.py:33:import matplotlib.cm as cm
+<PY_ROOT>/pulse_design.py:34:import matplotlib.pyplot as plt
+<PY_ROOT>/pulse_design.py:35:import numpy as np
+<PY_ROOT>/pulse_design.py:36:from matplotlib.colors import Normalize
+<PY_ROOT>/pulse_design.py:37:from matplotlib.gridspec import GridSpec
+<PY_ROOT>/pulse_design.py:38:from scipy.interpolate import CubicSpline, interp1d
+<PY_ROOT>/pulse_design.py:39:from scipy.ndimage import gaussian_filter1d
+<PY_ROOT>/pulse_design.py:40:from scipy.signal import savgol_filter
+<PY_ROOT>/pulse_design.py:42:from OpenFUSIONToolkit.TokaMaker.util import read_eqdsk, create_power_flux_fun
+<PY_ROOT>/pulse_design.py:147:def log_redirect_setup():
+<PY_ROOT>/pulse_design.py:172:import torax  # noqa: E402
+<PY_ROOT>/pulse_design.py:176:def redirect_outputs_to_log(filename):
+<PY_ROOT>/pulse_design.py:203:class MyEncoder(json.JSONEncoder):
+<PY_ROOT>/pulse_design.py:205:    def default(self, obj):
+<PY_ROOT>/pulse_design.py:213:class TokaMaker_TORAX:
+<PY_ROOT>/pulse_design.py:219:    def __init__(self, t_init, t_final, eqtimes, g_eqdsk_arr, tokamaker_obj, tx_dt=0.1, tm_times=None, last_surface_factor=0.99, truncate_eq=False):
+<PY_ROOT>/pulse_design.py:409:        def interp_tm_lcfs(lcfs, n=N_PSI):
+<PY_ROOT>/pulse_design.py:473:        def interp_prof(profs, time):
+<PY_ROOT>/pulse_design.py:624:    def _numpy_to_plain_python(obj):
+<PY_ROOT>/pulse_design.py:645:    def _tx_config_merge(base, override):
+<PY_ROOT>/pulse_design.py:666:    def _flatten_time_dependent(config):
+<PY_ROOT>/pulse_design.py:722:    def _relax_flat_profile_to_rho_y(profile_val):
+<PY_ROOT>/pulse_design.py:793:    def load_TORAX_config(self, config):
+<PY_ROOT>/pulse_design.py:809:    def set_TORAX_grid(self, grid_type, grid):
+<PY_ROOT>/pulse_design.py:821:    def _push_tx_grid(self):
+<PY_ROOT>/pulse_design.py:830:    def _pop_tx_grid(self):
+<PY_ROOT>/pulse_design.py:834:    def _coupling_iteration_is_first(self):
+<PY_ROOT>/pulse_design.py:843:    def _loop0_tm_solve_indices(n_tm, stride):
+<PY_ROOT>/pulse_design.py:852:    def _loop0_coarse_tx_relax_scope(self, stage):
+<PY_ROOT>/pulse_design.py:870:    def _loop0_coarse_tx_main_scope(self):
+<PY_ROOT>/pulse_design.py:883:    def set_TokaMaker_coil_reg(self, coil_bounds=None, updownsym=False,
+<PY_ROOT>/pulse_design.py:924:    def _apply_tm_coil_reg(self, targets=None):
+<PY_ROOT>/pulse_design.py:969:    def set_Ip(self, Ip):
+<PY_ROOT>/pulse_design.py:976:    def set_ne(self, n_e, right_bc=None):
+<PY_ROOT>/pulse_design.py:986:    def set_Te(self, T_e, right_bc=None):
+<PY_ROOT>/pulse_design.py:996:    def set_Ti(self, T_i, right_bc=None):
+<PY_ROOT>/pulse_design.py:1006:    def set_plasma_composition(self, Zeff=None, main_ion=None, impurity=None):
+<PY_ROOT>/pulse_design.py:1020:    def set_heating(self, generic_heat=None, generic_heat_loc=None, generic_heat_width=0.25, nbi_current=False, ecrh=None, ecrh_loc=None, ecrh_width=0.1, ohmic=None, fusion=True, ei_exchange=True):
+<PY_ROOT>/pulse_design.py:1049:    def set_pedestal(self, set_pedestal=False, T_i_ped=None, T_e_ped=None, n_e_ped=None, ped_top=0.90):
+<PY_ROOT>/pulse_design.py:1075:    def load_pedestal_config(self, pedestal_config):
+<PY_ROOT>/pulse_design.py:1092:    def set_evolve(self, density=True, Ti=True, Te=True, current=True):
+<PY_ROOT>/pulse_design.py:1106:    def set_fueling(self, gas_puff_S_total=None, gas_puff_decay_length=None, pellet_deposition_location=None, pellet_width=None, pellet_S_total=None,
+<PY_ROOT>/pulse_design.py:1132:    def set_transport_coefs(self, chi_min=None, chi_max=None, De_min=None, De_max=None, Ve_min=None, Ve_max=None):
+<PY_ROOT>/pulse_design.py:1155:    def set_x_points(self, diverted_times=None, x_point_targets=None, x_point_weight=100.0, strike_point_targets=None):
+<PY_ROOT>/pulse_design.py:1178:    def _get_time_window(self, time, tx_times):
+<PY_ROOT>/pulse_design.py:1227:    def _interp_tx_profile_onto_psi(self, data_tree, var_name, time, profile_type='linterp'):
+<PY_ROOT>/pulse_design.py:1269:    def _extract_tx_profile(self, data_tree, var_name, time, load_into_state='state',
+<PY_ROOT>/pulse_design.py:1325:    def _extract_tx_scalar(self, data_tree, var_name, time, source='scalars', scale=1.0):
+<PY_ROOT>/pulse_design.py:1353:    def _extract_tx_scalar_at_rho(self, data_tree, var_name, time, rho_val, rho_coord='rho_norm', scale=1.0):
+<PY_ROOT>/pulse_design.py:1381:    def _extract_tx_scalar_timeseries(self, data_tree, var_name, source='scalars', scale=1.0):
+<PY_ROOT>/pulse_design.py:1415:    def _extract_tx_scalar_at_rho_timeseries(self, data_tree, var_name, rho_val,
+<PY_ROOT>/pulse_design.py:1441:    def _apply_tx_set_overrides(self, myconfig):
+<PY_ROOT>/pulse_design.py:1608:    def _get_tx_config(self):
+<PY_ROOT>/pulse_design.py:1806:    def _test_eqdsk_tx_config(self, eqdsk, *, quiet=False):
+<PY_ROOT>/pulse_design.py:1834:    def _capture_relax_tx_profiles_from_datatree(self, data_tree, time_val=None):
+<PY_ROOT>/pulse_design.py:1853:    def _capture_steady_state_tx_seed(self, data_tree):
+<PY_ROOT>/pulse_design.py:1870:    def _run_tx_relax(self, *, stage, eqdsk_path, prescribed_profiles):
+<PY_ROOT>/pulse_design.py:2022:    def _run_tx(self):
+<PY_ROOT>/pulse_design.py:2110:    def _tx_update(self, i, data_tree):
+<PY_ROOT>/pulse_design.py:2197:    def _calc_tx_ffp_ni(self, i):
+<PY_ROOT>/pulse_design.py:2218:    def _res_update(self, data_tree):
+<PY_ROOT>/pulse_design.py:2302:    def _run_tm(self):
+<PY_ROOT>/pulse_design.py:2307:        from tqdm import tqdm # creates progress bars
+<PY_ROOT>/pulse_design.py:2612:        from collections import Counter
+<PY_ROOT>/pulse_design.py:2647:    def _tm_prof_input_raw(self, ffp_prof, pp_prof):
+<PY_ROOT>/pulse_design.py:2651:    def _tm_prof_input_sign_flip(self, ffp_prof, pp_prof):
+<PY_ROOT>/pulse_design.py:2653:        def _clip(prof):
+<PY_ROOT>/pulse_design.py:2660:    def _tm_prof_input_ped_smooth(self, ffp_prof, pp_prof, p_prof, transition_psi_N = 0.6, gauss_sigma=8, blend_width=0.02, sav_window=41, sav_order=3):
+<PY_ROOT>/pulse_design.py:2686:    def _tm_prof_input_power_flux(self, ffp_prof, pp_prof):
+<PY_ROOT>/pulse_design.py:2692:    def _tm_update(self, i):
+<PY_ROOT>/pulse_design.py:2766:    def save_state(self, fname):
+<PY_ROOT>/pulse_design.py:2774:    def save_res(self):
+<PY_ROOT>/pulse_design.py:2780:    def _log(self, msg):
+<PY_ROOT>/pulse_design.py:2786:    def _print(self, msg):
+<PY_ROOT>/pulse_design.py:2791:    def _quiet_tm(self):
+<PY_ROOT>/pulse_design.py:2796:        def _cm():
+<PY_ROOT>/pulse_design.py:2814:    def configure_redirect_to_log(self):
+<PY_ROOT>/pulse_design.py:2839:    def fly(self, run_name='tmp', convergence_threshold=-1.0, max_loop=3,
+<PY_ROOT>/pulse_design.py:2891:        import tempfile
+<PY_ROOT>/pulse_design.py:2909:            import jax
+<PY_ROOT>/pulse_design.py:3156:    def results(self):
+<PY_ROOT>/pulse_design.py:3161:    def state(self):
+<PY_ROOT>/pulse_design.py:3165:    def get_final_timepoint_results(self, eqdsk_save_dir=None):
+<PY_ROOT>/pulse_design.py:3190:        def _snap(prof):
+<PY_ROOT>/pulse_design.py:3291:    def make_movie(self, save_path=None, **kwargs):
+<PY_ROOT>/pulse_design.py:3298:    def plot_scalars(self, save_path=None, display=True, **kwargs):
+<PY_ROOT>/pulse_design.py:3306:    def plot_profiles(self, **kwargs):
+<PY_ROOT>/pulse_design.py:3310:    def plot_profile_evolution(self, save_path=None, display=True, one_plot=False, **kwargs):
+<PY_ROOT>/pulse_design.py:3319:    def plot_coils(self, save_path=None, display=True, **kwargs):
+<PY_ROOT>/pulse_design.py:3327:    def plot_lcfs_evolution(self, save_path=None, display=True, one_plot=False, **kwargs):
+<PY_ROOT>/pulse_design.py:3336:    def summary(self, **kwargs):
+<PY_ROOT>/pulse_design.py:3376:def _in_jupyter():
+<PY_ROOT>/pulse_design.py:3379:        from IPython import get_ipython
+<PY_ROOT>/pulse_design.py:3386:def _save_or_display(fig, save_path=None, display=True):
+<PY_ROOT>/pulse_design.py:3397:def _style(ax):
+<PY_ROOT>/pulse_design.py:3403:def _tx_scalar(tt, var_name, scale=1.0):
+<PY_ROOT>/pulse_design.py:3414:def _tx_profile_at_rho(tt, var_name, rho_val, rho_coord='rho_norm', scale=1.0):
+<PY_ROOT>/pulse_design.py:3424:def _prof(state_dict, idx):
+<PY_ROOT>/pulse_design.py:3432:def _make_temp_dir_viz():
+<PY_ROOT>/pulse_design.py:3439:def _x_points_active(tt, i, t=None):
+<PY_ROOT>/pulse_design.py:3470:def profile_plot(tt, i, t, save_path=None, display=True):
+<PY_ROOT>/pulse_design.py:3682:def tm_diagnostic_plot(tt, i, t, level_attempts, solve_succeeded, save_path=None, display=True):
+<PY_ROOT>/pulse_design.py:3692:    def _plot_levels(ax, key, seed_x=None, seed_y=None, seed_label=None):
+<PY_ROOT>/pulse_design.py:3708:    def render_table(ax, rows, title):
+<PY_ROOT>/pulse_design.py:3896:def tm_loop_summary_plot(tt, loop_level_log, save_path=None, display=True):
+<PY_ROOT>/pulse_design.py:3952:def plot_profile_evolution(tt, save_path=None, display=True, one_plot=False):
+<PY_ROOT>/pulse_design.py:4099:def plot_tx_relax_profiles(
+<PY_ROOT>/pulse_design.py:4136:    def _one_panel(ax, var_name, ylabel):
+<PY_ROOT>/pulse_design.py:4229:def plot_scalars(tt, save_path=None, display=True):
+<PY_ROOT>/pulse_design.py:4472:def _coil_net_turns(tt, cname):
+<PY_ROOT>/pulse_design.py:4477:def _coil_aturn_clim(tt):
+<PY_ROOT>/pulse_design.py:4489:def plot_coils(tt, save_path=None, display=True):
+<PY_ROOT>/pulse_design.py:4529:def _trace_lcfs_for_evolution_plot(equil):
+<PY_ROOT>/pulse_design.py:4541:def plot_lcfs_evolution(tt, save_path=None, display=True, one_plot=False):
+<PY_ROOT>/pulse_design.py:4651:def make_movie(tt, save_path=None, display=True, speed_factor=1.0, loop=None, notebook_mode=None):
+<PY_ROOT>/pulse_design.py:4714:def _render_equil_frames(tt, loop, equil_dir):
+<PY_ROOT>/pulse_design.py:4756:def _render_frame(tt, loop, idx, t_now, times, flux_con_tm, flux_con_tx, out_path, run_name, equil_dir):
+<PY_ROOT>/pulse_design.py:4784:def _draw_info(ax, tt, loop, run_name):
+<PY_ROOT>/pulse_design.py:4812:def _draw_equil_from_dir(ax, tt, loop, idx, t_now, equil_dir):
+<PY_ROOT>/pulse_design.py:4814:    from matplotlib.image import imread
+<PY_ROOT>/pulse_design.py:4851:def _draw_scalars_movie(axes, tt, times, t_now, flux_con_tm, flux_con_tx):
+<PY_ROOT>/pulse_design.py:4963:def _draw_profiles_movie(axes, tt, idx):
+<PY_ROOT>/pulse_design.py:5076:def _encode_video_from_dir(frame_dir, out_path, fps=2):
+<PY_ROOT>/pulse_design.py:5090:def _embed_video_jupyter(video_path):
+<PY_ROOT>/pulse_design.py:5093:        from IPython.display import Video, display
+<PY_ROOT>/pulse_design.py:5101:def plot_profiles_interactive(tt):
+<PY_ROOT>/pulse_design.py:5104:        import ipywidgets as widgets
+<PY_ROOT>/pulse_design.py:5105:        from IPython.display import display, clear_output
+<PY_ROOT>/pulse_design.py:5114:    def _update(i):
+<PY_ROOT>/pulse_design.py:5180:def plot_equil_interactive(tt, loop=None, notebook_mode=None, save_path=None):
+<PY_ROOT>/pulse_design.py:5204:    def _draw_equil_ax(fig, ax, i):
+<PY_ROOT>/pulse_design.py:5232:            import ipywidgets as widgets
+<PY_ROOT>/pulse_design.py:5233:            from IPython.display import display, clear_output
+<PY_ROOT>/pulse_design.py:5240:        def _update(i):
+<PY_ROOT>/pulse_design.py:5270:def summary(tt):
+<PY_ROOT>/reconstruction.py:12:from warnings import warn
+<PY_ROOT>/reconstruction.py:13:from .._interface import *
+<PY_ROOT>/reconstruction.py:14:from ..util import oft_warning
+<PY_ROOT>/reconstruction.py:17:class tokamaker_recon_settings_cstruct(c_struct):
+<PY_ROOT>/reconstruction.py:58:class Mirnov_con:
+<PY_ROOT>/reconstruction.py:60:    def __init__(self, loc=None, phi=0., norm=None, val=None, err=None):
+<PY_ROOT>/reconstruction.py:75:    def read(self, file):
+<PY_ROOT>/reconstruction.py:89:    def write(self, file):
+<PY_ROOT>/reconstruction.py:100:class Ip_con:
+<PY_ROOT>/reconstruction.py:102:    def __init__(self, val=None, err=None):
+<PY_ROOT>/reconstruction.py:113:    def read(self, file):
+<PY_ROOT>/reconstruction.py:126:    def write(self, file):
+<PY_ROOT>/reconstruction.py:135:class fluxLoop_con:
+<PY_ROOT>/reconstruction.py:137:    def __init__(self, loc=None, val=None, err=None):
+<PY_ROOT>/reconstruction.py:148:    def read(self, file):
+<PY_ROOT>/reconstruction.py:159:    def write(self, file):
+<PY_ROOT>/reconstruction.py:169:class dFlux_con:
+<PY_ROOT>/reconstruction.py:171:    def __init__(self, val=None, err=None):
+<PY_ROOT>/reconstruction.py:180:    def read(self, file):
+<PY_ROOT>/reconstruction.py:189:    def write(self, file):
+<PY_ROOT>/reconstruction.py:198:class Press_con:
+<PY_ROOT>/reconstruction.py:200:    def __init__(self, loc=None, val=None, err=None):
+<PY_ROOT>/reconstruction.py:213:    def read(self, file):
+<PY_ROOT>/reconstruction.py:227:    def write(self, file):
+<PY_ROOT>/reconstruction.py:237:class q_con:
+<PY_ROOT>/reconstruction.py:239:    def __init__(self, type=None, loc=0., val=None, err=None):
+<PY_ROOT>/reconstruction.py:252:    def read(self, file):
+<PY_ROOT>/reconstruction.py:264:    def write(self, file):
+<PY_ROOT>/reconstruction.py:274:class saddle_con:
+<PY_ROOT>/reconstruction.py:276:    def __init__(self, pt1=None, pt2=None, width=None, val=None, err=None):
+<PY_ROOT>/reconstruction.py:291:    def read(self, file):
+<PY_ROOT>/reconstruction.py:306:    def write(self, file):
+<PY_ROOT>/reconstruction.py:318:class coil_current_con:
+<PY_ROOT>/reconstruction.py:320:    def __init__(self, ind=None, val=None, err=None):
+<PY_ROOT>/reconstruction.py:331:    def read(self, file):
+<PY_ROOT>/reconstruction.py:342:    def write(self, file):
+<PY_ROOT>/reconstruction.py:364:class tokamaker_recon_settings:
+<PY_ROOT>/reconstruction.py:366:    def __init__(self):
+<PY_ROOT>/reconstruction.py:398:    def __setattr__(self, name, value):
+<PY_ROOT>/reconstruction.py:405:    def fitV0(self):
+<PY_ROOT>/reconstruction.py:414:    def fitV0(self, value):
+<PY_ROOT>/reconstruction.py:422:    def get_c_struct(self,oft_env):
+<PY_ROOT>/reconstruction.py:440:class reconstruction():
+<PY_ROOT>/reconstruction.py:442:    def __init__(self,tMaker_obj,in_filename='fit.in',out_filename='fit.out'):
+<PY_ROOT>/reconstruction.py:489:    def __del__(self):
+<PY_ROOT>/reconstruction.py:508:    def set_Ip(self,Ip,err):
+<PY_ROOT>/reconstruction.py:516:    def set_DFlux(self,DFlux,err):
+<PY_ROOT>/reconstruction.py:524:    def set_coil_currents(self,targets,errs):
+<PY_ROOT>/reconstruction.py:538:    def add_flux_loop(self,loc,val,err):
+<PY_ROOT>/reconstruction.py:547:    def add_Mirnov(self,loc,norm,val,err):
+<PY_ROOT>/reconstruction.py:557:    def add_saddle(self,p1,p2,width,val,err):
+<PY_ROOT>/reconstruction.py:568:    def add_pressure(self,loc,val,err):
+<PY_ROOT>/reconstruction.py:577:    def reset_constraints(self):
+<PY_ROOT>/reconstruction.py:586:    def write_fit_in(self):
+<PY_ROOT>/reconstruction.py:599:    def read_fit_in(self):
+<PY_ROOT>/reconstruction.py:627:    def plot_constraints(self, fig, ax, plot_flux_loops=True, plot_mirnovs=True, plot_saddles=True, plot_pressure=True, mirnov_scale=1.0, base_zorder=0):
+<PY_ROOT>/reconstruction.py:653:    def plot_error(self, ax, error_mat=None, error_file=None, coil_ax=None, chi_ax=None):
+<PY_ROOT>/reconstruction.py:735:    def setup_constraints(self):
+<PY_ROOT>/reconstruction.py:752:    def destroy_constraints(self):
+<PY_ROOT>/reconstruction.py:762:    def eval_error(self, vacuum=False, save_to_file=False):
+<PY_ROOT>/reconstruction.py:781:    def setup_get_opt(self,fail_factor=1.E2,pp_target_weight=1.E5,opoint_target_weight=1.E2):
+<PY_ROOT>/reconstruction.py:807:    def opt_get_dofs(self):
+<PY_ROOT>/reconstruction.py:830:    def opt_error(cofs,recon_obj,in_jac):
+<PY_ROOT>/reconstruction.py:885:    def opt_error_jacobian(cofs,recon_obj,in_jac):
+<PY_ROOT>/reconstruction.py:908:    def reconstruct(self, vacuum=False, linearized_fit=False, maxits=100, eps=1.E-3, ftol=1.E-3, xtol=1.E-3, gtol=1.E-3):
+<PY_ROOT>/util.py:12:import struct
+<PY_ROOT>/util.py:13:import numpy
+<PY_ROOT>/util.py:14:from collections import OrderedDict
+<PY_ROOT>/util.py:15:from .._interface import *
+<PY_ROOT>/util.py:16:from ..util import read_fortran_namelist
+<PY_ROOT>/util.py:24:def create_isoflux(npts, r0, z0, a, kappa, delta, kappaL=None, deltaL=None):
+<PY_ROOT>/util.py:53:def xpoints_from_moments(r0, z0, a, kappa_upper, delta_upper,
+<PY_ROOT>/util.py:79:def _intor_arc(r0, z0_arc, a, kappa_eff, theta_x, r_x, zeta, n, endpoint=False, sign=1):
+<PY_ROOT>/util.py:107:def _inner_arc(r_x, z_x, r_inner_mid, z_inner_mid, zeta, n):
+<PY_ROOT>/util.py:131:def create_isoflux_xpts(npts, r0, z0, a, kappa_upper, delta_upper,
+<PY_ROOT>/util.py:234:def create_spline_flux_fun(npts,x,y,axis_bc=[1,0.0],edge_bc=[1,0.0],normalize=True):
+<PY_ROOT>/util.py:244:    from scipy.interpolate import CubicSpline
+<PY_ROOT>/util.py:258:def create_power_flux_fun(npts,alpha,gamma):
+<PY_ROOT>/util.py:274:def read_eqdsk(filename):
+<PY_ROOT>/util.py:280:    def read_1d(fid, n):
+<PY_ROOT>/util.py:292:    def read_2d(fid, n, m):
+<PY_ROOT>/util.py:345:def read_ifile(filename):
+<PY_ROOT>/util.py:351:    def read_array(content,offset,var_type,count):
+<PY_ROOT>/util.py:398:def eval_green(x,xc):
+<PY_ROOT>/util.py:414:def compute_forces_components(tMaker_obj,psi,cell_centered=False):
+<PY_ROOT>/util.py:448:def read_mhdin(path, e_coil_names=None, f_coil_names=None):
+<PY_ROOT>/util.py:497:def read_kfile(path, machine_dict, e_coil_names=None, f_coil_names=None):
+<PY_ROOT>/util.py:544:def get_jphi_from_GS(ffprime, pprime, R_avg, one_over_R_avg):
+<PY_ROOT>/_core.py:12:import copy
+<PY_ROOT>/_core.py:13:import collections
+<PY_ROOT>/_core.py:14:import ctypes
+<PY_ROOT>/_core.py:15:from warnings import warn
+<PY_ROOT>/_core.py:16:import numpy
+<PY_ROOT>/_core.py:17:from ._interface import *
+<PY_ROOT>/_core.py:20:def create_prof_file(self, filename, profile_dict, name):
+<PY_ROOT>/_core.py:112:class tokamaker_settings:
+<PY_ROOT>/_core.py:114:    def __init__(self):
+<PY_ROOT>/_core.py:148:    def __setattr__(self, name, value):
+<PY_ROOT>/_core.py:154:    def get_c_struct(self,oft_env):
+<PY_ROOT>/_core.py:179:class TokaMaker():
+<PY_ROOT>/_core.py:181:    def __init__(self,OFT_env):
+<PY_ROOT>/_core.py:239:    def __del__(self):
+<PY_ROOT>/_core.py:243:    def reset(self):
+<PY_ROOT>/_core.py:279:    def print_ascii_logo(self, italic=True):
+<PY_ROOT>/_core.py:300:    def setup_mesh(self,r=None,lc=None,reg=None,mesh_file=None):
+<PY_ROOT>/_core.py:349:    def setup_regions(self,cond_dict={},coil_dict={}):
+<PY_ROOT>/_core.py:412:    def setup(self,order=2,F0=0.0,full_domain=False):
+<PY_ROOT>/_core.py:480:    def c_ptr(self):
+<PY_ROOT>/_core.py:485:    def ffp_scale(self):
+<PY_ROOT>/_core.py:492:    def ffp_scale(self,value):
+<PY_ROOT>/_core.py:498:    def p_scale(self):
+<PY_ROOT>/_core.py:505:    def p_scale(self,value):
+<PY_ROOT>/_core.py:511:    def alam(self):
+<PY_ROOT>/_core.py:518:    def alam(self,value):
+<PY_ROOT>/_core.py:522:    def pnorm(self):
+<PY_ROOT>/_core.py:529:    def pnorm(self,value):
+<PY_ROOT>/_core.py:533:    def diverted(self):
+<PY_ROOT>/_core.py:540:    def o_point(self):
+<PY_ROOT>/_core.py:547:    def lim_point(self):
+<PY_ROOT>/_core.py:554:    def psi_bounds(self):
+<PY_ROOT>/_core.py:560:    def coil_dict2vec(self,coil_dict=None,keep_virtual=False,default_value=0.0):
+<PY_ROOT>/_core.py:592:    def coil_vec2dict(self,coil_vec,always_virtual=False):
+<PY_ROOT>/_core.py:612:    def abspsi_to_normalized(self,psi_in):
+<PY_ROOT>/_core.py:622:    def psinorm_to_absolute(self,psi_in):
+<PY_ROOT>/_core.py:632:    def coil_reg_term(self,coffs,target=0.0,weight=1.0):
+<PY_ROOT>/_core.py:646:    def set_coil_reg(self,reg_mat=None,reg_targets=None,reg_weights=None,reg_terms=None):
+<PY_ROOT>/_core.py:709:    def set_coil_bounds(self,coil_bounds=None):
+<PY_ROOT>/_core.py:733:    def set_coil_vsc(self,coil_gains):
+<PY_ROOT>/_core.py:745:    def set_vcoils(self,coil_resistances):
+<PY_ROOT>/_core.py:757:    def init_psi(self, r0=-1.0, z0=0.0, a=0.0, kappa=0.0, delta=0.0, curr_source=None):
+<PY_ROOT>/_core.py:782:    def load_profiles(self, f_file='none', foffset=None, p_file='none', eta_file='none', f_NI_file='none'):
+<PY_ROOT>/_core.py:795:    def set_profiles(self, ffp_prof=None, foffset=None, pp_prof=None, ffp_NI_prof=None, keep_files=False):
+<PY_ROOT>/_core.py:808:    def get_profile_dofs(self, prof_type):
+<PY_ROOT>/_core.py:818:    def set_profile_dofs(self, prof_type, values):
+<PY_ROOT>/_core.py:828:    def set_resistivity(self, eta_prof=None):
+<PY_ROOT>/_core.py:840:    def solve(self, vacuum=False, return_its=False):
+<PY_ROOT>/_core.py:857:    def vac_solve(self,psi=None,rhs_source=None):
+<PY_ROOT>/_core.py:887:    def get_stats(self,lcfs_pad=None,axis_pad=0.02,li_normalization='std',geom_type='max',beta_Ip=None):
+<PY_ROOT>/_core.py:903:    def print_info(self,lcfs_pad=None,axis_pad=0.02,li_normalization='std',geom_type='max',beta_Ip=None):
+<PY_ROOT>/_core.py:915:    def set_isoflux(self,isoflux,weights=None,grad_wt_lim=-1.0,ref_points=None):
+<PY_ROOT>/_core.py:937:    def set_isoflux_constraints(self,isoflux,weights=None,grad_wt_lim=-1.0,ref_points=None):
+<PY_ROOT>/_core.py:979:    def set_flux(self,locations,targets,weights=None):
+<PY_ROOT>/_core.py:995:    def set_flux_constraints(self,locations,targets,weights=None):
+<PY_ROOT>/_core.py:1007:    def set_psi_constraints(self,locations,targets,weights=None):
+<PY_ROOT>/_core.py:1036:    def set_saddles(self,saddles,weights=None):
+<PY_ROOT>/_core.py:1051:    def set_saddle_constraints(self,saddles,weights=None):
+<PY_ROOT>/_core.py:1076:    def set_mirnov_constraints(self,locations,norms,targets,weights=None):
+<PY_ROOT>/_core.py:1109:    def set_targets(self,Ip=None,Ip_ratio=None,pax=None,estore=None,Dflux=None,R0=None,V0=None,Z0=None,retain_previous=False):
+<PY_ROOT>/_core.py:1124:        def float_to_c(value):
+<PY_ROOT>/_core.py:1182:    def get_targets(self):
+<PY_ROOT>/_core.py:1204:    def get_delstar_curr(self,psi):
+<PY_ROOT>/_core.py:1219:    def calc_delstar_curr(self,psi):
+<PY_ROOT>/_core.py:1229:    def get_jtor_plasma(self):
+<PY_ROOT>/_core.py:1243:    def calc_jtor_plasma(self):
+<PY_ROOT>/_core.py:1252:    def copy_eq(self,skip_targets=False,skip_constraints=False):
+<PY_ROOT>/_core.py:1263:    def replace_eq(self,source_eq=None,source_file=None,skip_targets=False,skip_constraints=False):
+<PY_ROOT>/_core.py:1292:    def get_psi(self,normalized=True):
+<PY_ROOT>/_core.py:1302:    def set_psi(self,psi,update_bounds=False):
+<PY_ROOT>/_core.py:1312:    def set_psi_dt(self,psi0,dt,coil_currents=None,coil_voltages=None):
+<PY_ROOT>/_core.py:1335:    def get_field_eval(self,field_type):
+<PY_ROOT>/_core.py:1345:    def get_coil_currents(self):
+<PY_ROOT>/_core.py:1354:    def get_coil_Lmat(self):
+<PY_ROOT>/_core.py:1372:    def trace_surf(self,psi):
+<PY_ROOT>/_core.py:1382:    def get_q(self,psi=None,psi_pad=0.02,npsi=50,compute_geo=False):
+<PY_ROOT>/_core.py:1396:    def sauter_fc(self,psi=None,psi_pad=0.02,npsi=50):
+<PY_ROOT>/_core.py:1408:    def get_globals(self):
+<PY_ROOT>/_core.py:1418:    def calc_loopvoltage(self):
+<PY_ROOT>/_core.py:1427:    def get_profiles(self,psi=None,psi_pad=1.E-8,npsi=50):
+<PY_ROOT>/_core.py:1440:    def get_xpoints(self):
+<PY_ROOT>/_core.py:1449:    def set_coil_currents(self, currents=None):
+<PY_ROOT>/_core.py:1462:    def update_settings(self):
+<PY_ROOT>/_core.py:1469:    def set_dipole_a(self,a_exp=None):
+<PY_ROOT>/_core.py:1482:    def set_mirror_slosh(self,n_exp=None,b_turn=None,z_throat=None):
+<PY_ROOT>/_core.py:1501:    def area_integral(self,field,reg_mask=-1):
+<PY_ROOT>/_core.py:1517:    def compute_area_integral(self,field,reg_mask=-1):
+<PY_ROOT>/_core.py:1533:    def flux_integral(self,psi_vals,field_vals):
+<PY_ROOT>/_core.py:1549:    def compute_flux_integral(self,psi_vals,field_vals):
+<PY_ROOT>/_core.py:1560:    def plot_machine(self,fig,ax,equilibrium=None,vacuum_color='whitesmoke',cond_color='gray',limiter_color='k',
+<PY_ROOT>/_core.py:1639:    def plot_mesh(self,fig,ax,lw=0.5,show_legends=True,col_max=10,split_coil_sets=False,plot_tessellated=False):
+<PY_ROOT>/_core.py:1778:    def plot_psi(self,fig,ax,equilibrium=None,psi=None,normalized=True,
+<PY_ROOT>/_core.py:1866:    def plot_constraints(self,fig,ax,equilibrium=None,isoflux_color='tab:red',isoflux_marker='+',saddle_color='tab:green',saddle_marker='x'):
+<PY_ROOT>/_core.py:1885:    def plot_eddy(self,fig,ax,psi=None,equilibrium=None,dpsi_dt=None,nlevels=40,colormap='jet',clabel=r'$J_w$ [$A/m^2$]',symmap=False,include_Vcoils=False):
+<PY_ROOT>/_core.py:1947:    def get_conductor_currents(self,psi,cell_centered=False,include_Vcoils=False):
+<PY_ROOT>/_core.py:1958:    def get_conductor_source(self,dpsi_dt):
+<PY_ROOT>/_core.py:1993:    def get_vfixed(self):
+<PY_ROOT>/_core.py:2002:    def save_eqdsk(self,filename,nr=65,nz=65,rbounds=None,zbounds=None,run_info='',lcfs_pad=0.01,rcentr=None,truncate_eq=True,limiter_file='',lcfs_pressure=0.0, cocos=7):
+<PY_ROOT>/_core.py:2022:    def save_ifile(self,filename,npsi=65,ntheta=65,lcfs_pad=0.01,lcfs_pressure=0.0,pack_lcfs=True,single_precision=False):
+<PY_ROOT>/_core.py:2037:    def save_mug(self,filename):
+<PY_ROOT>/_core.py:2046:    def set_coil_current_dist(self,coil_name,curr_dist=None,normalize=False):
+<PY_ROOT>/_core.py:2075:    def eig_wall(self,neigs=4,pm=False):
+<PY_ROOT>/_core.py:2097:    def compute_wall_modes(self,nmodes=4,pm=False):
+<PY_ROOT>/_core.py:2112:    def eig_td(self,omega=-1.E4,neigs=4,include_bounds=True,pm=False,damping_scale=-1.0):
+<PY_ROOT>/_core.py:2143:    def compute_linear_stability(self,omega=1.E4,nmodes=4,include_bounds=True,pm=False,damping_scale=-1.0):
+<PY_ROOT>/_core.py:2157:    def setup_td(self,dt,lin_tol,nl_tol,pre_plasma=False):
+<PY_ROOT>/_core.py:2170:    def step_td(self,time,dt,coil_currents=None,coil_voltages=None):
+<PY_ROOT>/_core.py:2199:class TokaMaker_equilibrium():
+<PY_ROOT>/_core.py:2201:    def __init__(self,TokaMaker_obj=None,source_eq=None,skip_targets=False,skip_constraints=False):
+<PY_ROOT>/_core.py:2339:    def __del__(self):
+<PY_ROOT>/_core.py:2351:    def copy(self):
+<PY_ROOT>/_core.py:2356:    def c_ptr(self):
+<PY_ROOT>/_core.py:2361:    def ffp_scale(self):
+<PY_ROOT>/_core.py:2366:    def ffp_scale(self,value):
+<PY_ROOT>/_core.py:2370:    def p_scale(self):
+<PY_ROOT>/_core.py:2375:    def p_scale(self,value):
+<PY_ROOT>/_core.py:2379:    def alam(self):
+<PY_ROOT>/_core.py:2386:    def alam(self,value):
+<PY_ROOT>/_core.py:2390:    def pnorm(self):
+<PY_ROOT>/_core.py:2397:    def pnorm(self,value):
+<PY_ROOT>/_core.py:2401:    def diverted(self):
+<PY_ROOT>/_core.py:2406:    def o_point(self):
+<PY_ROOT>/_core.py:2411:    def lim_point(self):
+<PY_ROOT>/_core.py:2416:    def psi_bounds(self):
+<PY_ROOT>/_core.py:2421:    def Vacuum(self):
+<PY_ROOT>/_core.py:2426:    def F0(self):
+<PY_ROOT>/_core.py:2431:    def Ip_target(self):
+<PY_ROOT>/_core.py:2436:    def Ip_ratio_target(self):
+<PY_ROOT>/_core.py:2441:    def Pax_target(self):
+<PY_ROOT>/_core.py:2446:    def Estored_target(self):
+<PY_ROOT>/_core.py:2451:    def Dflux_target(self):
+<PY_ROOT>/_core.py:2456:    def R0_target(self):
+<PY_ROOT>/_core.py:2461:    def Z0_target(self):
+<PY_ROOT>/_core.py:2466:    def Isoflux_constraints(self):
+<PY_ROOT>/_core.py:2471:    def Psi_constraints(self):
+<PY_ROOT>/_core.py:2478:    def Saddle_constraints(self):
+<PY_ROOT>/_core.py:2483:    def Mirnov_constraints(self):
+<PY_ROOT>/_core.py:2487:    def load_profiles(self, f_file='none', foffset=None, p_file='none', eta_file='none', f_NI_file='none'):
+<PY_ROOT>/_core.py:2507:    def set_profiles(self, ffp_prof=None, foffset=None, pp_prof=None, ffp_NI_prof=None, keep_files=False):
+<PY_ROOT>/_core.py:2540:    def get_profile_dofs(self, prof_type):
+<PY_ROOT>/_core.py:2563:    def set_profile_dofs(self, prof_type, dofs):
+<PY_ROOT>/_core.py:2584:    def set_resistivity(self, eta_prof=None):
+<PY_ROOT>/_core.py:2598:    def abspsi_to_normalized(self,psi_in):
+<PY_ROOT>/_core.py:2609:    def psinorm_to_absolute(self,psi_in):
+<PY_ROOT>/_core.py:2620:    def get_psi(self,normalized=True):
+<PY_ROOT>/_core.py:2639:    def set_psi(self,psi,update_bounds=False):
+<PY_ROOT>/_core.py:2653:    def get_coil_currents(self):
+<PY_ROOT>/_core.py:2666:    def get_globals(self):
+<PY_ROOT>/_core.py:2686:    def get_profiles(self,psi=None,psi_pad=1.E-8,npsi=50):
+<PY_ROOT>/_core.py:2719:    def get_q(self,psi=None,psi_pad=0.02,npsi=50,compute_geo=False):
+<PY_ROOT>/_core.py:2767:    def trace_surf(self,psi):
+<PY_ROOT>/_core.py:2786:    def get_xpoints(self):
+<PY_ROOT>/_core.py:2799:    def get_field_eval(self,field_type):
+<PY_ROOT>/_core.py:2823:    def get_stats(self,lcfs_pad=None,axis_pad=0.02,li_normalization='std',geom_type='max',beta_Ip=None):
+<PY_ROOT>/_core.py:2926:    def print_info(self,lcfs_pad=None,axis_pad=0.02,li_normalization='std',geom_type='max',beta_Ip=None):
+<PY_ROOT>/_core.py:2964:    def calc_loopvoltage(self):
+<PY_ROOT>/_core.py:2981:    def calc_sauter_fc(self,psi=None,psi_pad=0.02,npsi=50):
+<PY_ROOT>/_core.py:3015:    def calc_delstar_curr(self,psi):
+<PY_ROOT>/_core.py:3028:    def calc_jtor_plasma(self):
+<PY_ROOT>/_core.py:3040:    def calc_conductor_currents(self,psi,cell_centered=False,include_Vcoils=False):
+<PY_ROOT>/_core.py:3073:    def calc_vfixed(self):
+<PY_ROOT>/_core.py:3088:    def calc_inductance(self):
+<PY_ROOT>/_core.py:3103:    def compute_area_integral(self,field,reg_mask=-1):
+<PY_ROOT>/_core.py:3112:    def compute_flux_integral(self,psi_vals,field_vals):
+<PY_ROOT>/_core.py:3134:    def compute_linear_stability(self,omega=1.E4,nmodes=4,include_bounds=True,pm=False,damping_scale=-1.0):
+<PY_ROOT>/_core.py:3155:    def save_eqdsk(self,filename,nr=65,nz=65,rbounds=None,zbounds=None,run_info='',lcfs_pad=0.01,rcentr=None,truncate_eq=True,limiter_file='',lcfs_pressure=0.0, cocos=7):
+<PY_ROOT>/_core.py:3193:    def save_ifile(self,filename,npsi=65,ntheta=65,lcfs_pad=0.01,lcfs_pressure=0.0,pack_lcfs=True,single_precision=False):
+<PY_ROOT>/_core.py:3210:    def save_mug(self,filename):
+<PY_ROOT>/_core.py:3221:    def save_TokaMaker(self,filename):
+<PY_ROOT>/_interface.py:12:from .._interface import *
+<PY_ROOT>/_interface.py:15:class tokamaker_settings_cstruct(c_struct):
+<PY_ROOT>/_interface.py:272:class TokaMaker_field_interpolator():
+<PY_ROOT>/_interface.py:274:    def __init__(self,tMaker_equil_obj,int_obj,int_type,dim,fbary_tol=1.E-8):
+<PY_ROOT>/_interface.py:295:    def __del__(self):
+<PY_ROOT>/_interface.py:300:    def eval(self,pt):
+<PY_ROOT>/__init__.py:12:from ._core import TokaMaker
+<PY_ROOT>/__init__.py:14:__all__ = ["TokaMaker"]
+
+
+=================== [2. READ_EQDSK & EQUILIBRIUM DICT SCHEMAS] ===================
+<PY_ROOT>/eqdsk.py-65-# ---------------------------------------------------------------------------
+<PY_ROOT>/eqdsk.py-66-
+<PY_ROOT>/eqdsk.py:67:def _read_geqdsk(filename):
+<PY_ROOT>/eqdsk.py-68-    r'''! Parse a GEQDSK (g-file) into a plain dict
+<PY_ROOT>/eqdsk.py-69-
+<PY_ROOT>/eqdsk.py-70-    @param filename Path to the g-file
+<PY_ROOT>/eqdsk.py-71-    @result Dict whose keys match the standard GEQDSK field names (`NW`, `NH`,
+<PY_ROOT>/eqdsk.py-72-            `RDIM`, ..., `FPOL`, `PRES`, `FFPRIM`, `PPRIME`, `PSIRZ`, `QPSI`,
+<PY_ROOT>/eqdsk.py-73-            `RBBBS`, `ZBBBS`, etc.)
+<PY_ROOT>/eqdsk.py-74-    '''
+<PY_ROOT>/eqdsk.py-75-
+--
+<PY_ROOT>/eqdsk.py-671-# ---------------------------------------------------------------------------
+<PY_ROOT>/eqdsk.py-672-
+<PY_ROOT>/eqdsk.py:673:class GEQDSKEquilibrium:
+<PY_ROOT>/eqdsk.py-674-    r'''! GEQDSK equilibrium with flux-surface-averaged quantities
+<PY_ROOT>/eqdsk.py-675-
+<PY_ROOT>/eqdsk.py-676-    Reads a standard g-file and lazily computes magnetic fields, flux-surface
+<PY_ROOT>/eqdsk.py-677-    contours, averages, geometry, and inductance.
+<PY_ROOT>/eqdsk.py-678-    '''
+<PY_ROOT>/eqdsk.py-679-
+<PY_ROOT>/eqdsk.py-680-    def __init__(self, filename, cocos=1, nlevels=None, resample="theta",
+<PY_ROOT>/eqdsk.py-681-                 extrapolate_edge=True):
+--
+<PY_ROOT>/pulse_design.py-423-
+<PY_ROOT>/pulse_design.py-424-        for i, t in enumerate(self._eqtimes):
+<PY_ROOT>/pulse_design.py:425:            g = read_eqdsk(g_eqdsk_arr[i])
+<PY_ROOT>/pulse_design.py-426-            zmax = np.max(g['rzout'][:,1])
+<PY_ROOT>/pulse_design.py-427-            zmin = np.min(g['rzout'][:,1])
+<PY_ROOT>/pulse_design.py-428-            rmax = np.max(g['rzout'][:,0])
+<PY_ROOT>/pulse_design.py-429-            rmin = np.min(g['rzout'][:,0])
+<PY_ROOT>/pulse_design.py-430-            minor_radius = (rmax - rmin) / 2.0
+<PY_ROOT>/pulse_design.py-431-            rgeo = (rmax + rmin) / 2.0
+<PY_ROOT>/pulse_design.py-432-            highest_pt_idx = np.argmax(g['rzout'][:,1])
+<PY_ROOT>/pulse_design.py-433-            lowest_pt_idx = np.argmin(g['rzout'][:,1])
+--
+<PY_ROOT>/util.py-272-
+<PY_ROOT>/util.py-273-
+<PY_ROOT>/util.py:274:def read_eqdsk(filename):
+<PY_ROOT>/util.py-275-    '''! Read gEQDSK file
+<PY_ROOT>/util.py-276-
+<PY_ROOT>/util.py-277-    @param filename Path to gEQDSK file
+<PY_ROOT>/util.py-278-    @result Dictionary containing gEQDSK information
+<PY_ROOT>/util.py-279-    '''
+<PY_ROOT>/util.py-280-    def read_1d(fid, n):
+<PY_ROOT>/util.py-281-        j = 0
+<PY_ROOT>/util.py-282-        output = numpy.zeros((n,))
+
+
+=================== [3. MESHING WRAPPER, CTYPES & TRIANGLE CALLS] ===================
+<PY_ROOT>/bootstrap.py-12-import numpy
+<PY_ROOT>/bootstrap.py-13-import warnings
+<PY_ROOT>/bootstrap.py:14:from ._interface import *
+<PY_ROOT>/bootstrap.py-15-from OpenFUSIONToolkit.TokaMaker.util import get_jphi_from_GS
+<PY_ROOT>/bootstrap.py-16-
+<PY_ROOT>/bootstrap.py-17-def parameterize_edge_jBS(psi, amp, center, width, offset, sk, y_sep=0.0, blend_width=0.03, tail_alpha=1.5):
+<PY_ROOT>/bootstrap.py-18-    r'''! Generate parameterized edge bootstrap current profile with tunable concave fall-off
+<PY_ROOT>/bootstrap.py-19-
+<PY_ROOT>/bootstrap.py-20-    @param psi Normalized poloidal flux profile \f$\hat{\psi}\f$
+<PY_ROOT>/bootstrap.py-21-    @param amp Amplitude of edge skewed Gaussian spike
+<PY_ROOT>/bootstrap.py-22-    @param center Center location of edge skewed Gaussian spike
+--
+<PY_ROOT>/meshing.py-13-import json
+<PY_ROOT>/meshing.py-14-import numpy
+<PY_ROOT>/meshing.py:15:from .._interface import *
+<PY_ROOT>/meshing.py-16-from ..util import oft_warning, run_shell_command
+<PY_ROOT>/meshing.py-17-
+<PY_ROOT>/meshing.py-18-## @cond
+<PY_ROOT>/meshing.py:19:class triangle_struct(c_struct):
+<PY_ROOT>/meshing.py-20-    r'''! Triangle library I/O structure
+<PY_ROOT>/meshing.py-21-    '''
+<PY_ROOT>/meshing.py-22-    _fields_ = [
+<PY_ROOT>/meshing.py-23-        ("pointlist", c_double_ptr),
+<PY_ROOT>/meshing.py-24-        ("pointattributelist", c_double_ptr),
+<PY_ROOT>/meshing.py-25-        ("pointmarkerlist", c_int_ptr),
+<PY_ROOT>/meshing.py-26-        ("numberofpoints", c_int),
+<PY_ROOT>/meshing.py-27-        ("numberofpointattributes", c_int),
+--
+<PY_ROOT>/meshing.py-46-    ]
+<PY_ROOT>/meshing.py-47-
+<PY_ROOT>/meshing.py:48:oft_triangulate = ctypes_subroutine(oft_triangle_lib.triangulate,
+<PY_ROOT>/meshing.py:49:    [c_char_p, ctypes.POINTER(triangle_struct), ctypes.POINTER(triangle_struct), ctypes.POINTER(triangle_struct)], c_int)
+<PY_ROOT>/meshing.py-50-## @endcond
+<PY_ROOT>/meshing.py-51-
+<PY_ROOT>/meshing.py:52:def run_triangle(alpha):
+<PY_ROOT>/meshing.py-53-    # # Old version using Python "triangle" package
+<PY_ROOT>/meshing.py-54-    # try:
+<PY_ROOT>/meshing.py-55-    #     import triangle as tr
+<PY_ROOT>/meshing.py-56-    # except ImportError:
+<PY_ROOT>/meshing.py-57-    #     print('Meshing requires "triangle" python library')
+<PY_ROOT>/meshing.py-58-    #     return None
+<PY_ROOT>/meshing.py:59:    # return tr.triangulate(alpha,'pqaA')
+<PY_ROOT>/meshing.py-60-
+<PY_ROOT>/meshing.py-61-    # New version using internal interface
+<PY_ROOT>/meshing.py:62:    in_struct = triangle_struct()
+<PY_ROOT>/meshing.py-63-    point_list = numpy.ascontiguousarray(alpha['vertices'], dtype=numpy.float64)
+<PY_ROOT>/meshing.py-64-    in_struct.pointlist = point_list.ctypes.data_as(c_double_ptr)
+<PY_ROOT>/meshing.py-65-    in_struct.numberofpoints = point_list.shape[0]
+<PY_ROOT>/meshing.py-66-    segments = numpy.ascontiguousarray(alpha['segments'], dtype=numpy.int32)
+<PY_ROOT>/meshing.py-67-    in_struct.segmentlist = segments.ctypes.data_as(c_int_ptr)
+<PY_ROOT>/meshing.py-68-    in_struct.numberofsegments = segments.shape[0]
+<PY_ROOT>/meshing.py-69-    regions = numpy.ascontiguousarray(alpha['regions'], dtype=numpy.float64)
+<PY_ROOT>/meshing.py-70-    in_struct.regionlist = regions.ctypes.data_as(c_double_ptr)
+<PY_ROOT>/meshing.py-71-    in_struct.numberofregions = regions.shape[0]
+<PY_ROOT>/meshing.py:72:    out_struct = triangle_struct()
+<PY_ROOT>/meshing.py:73:    vor_struct = triangle_struct()
+<PY_ROOT>/meshing.py:74:    setting_string = c_char_p(b'pqaAzQ')
+<PY_ROOT>/meshing.py:75:    errval = oft_triangulate(setting_string, ctypes.byref(in_struct), ctypes.byref(out_struct), ctypes.byref(vor_struct))
+<PY_ROOT>/meshing.py-76-    if errval != 0:
+<PY_ROOT>/meshing.py-77-        raise ValueError("Meshing failed!")
+<PY_ROOT>/meshing.py-78-    vertices = numpy.ctypeslib.as_array(out_struct.pointlist,shape=(out_struct.numberofpoints,2))
+<PY_ROOT>/meshing.py-79-    triangles = numpy.ctypeslib.as_array(out_struct.trianglelist,shape=(out_struct.numberoftriangles,3))
+<PY_ROOT>/meshing.py-80-    triangle_attributes = numpy.ctypeslib.as_array(out_struct.triangleattributelist,shape=(out_struct.numberoftriangles,))
+<PY_ROOT>/meshing.py-81-    return {'vertices': vertices, 'triangles': triangles, 'triangle_attributes': triangle_attributes}
+<PY_ROOT>/meshing.py-82-
+<PY_ROOT>/meshing.py-83-
+--
+<PY_ROOT>/meshing.py-543-        return cond_list
+<PY_ROOT>/meshing.py-544-    
+<PY_ROOT>/meshing.py:545:    def build_mesh(self,debug=False,merge_thresh=1.E-4,require_boundary=True,setup_only=False,cubit_path=None,cubit_gradation=1.05):
+<PY_ROOT>/meshing.py-546-        '''! Build mesh for specified domains
+<PY_ROOT>/meshing.py-547-
+<PY_ROOT>/meshing.py-548-        @result Meshed representation (pts[np,2], tris[nc,3], regions[nc])
+<PY_ROOT>/meshing.py-549-        '''
+<PY_ROOT>/meshing.py-550-        # Check for single plasma region
+<PY_ROOT>/meshing.py-551-        if self.reg_type_counts['plasma'] == 0:
+<PY_ROOT>/meshing.py-552-            raise ValueError('No plasma region specified')
+<PY_ROOT>/meshing.py-553-        else:
+--
+<PY_ROOT>/meshing.py-846-
+<PY_ROOT>/meshing.py-847-
+<PY_ROOT>/meshing.py:848:class Mesh:
+<PY_ROOT>/meshing.py-849-    '''! Mesh builder class for triangle library'''
+<PY_ROOT>/meshing.py-850-    def __init__(self,region_list,merge_thresh=1.E-4,debug=False,extra_reg_defs=[]):
+<PY_ROOT>/meshing.py-851-        '''! Initialize Mesh builder object
+<PY_ROOT>/meshing.py-852-
+<PY_ROOT>/meshing.py-853-        @param region_list List of @ref oftpy.Region objects that define mesh
+<PY_ROOT>/meshing.py-854-        @param merge_thresh Distance threshold for merging nearby points
+<PY_ROOT>/meshing.py-855-        '''
+<PY_ROOT>/meshing.py-856-        self._merge_thresh = merge_thresh
+--
+<PY_ROOT>/meshing.py-1075-        for segment in self._resampled_segments:
+<PY_ROOT>/meshing.py-1076-            resampled_flat += [[segment[i], segment[i+1]] for i in range(len(segment)-1)]
+<PY_ROOT>/meshing.py:1077:        alpha = dict(vertices=self._resampled_points, segments=resampled_flat, regions=self._reg_defs)
+<PY_ROOT>/meshing.py-1078-        beta = run_triangle(alpha)
+<PY_ROOT>/meshing.py-1079-        regions = beta['triangle_attributes'].astype('int32').ravel()
+<PY_ROOT>/meshing.py-1080-        print('  # of points  = {0}'.format(len(beta['vertices'])))
+<PY_ROOT>/meshing.py-1081-        print('  # of cells   = {0}'.format(len(beta['triangles'])))
+<PY_ROOT>/meshing.py-1082-        print('  # of regions = {0}'.format(regions.max()))
+<PY_ROOT>/meshing.py-1083-        return beta['vertices'], beta['triangles'], regions
+<PY_ROOT>/meshing.py-1084-
+<PY_ROOT>/meshing.py-1085-
+--
+<PY_ROOT>/reconstruction.py-11-'''
+<PY_ROOT>/reconstruction.py-12-from warnings import warn
+<PY_ROOT>/reconstruction.py:13:from .._interface import *
+<PY_ROOT>/reconstruction.py-14-from ..util import oft_warning
+<PY_ROOT>/reconstruction.py-15-
+<PY_ROOT>/reconstruction.py-16-## @cond
+<PY_ROOT>/reconstruction.py-17-class tokamaker_recon_settings_cstruct(c_struct):
+<PY_ROOT>/reconstruction.py-18-    _fields_ = [("fitF", c_bool),
+<PY_ROOT>/reconstruction.py-19-                ("fitP", c_bool),
+<PY_ROOT>/reconstruction.py-20-                ("fit_Pscale", c_bool),
+<PY_ROOT>/reconstruction.py-21-                ("fit_FFPscale", c_bool),
+--
+<PY_ROOT>/util.py-13-import numpy
+<PY_ROOT>/util.py-14-from collections import OrderedDict
+<PY_ROOT>/util.py:15:from .._interface import *
+<PY_ROOT>/util.py-16-from ..util import read_fortran_namelist
+<PY_ROOT>/util.py-17-
+<PY_ROOT>/util.py-18-## @cond
+<PY_ROOT>/util.py-19-tokamaker_eval_green = ctypes_subroutine(oftpy_lib.tokamaker_eval_green,
+<PY_ROOT>/util.py-20-    [c_int, ctypes_numpy_array(float64,1), ctypes_numpy_array(float64,1), c_double, c_double, ctypes_numpy_array(float64,1)])
+<PY_ROOT>/util.py-21-## @endcond
+<PY_ROOT>/util.py-22-
+<PY_ROOT>/util.py-23-
+--
+<PY_ROOT>/_core.py-15-from warnings import warn
+<PY_ROOT>/_core.py-16-import numpy
+<PY_ROOT>/_core.py:17:from ._interface import *
+<PY_ROOT>/_core.py-18-
+<PY_ROOT>/_core.py-19-
+<PY_ROOT>/_core.py-20-def create_prof_file(self, filename, profile_dict, name):
+<PY_ROOT>/_core.py-21-    '''! Create profile input file to be read by load_profiles()
+<PY_ROOT>/_core.py-22-
+<PY_ROOT>/_core.py-23-    @param filename Name of input file, see options in set_profiles()
+<PY_ROOT>/_core.py-24-    @param profile_dict Dictionary object containing profile values ['y'] and sampled locations
+<PY_ROOT>/_core.py-25-    in normalized Psi ['x']
+--
+<PY_ROOT>/_interface.py-10-@ingroup doxy_oft_python
+<PY_ROOT>/_interface.py-11-'''
+<PY_ROOT>/_interface.py:12:from .._interface import *
+<PY_ROOT>/_interface.py-13-
+<PY_ROOT>/_interface.py-14-## @cond
+<PY_ROOT>/_interface.py-15-class tokamaker_settings_cstruct(c_struct):
+<PY_ROOT>/_interface.py-16-    _fields_ = [("pm", c_bool),
+<PY_ROOT>/_interface.py-17-                ("free_boundary", c_bool),
+<PY_ROOT>/_interface.py-18-                ("limited_only", c_bool),
+<PY_ROOT>/_interface.py-19-                ("dipole_mode", c_bool),
+<PY_ROOT>/_interface.py-20-                ("mirror_mode", c_bool),
+
+
+=================== [4. STRUCT TRIANGULATEIO FROM C HEADER] ===================
+<EXT_ROOT>/triangle.h-256-
+<EXT_ROOT>/triangle.h:257:struct triangulateio {
+<EXT_ROOT>/triangle.h-258-  REAL *pointlist;                                               /* In / out */
+<EXT_ROOT>/triangle.h-259-  REAL *pointattributelist;                                      /* In / out */
+<EXT_ROOT>/triangle.h-260-  int *pointmarkerlist;                                          /* In / out */
+<EXT_ROOT>/triangle.h-261-  int numberofpoints;                                            /* In / out */
+<EXT_ROOT>/triangle.h-262-  int numberofpointattributes;                                   /* In / out */
+<EXT_ROOT>/triangle.h-263-
+<EXT_ROOT>/triangle.h-264-  int *trianglelist;                                             /* In / out */
+<EXT_ROOT>/triangle.h-265-  REAL *triangleattributelist;                                   /* In / out */
+<EXT_ROOT>/triangle.h-266-  REAL *trianglearealist;                                         /* In only */
+<EXT_ROOT>/triangle.h-267-  int *neighborlist;                                             /* Out only */
+<EXT_ROOT>/triangle.h-268-  int numberoftriangles;                                         /* In / out */
+<EXT_ROOT>/triangle.h-269-  int numberofcorners;                                           /* In / out */
+<EXT_ROOT>/triangle.h-270-  int numberoftriangleattributes;                                /* In / out */
+<EXT_ROOT>/triangle.h-271-
+<EXT_ROOT>/triangle.h-272-  int *segmentlist;                                              /* In / out */
+<EXT_ROOT>/triangle.h-273-  int *segmentmarkerlist;                                        /* In / out */
+<EXT_ROOT>/triangle.h-274-  int numberofsegments;                                          /* In / out */
+<EXT_ROOT>/triangle.h-275-
+<EXT_ROOT>/triangle.h-276-  REAL *holelist;                        /* In / pointer to array copied out */
+<EXT_ROOT>/triangle.h-277-  int numberofholes;                                      /* In / copied out */
+<EXT_ROOT>/triangle.h-278-
+<EXT_ROOT>/triangle.h-279-  REAL *regionlist;                      /* In / pointer to array copied out */
+<EXT_ROOT>/triangle.h-280-  int numberofregions;                                    /* In / copied out */
+<EXT_ROOT>/triangle.h-281-
+<EXT_ROOT>/triangle.h-282-  int *edgelist;                                                 /* Out only */
