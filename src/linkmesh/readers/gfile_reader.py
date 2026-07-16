@@ -1,22 +1,24 @@
 """
-gfile_reader.py —— GFile/EQDSK 平衡文件读取器。
+gfile_reader.py —— GFile/EQDSK 平衡文件读取 Adapter。
 
 职责：
-    - 读取 EQDSK/GFile 文件（纯文本，Fortran e16.9 格式）
-    - 提取 LCFS 边界坐标（lcfs_r, lcfs_z）
-    - 提取第一壁坐标（wall_r, wall_z，可选）
-    - 提取磁轴坐标（rmaxis, zmaxis）
-    - 提取磁通网格（psi_grid，用于可视化）
-    - 返回 GFileData 对象
+    - 薄 Adapter（接线员）模式：直接调用 OFT GEQDSKEquilibrium 读取 GFile
+    - 从 OFT 返回对象的属性中提取 LinkMesh 所需字段
+    - 封装为 GFileData 对象返回
 
 禁止事项：
+    - 绝对禁止在 LinkMesh 侧手动执行任何原始 GFile 文本 I/O
+    - 绝对禁止手动执行字符串切分、Fortran 格式化数值解析或 EQDSK 字段手动提取
     - 不得调用 Triangle 或任何网格生成逻辑
     - 不得写文件
 
+设计原则：
+    OFT（OpenFUSIONToolkit）已提供完整、经过验证的 GFile 解析实现。
+    LinkMesh 直接复用 GEQDSKEquilibrium 类，不重复造轮子。
+
 参考规范：
     LinkMesh_Architecture_Plan.md 第 6 节
-
-# TODO: 待在 M1 里程碑阶段结合真实 GFile 样例实测，进行确切字段与索引约定的最终对齐
+    TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/TokaMaker/eqdsk.py（只读）
 """
 
 from __future__ import annotations
@@ -33,49 +35,46 @@ import numpy as np
 
 @dataclass
 class GFileData:
-    """GFile/EQDSK 平衡文件读取结果。
+    """GFile/EQDSK 平衡文件读取结果（OFT Adapter 输出）。
+
+    所有字段均由 readers/gfile_reader.py 从 OFT GEQDSKEquilibrium 对象属性
+    中直接提取，LinkMesh 侧不执行任何原始文本解析。
 
     所有坐标单位均为米（SI 单位制）。
     R 为大半径方向，Z 为垂直方向（托卡马克柱坐标系）。
 
-    # TODO: 待在 M1 里程碑阶段结合真实源码实测，进行确切字段与索引约定的最终对齐
+    字段来源（对应 GEQDSKEquilibrium 属性名）：
+        lcfs_r   ← eq.boundary_R
+        lcfs_z   ← eq.boundary_Z
+        rmaxis   ← eq.R_mag
+        zmaxis   ← eq.Z_mag
+        wall_r   ← eq.limiter_R（若为空则 None）
+        wall_z   ← eq.limiter_Z（若为空则 None）
+        rcentr   ← eq.R_center
+        bcentr   ← eq.B_center
+        current  ← eq.Ip
     """
 
-    # 网格维度
-    nw: int                              # R 方向网格点数
-    nh: int                              # Z 方向网格点数
-
-    # 基本平衡参数
-    rdim: float                          # 计算域 R 方向宽度 [m]
-    zdim: float                          # 计算域 Z 方向高度 [m]
-    rcentr: float                        # 参考大半径 R0 [m]
-    rleft: float                         # 计算域左边界 R 坐标 [m]
-    zmid: float                          # 计算域 Z 方向中心 [m]
-    rmaxis: float                        # 磁轴 R 坐标 [m]
-    zmaxis: float                        # 磁轴 Z 坐标 [m]
-    simag: float                         # 磁轴处归一化磁通 psi_axis [Wb]
-    sibry: float                         # LCFS 处归一化磁通 psi_bry [Wb]
-    bcentr: float                        # 参考磁场强度 B0 [T]
-    current: float                       # 等离子体电流 Ip [A]
-
     # LCFS 边界坐标（最后闭合磁面）
-    lcfs_r: np.ndarray                   # shape=(N_lcfs,)，LCFS 上各点 R 坐标 [m]
-    lcfs_z: np.ndarray                   # shape=(N_lcfs,)，LCFS 上各点 Z 坐标 [m]
+    # 来源：GEQDSKEquilibrium.boundary_R / boundary_Z
+    lcfs_r: np.ndarray               # shape=(N_lcfs,)，LCFS 上各点 R 坐标 [m]
+    lcfs_z: np.ndarray               # shape=(N_lcfs,)，LCFS 上各点 Z 坐标 [m]
+
+    # 磁轴坐标
+    # 来源：GEQDSKEquilibrium.R_mag / Z_mag
+    rmaxis: float                    # 磁轴 R 坐标 [m]
+    zmaxis: float                    # 磁轴 Z 坐标 [m]
 
     # 第一壁点集（可选，若 GFile 不含则为 None）
-    wall_r: Optional[np.ndarray]         # shape=(N_wall,)，第一壁 R 坐标 [m]
-    wall_z: Optional[np.ndarray]         # shape=(N_wall,)，第一壁 Z 坐标 [m]
+    # 来源：GEQDSKEquilibrium.limiter_R / limiter_Z
+    wall_r: Optional[np.ndarray]     # shape=(N_wall,)，第一壁 R 坐标 [m]
+    wall_z: Optional[np.ndarray]     # shape=(N_wall,)，第一壁 Z 坐标 [m]
 
-    # 磁通函数网格（用于可视化，非网格生成必需）
-    # TODO: psirz 的行列顺序（nh×nw 还是 nw×nh）待 M1 实测确认
-    psi_grid: Optional[np.ndarray]       # shape=(nh, nw)，归一化磁通分布
-    r_grid: Optional[np.ndarray]         # shape=(nw,)，R 方向网格坐标
-    z_grid: Optional[np.ndarray]         # shape=(nh,)，Z 方向网格坐标
-
-    # 剖面数组（可选，用于后续物理验证）
-    fpol: Optional[np.ndarray]           # shape=(nw,)，极向磁通函数 F(psi)
-    pres: Optional[np.ndarray]           # shape=(nw,)，压力剖面 P(psi)
-    qpsi: Optional[np.ndarray]           # shape=(nw,)，安全因子 q(psi)
+    # 基本平衡参数（可选，用于后续物理验证与可视化）
+    # 来源：GEQDSKEquilibrium 对应属性
+    rcentr: Optional[float] = None   # 参考大半径 R0 [m]（eq.R_center）
+    bcentr: Optional[float] = None   # 参考磁场强度 B0 [T]（eq.B_center）
+    current: Optional[float] = None  # 等离子体电流 Ip [A]（eq.Ip）
 
 
 # --------------------------------------------------------------------------- #
@@ -83,7 +82,11 @@ class GFileData:
 # --------------------------------------------------------------------------- #
 
 def read_gfile(filepath: str) -> GFileData:
-    """读取 EQDSK/GFile 平衡文件，提取 LinkMesh 所需的边界信息。
+    """读取 GFile/EQDSK 平衡文件，提取 LinkMesh 所需的边界信息。
+
+    实现策略：薄 Adapter 模式。
+    直接调用 OFT GEQDSKEquilibrium 读取 GFile，从其属性中提取字段，
+    封装为 GFileData 对象。LinkMesh 侧不执行任何原始文本解析。
 
     参数：
         filepath: GFile 文件路径（字符串）
@@ -92,48 +95,122 @@ def read_gfile(filepath: str) -> GFileData:
         GFileData 对象，包含 LCFS 坐标、第一壁坐标、磁轴坐标和基本平衡参数
 
     异常：
-        FileNotFoundError: 文件不存在
-        ValueError: 文件格式不符合 EQDSK 规范
+        FileNotFoundError: 文件不存在（由 GEQDSKEquilibrium 内部抛出）
+        ValueError: 文件格式不符合 EQDSK 规范（由 GEQDSKEquilibrium 内部抛出）
+        ImportError: OFT 未安装或不在 PYTHONPATH 中
 
-    实现要点（待 M1 里程碑实现）：
-        1. 使用 Python 标准文件 I/O 逐行读取，不依赖 Fortran 格式化 I/O
-        2. 第 1 行解析：取最后 3 个 token 作为 idum, nw, nh
-        3. 后续数值块使用 numpy.fromstring 或逐行 split 解析
-        4. LCFS 坐标从 rbbbs/zbbbs 数组提取，确保闭合（首尾点相同）
-        5. 第一壁坐标从 rlim/zlim 数组提取，若 limitr=0 则 wall_r=wall_z=None
-        6. psirz 数组按 (nh, nw) 形状重塑，用于可视化（非网格生成必需）
-        7. 构造 r_grid 和 z_grid：
-               r_grid = np.linspace(rleft, rleft + rdim, nw)
-               z_grid = np.linspace(zmid - zdim/2, zmid + zdim/2, nh)
-
-    # TODO: 待在 M1 里程碑阶段结合真实 GFile 样例实测，进行确切字段与索引约定的最终对齐
+    实现要点：
+        1. 调用 GEQDSKEquilibrium(filepath) 完成全部 GFile 解析（OFT 负责）
+        2. 从 eq.boundary_R / eq.boundary_Z 提取 LCFS 坐标
+        3. 从 eq.R_mag / eq.Z_mag 提取磁轴坐标
+        4. 从 eq.limiter_R / eq.limiter_Z 提取第一壁坐标（若为空则置 None）
+        5. 对 LCFS 坐标执行闭合性检查与逆时针方向检查
+        6. 封装为 GFileData 对象返回
     """
-    raise NotImplementedError(
-        "read_gfile() 将在 M1 里程碑阶段实现。"
-        "请参考 LinkMesh_Architecture_Plan.md 第 6 节。"
+    # 导入 OFT API（只读参考：TOKAMAKER/.../TokaMaker/eqdsk.py:673）
+    try:
+        from OpenFUSIONToolkit.TokaMaker.eqdsk import GEQDSKEquilibrium
+    except ImportError as e:
+        raise ImportError(
+            "无法导入 OFT GEQDSKEquilibrium。请确认 OpenFUSIONToolkit 已安装，"
+            "或 TOKAMAKER/ 目录下的 OFT Python 包已加入 PYTHONPATH。"
+            f"原始错误：{e}"
+        ) from e
+
+    # 调用 OFT 完成全部 GFile 解析，LinkMesh 侧不执行任何文本解析
+    eq = GEQDSKEquilibrium(filepath)
+
+    # 提取 LCFS 边界坐标（来自 eqdsk.py:878/883）
+    lcfs_r = np.asarray(eq.boundary_R, dtype=np.float64)
+    lcfs_z = np.asarray(eq.boundary_Z, dtype=np.float64)
+
+    # 提取第一壁坐标（来自 eqdsk.py:888/893），若为空则置 None
+    lim_r = eq.limiter_R
+    lim_z = eq.limiter_Z
+    if lim_r is not None and len(lim_r) > 0:
+        wall_r = np.asarray(lim_r, dtype=np.float64)
+        wall_z = np.asarray(lim_z, dtype=np.float64)
+    else:
+        wall_r = None
+        wall_z = None
+
+    # LCFS 后处理：闭合性检查 + 逆时针方向检查
+    # （这是 LinkMesh 侧唯一允许的后处理，不属于原始文本解析）
+    lcfs_r, lcfs_z = _ensure_lcfs_closed(lcfs_r, lcfs_z)
+    lcfs_r, lcfs_z = _ensure_lcfs_ccw(lcfs_r, lcfs_z)
+
+    # 提取基本平衡参数（来自 eqdsk.py:858/863/868/873/853）
+    rmaxis = float(eq.R_mag)
+    zmaxis = float(eq.Z_mag)
+    rcentr = float(eq.R_center) if eq.R_center is not None else None
+    bcentr = float(eq.B_center) if eq.B_center is not None else None
+    current = float(eq.Ip) if eq.Ip is not None else None
+
+    return GFileData(
+        lcfs_r=lcfs_r,
+        lcfs_z=lcfs_z,
+        rmaxis=rmaxis,
+        zmaxis=zmaxis,
+        wall_r=wall_r,
+        wall_z=wall_z,
+        rcentr=rcentr,
+        bcentr=bcentr,
+        current=current,
     )
 
+
+# --------------------------------------------------------------------------- #
+# 内部辅助函数（LCFS 后处理，LinkMesh 侧唯一允许的后处理逻辑）                  #
+# --------------------------------------------------------------------------- #
 
 def _ensure_lcfs_closed(r: np.ndarray, z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """确保 LCFS 边界首尾闭合。
+    """确保 LCFS 边界首尾点相同（闭合）。
 
-    若首尾点不同，则追加首点到末尾。
+    若首尾点不同（欧氏距离超过容差），则追加首点到末尾。
 
-    # TODO: 待 M1 里程碑实测验证
+    参数：
+        r: LCFS R 坐标数组
+        z: LCFS Z 坐标数组
+
+    返回：
+        (r, z) 闭合后的坐标数组元组
     """
-    raise NotImplementedError(
-        "该模块逻辑将在对应里程碑阶段结合源码实测验证后实现"
-    )
+    if len(r) < 2:
+        return r, z
+    # 使用相对容差：首尾点距离 < 总周长的 0.1% 视为已闭合
+    gap = np.sqrt((r[0] - r[-1]) ** 2 + (z[0] - z[-1]) ** 2)
+    perimeter = np.sum(np.sqrt(np.diff(r) ** 2 + np.diff(z) ** 2))
+    if perimeter > 0 and gap > 1e-3 * perimeter:
+        r = np.append(r, r[0])
+        z = np.append(z, z[0])
+    elif gap > 1e-10:
+        # 绝对容差兜底
+        r = np.append(r, r[0])
+        z = np.append(z, z[0])
+    return r, z
 
 
 def _ensure_lcfs_ccw(r: np.ndarray, z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """确保 LCFS 边界点按逆时针方向排列。
 
-    若为顺时针则反转数组。
-    判断方法：计算多边形有向面积（Shoelace 公式），若为负则反转。
+    使用 Shoelace 公式计算有向面积：
+        正值 → 逆时针（保持不变）
+        负值 → 顺时针（反转数组）
 
-    # TODO: 待 M1 里程碑实测验证
+    参数：
+        r: LCFS R 坐标数组（应已闭合，首尾点相同）
+        z: LCFS Z 坐标数组（应已闭合，首尾点相同）
+
+    返回：
+        (r, z) 逆时针方向的坐标数组元组
     """
-    raise NotImplementedError(
-        "该模块逻辑将在对应里程碑阶段结合源码实测验证后实现"
-    )
+    if len(r) < 3:
+        return r, z
+    # Shoelace 公式：sum(r[i] * z[i+1] - r[i+1] * z[i]) / 2
+    # 正值为逆时针（数学正方向），负值为顺时针
+    area = 0.5 * np.sum(r[:-1] * z[1:] - r[1:] * z[:-1])
+    if area < 0:
+        # 顺时针 → 反转为逆时针
+        r = r[::-1].copy()
+        z = z[::-1].copy()
+    return r, z
