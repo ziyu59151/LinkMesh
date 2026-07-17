@@ -3,7 +3,7 @@ triangle_wrapper.py —— TokaMaker/Triangle 唯一底座封装。
 
 职责：
     - 接收 BoundaryConfig（边界点集与区域配置）
-    - 按 TokaMaker 风格构造 alpha 字典（键名：vertices, segments, regions）
+    - 按 TokaMaker 风格构造 alpha 字典（键名：vertices, segments, segment_markers, regions）
     - 调用 triangle Python 包生成二维非结构化三角网格
     - 从 beta 字典提取输出字段（键名：vertices, triangles, triangle_attributes 等）
     - 返回统一内存网格对象 Mesh2D
@@ -44,7 +44,7 @@ class BoundaryConfig:
     传递给 mesher/triangle_wrapper.py（TokaMaker/Triangle 唯一底座）。
 
     字段命名与 TokaMaker OFT meshing.py 中 alpha 字典的键名保持一致：
-        alpha = dict(vertices=..., segments=..., regions=...)
+        alpha = dict(vertices=..., segments=..., segment_markers=..., regions=...)
     """
 
     # 边界点集（分段线性复合体 PLC 的顶点）
@@ -61,7 +61,8 @@ class BoundaryConfig:
     # region_id 约定：1=plasma, 2=vacuum, 3=wall
     regions: np.ndarray           # shape=(K, 4)，dtype=float64
 
-    # 边界标记（对应 segments 的整数标记）
+    # 边界标记（对应 segments 的整数标记，与 segments 逐项对应）
+    # 对应 TokaMaker alpha 字典的 'segment_markers' 键
     # 标记约定：1=LCFS, 2=first_wall, 3=outer_boundary
     segment_markers: np.ndarray   # shape=(M,)，dtype=int32
 
@@ -86,10 +87,16 @@ class Mesh2D:
     字段来源（对应 TokaMaker run_triangle / tr.triangulate 返回字典键名）：
         nodes             ← beta['vertices']
         triangles         ← beta['triangles']
-        region_ids        ← beta['triangle_attributes'].squeeze().astype(int32)
+        region_ids        ← beta['triangle_attributes']，reshape(-1)，dtype=int32
         boundary_segments ← beta['segments']
-        boundary_markers  ← beta['segment_markers'].squeeze()
-        node_markers      ← beta['vertex_markers'].squeeze()
+        boundary_markers  ← beta['segment_markers']，reshape(-1)，dtype=int32
+        node_markers      ← beta['vertex_markers']，reshape(-1)，dtype=int32
+
+    一维 shape 契约（v1.5）：
+        region_ids.shape    == (T,)，即使 T==1 也保持一维
+        boundary_markers.shape == (S,)，即使 S==1 也保持一维
+        node_markers.shape  == (N,)，即使 N==1 也保持一维
+        提取方式：np.asarray(..., dtype=np.int32).reshape(-1)，不使用 .squeeze()
     """
 
     # 节点坐标
@@ -103,6 +110,7 @@ class Mesh2D:
 
     # 三角形区域标记（来自 Triangle triangleattributelist / beta['triangle_attributes']）
     # 约定：1=plasma, 2=vacuum, 3=wall
+    # 提取：np.asarray(beta['triangle_attributes'], dtype=np.int32).reshape(-1)
     region_ids: np.ndarray           # shape=(T,)，每个三角形的区域 ID，dtype=int32
 
     # 边界线段连接表
@@ -112,10 +120,12 @@ class Mesh2D:
 
     # 边界线段标记（来自 Triangle segmentmarkerlist / beta['segment_markers']）
     # 约定：1=LCFS, 2=first_wall, 3=outer_boundary
+    # 提取：np.asarray(beta['segment_markers'], dtype=np.int32).reshape(-1)
     boundary_markers: np.ndarray     # shape=(S,)，每条边界线段的标记，dtype=int32
 
     # 节点边界标记（来自 Triangle pointmarkerlist / beta['vertex_markers']）
     # 0=内部节点，非零=边界节点
+    # 提取：np.asarray(beta['vertex_markers'], dtype=np.int32).reshape(-1)
     node_markers: np.ndarray         # shape=(N,)，每个节点的边界标记，dtype=int32
 
     @property
@@ -142,7 +152,7 @@ def generate_mesh(config: BoundaryConfig) -> Mesh2D:
     """调用 Triangle（TokaMaker/Triangle 唯一底座）生成二维非结构化三角网格。
 
     调用风格严格对齐 TokaMaker OFT meshing.py 的 run_triangle / Mesh.get_mesh：
-        alpha = dict(vertices=..., segments=..., regions=...)
+        alpha = dict(vertices=..., segments=..., segment_markers=..., regions=...)
         beta  = tr.triangulate(alpha, opts)
         提取 beta['vertices'], beta['triangles'], beta['triangle_attributes'] 等
 
@@ -195,20 +205,29 @@ def generate_mesh(config: BoundaryConfig) -> Mesh2D:
     #   beta['segments']            → boundary_segments
     #   beta['segment_markers']     → boundary_markers
     #   beta['vertex_markers']      → node_markers
+    #
+    # 一维 shape 契约（v1.5）：使用 reshape(-1) 而非 squeeze()，
+    # 保证即使 T==1、S==1 或 N==1 时仍得到一维数组，而非零维数组。
     nodes = beta["vertices"].astype(np.float64)
     triangles = beta["triangles"].astype(np.int32)
-    region_ids = beta["triangle_attributes"].squeeze().astype(np.int32)
+    region_ids = np.asarray(beta["triangle_attributes"], dtype=np.int32).reshape(-1)
 
     # boundary_segments / boundary_markers / node_markers：
     # Python triangle 包在使用 'p' 标志时会输出这些字段
-    boundary_segments = beta.get("segments", np.zeros((0, 2), dtype=np.int32))
-    boundary_segments = np.asarray(boundary_segments, dtype=np.int32)
+    boundary_segments = np.asarray(
+        beta.get("segments", np.zeros((0, 2), dtype=np.int32)),
+        dtype=np.int32,
+    )
 
-    raw_seg_markers = beta.get("segment_markers", np.zeros((0,), dtype=np.int32))
-    boundary_markers = np.asarray(raw_seg_markers, dtype=np.int32).squeeze()
+    boundary_markers = np.asarray(
+        beta.get("segment_markers", np.zeros((0,), dtype=np.int32)),
+        dtype=np.int32,
+    ).reshape(-1)
 
-    raw_vtx_markers = beta.get("vertex_markers", np.zeros((nodes.shape[0],), dtype=np.int32))
-    node_markers = np.asarray(raw_vtx_markers, dtype=np.int32).squeeze()
+    node_markers = np.asarray(
+        beta.get("vertex_markers", np.zeros((nodes.shape[0],), dtype=np.int32)),
+        dtype=np.int32,
+    ).reshape(-1)
 
     mesh = Mesh2D(
         nodes=nodes,
@@ -237,8 +256,8 @@ def _build_triangle_opts(config: BoundaryConfig) -> str:
     控制字符含义（参考 TokaMaker meshing.py 中 run_triangle 使用的 b'pqaAzQ'）：
         p  - 使用分段线性复合体（PLC）输入模式
         q  - 质量网格生成（最小角约束）
-        a  - 面积约束
-        A  - 将区域属性写入三角形（生成 triangle_attributes）
+        a  - 面积约束（小写，仅当 max_area 不为 None 时加入）
+        A  - 将区域属性写入三角形（生成 triangle_attributes，大写）
         z  - 节点索引从 0 开始（Python 友好，保证 Mesh2D 中所有索引为 0-based）
         Q  - 静默模式（不打印 Triangle 内部日志）
 
