@@ -1,0 +1,25 @@
+requirements.txt 依赖清单
+
+```text
+# LinkMesh Python 依赖清单
+# 使用 pip install -r requirements.txt 安装
+
+# 核心科学计算
+numpy>=1.24.0
+
+# Triangle 网格生成（TokaMaker/Triangle 唯一底座）
+triangle>=20230923
+
+# HDF5 文件读写（第一战役：TRIMEG HDF5 格式映射）
+h5py>=3.8.0
+
+# 可视化自检
+matplotlib>=3.7.0
+
+# OFT（OpenFUSIONToolkit）：GFile 读取 Adapter 依赖
+# 注意：OFT 通过 TOKAMAKER/ 目录下的源码提供，需确保其 Python 包已安装或在 PYTHONPATH 中
+# OpenFUSIONToolkit（本地安装，见 TOKAMAKER/ 目录）
+
+# 开发与测试（可选）
+pytest>=7.0.0
+```
