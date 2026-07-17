@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 v1.3
+- 文档状态：正式版 v1.4
 - 最高依据：本文档自身即为 LinkMesh 项目的最高技术依据；开发纪律与协作规范见 CONTEXT.md
 - 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认事实】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
 - 主要用途：本文档为 LinkMesh 项目的单事实真理源（Single Source of Truth），不作为人类泛读材料，专门用于指导 Aider 自动化编码、RAG 知识库精准检索以及下游模块的硬核参数对齐。凡 Aider 在执行编码、新建文件、修改具体业务代码前，必须查阅并严格对齐本文档。
@@ -42,53 +42,67 @@ LinkMesh 不是通用网格中间件，不是插件框架，不是抽象适配�
 
 ### 1.1 顶层目录结构
 
+【已确认事实】实际仓库采用 `src/linkmesh/` 包布局（src layout）。以下目录树为正式目录结构，所有模块路径均以此为准。
+
 ```text
 LinkMesh/
-├── cli.py                         # CLI 入口：参数解析与主流程控制
-├── CONTEXT.md                     # 敏捷开发纪律规范（只读）
-├── LinkMesh_Architecture_Plan.md  # 本文档（单事实真理源）
-├── History.md                     # 战术战果归档
-├── requirements.txt               # Python 依赖清单
-├── .venv/                         # 独立虚拟环境（不入版本控制）
+├── pyproject.toml                     # 标准 Python 包安装元数据与控制台入口（见第 14 节）
+├── cli.py                             # 【已废弃占位，实际入口在 src/linkmesh/cli.py】
+├── CONTEXT.md                         # 敏捷开发纪律规范（只读）
+├── LinkMesh_Architecture_Plan.md      # 本文档（单事实真理源）
+├── History.md                         # 战术战果归档
+├── requirements.txt                   # 服务器部署用直接依赖清单（见第 14.4 节）
+├── .venv/                             # 独立虚拟环境（不入版本控制）
 │
-├── readers/
-│   ├── __init__.py
-│   └── gfile_reader.py            # GFile/EQDSK 读取 Adapter：薄封装 OFT GEQDSKEquilibrium
+├── src/
+│   └── linkmesh/                      # 正式 Python 包根目录
+│       ├── __init__.py
+│       ├── __main__.py                # python -m linkmesh 入口（仅调用 cli.main）
+│       ├── cli.py                     # CLI 参数解析与主流程控制
+│       │
+│       ├── readers/
+│       │   ├── __init__.py
+│       │   └── gfile_reader.py        # GFile/EQDSK 读取 Adapter：薄封装 OFT GEQDSKEquilibrium
+│       │
+│       ├── mesher/
+│       │   ├── __init__.py
+│       │   └── triangle_wrapper.py    # TokaMaker/Triangle 唯一底座封装：生成二维三角网格
+│       │
+│       ├── writers/
+│       │   ├── __init__.py
+│       │   ├── hdf5_writer.py         # 第一战役：TRIMEG HDF5 静态网格写出器
+│       │   └── smb_writer.py          # 第二战役：M3DC1 PUMI .smb 静态二进制网格写出器
+│       │
+│       └── utils/
+│           ├── __init__.py
+│           └── plotter.py             # matplotlib 可视化自检工具
 │
-├── mesher/
-│   ├── __init__.py
-│   └── triangle_wrapper.py        # TokaMaker/Triangle 唯一底座封装：生成二维三角网格
-│
-├── writers/
-│   ├── __init__.py
-│   ├── hdf5_writer.py             # 第一战役：TRIMEG HDF5 静态网格写出器
-│   └── smb_writer.py              # 第二战役：M3DC1 PUMI .smb 静态二进制网格写出器
-│
-├── utils/
-│   ├── __init__.py
-│   └── plotter.py                 # matplotlib 可视化自检工具
-│
-├── tests/
-│   ├── test_gfile_reader.py
-│   ├── test_triangle_wrapper.py
-│   ├── test_hdf5_writer.py
-│   └── test_smb_writer.py
+├── tests/                             # 单元测试目录（M1～M3 验收测试）
+│   ├── test_gfile_reader.py           # M1 验收测试：GFile 读取与 GFileData 字段验证
+│   ├── test_triangle_wrapper.py       # M2 验收测试：Triangle 网格生成与 Mesh2D 字段验证
+│   └── test_hdf5_writer.py            # M3 验收测试：HDF5 文件结构、索引与数据集验证
 │
 └── examples/
-    ├── sample.geqdsk               # 示例 GFile 平衡文件
-    └── run_example.sh              # 示例运行脚本
+    ├── sample.geqdsk                  # 示例 GFile 平衡文件
+    └── run_example.sh                 # 示例运行脚本
 ```
+
+**注意**：
+- `tests/` 目录当前尚不存在，需按 M1～M3 验收要求新建（见第 13 节）。
+- 本轮不新增 `tests/test_smb_writer.py`，M4 开始前不创建该文件。
+- 根目录下的 `cli.py` 为历史遗留占位文件，实际 CLI 入口为 `src/linkmesh/cli.py`。
 
 ### 1.2 模块职责矩阵
 
 | 模块文件 | 核心职责 | 输入 | 输出 | 禁止事项 |
 |---|---|---|---|---|
-| `cli.py` | 解析命令行参数；按顺序调用 reader → mesher → writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑；不得直接操作文件 |
-| `readers/gfile_reader.py` | **薄 Adapter（接线员）**：调用 OFT `GEQDSKEquilibrium` 读取 GFile，从返回对象属性中提取 LCFS 边界坐标、磁轴坐标、第一壁点集等，封装为 `GFileData` 对象 | GFile 文件路径（`str`） | `GFileData` dataclass | **绝对禁止**在 LinkMesh 侧手动执行任何原始 GFile 文本 I/O 与字符串切分；不得调用 Triangle；不得写文件 |
-| `mesher/triangle_wrapper.py` | **唯一网格生成底座**：接收 `BoundaryConfig`；按 TokaMaker 风格构造 `alpha` 字典；调用 `triangle` Python 包生成二维三角网格；从 `beta` 字典提取输出；返回 `Mesh2D` 对象 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎 |
-| `writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑 |
-| `writers/smb_writer.py` | **第二战役**：接收 `Mesh2D` 对象；通过逆向分析 SCOREC/PUMI 开源 C++ 源码的二进制字节流协议，用 Python `struct` 打包写出 M3DC1 可消费的 `.smb` 文件 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；未完成侦察前不得实现 |
-| `utils/plotter.py` | 绘制 LCFS 边界与生成三角网格的叠加图；输出 `.png` 自检图；提供 `plot_lcfs_only()`（M1 最小可用版）和 `plot_mesh()`（M2 完整版）两个函数 | `GFileData`，`Mesh2D`，输出路径 | `.png` 文件（副作用） | 不得修改任何数据对象 |
+| `src/linkmesh/__main__.py` | `python -m linkmesh` 入口：仅调用 `linkmesh.cli.main()`，不承载任何参数解析或业务逻辑 | `sys.argv`（透传） | 无（副作用：调用 `cli.main`） | 不得包含任何业务逻辑；不得直接操作文件；不得重复定义参数解析 |
+| `src/linkmesh/cli.py` | 解析命令行参数；按顺序调用 reader → mesher → writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑；不得直接操作文件 |
+| `src/linkmesh/readers/gfile_reader.py` | **薄 Adapter（接线员）**：调用 OFT `GEQDSKEquilibrium` 读取 GFile，从返回对象属性中提取 LCFS 边界坐标、磁轴坐标、第一壁点集等，封装为 `GFileData` 对象 | GFile 文件路径（`str`） | `GFileData` dataclass | **绝对禁止**在 LinkMesh 侧手动执行任何原始 GFile 文本 I/O 与字符串切分；不得调用 Triangle；不得写文件 |
+| `src/linkmesh/mesher/triangle_wrapper.py` | **唯一网格生成底座**：接收 `BoundaryConfig`；按 TokaMaker 风格构造 `alpha` 字典；调用 `triangle` Python 包生成二维三角网格；从 `beta` 字典提取输出；返回 `Mesh2D` 对象 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎 |
+| `src/linkmesh/writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑 |
+| `src/linkmesh/writers/smb_writer.py` | **第二战役**：接收 `Mesh2D` 对象；通过逆向分析 SCOREC/PUMI 开源 C++ 源码的二进制字节流协议，用 Python `struct` 打包写出 M3DC1 可消费的 `.smb` 文件 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；未完成侦察前不得实现 |
+| `src/linkmesh/utils/plotter.py` | 绘制 LCFS 边界与生成三角网格的叠加图；输出 `.png` 自检图；提供 `plot_lcfs_only()`（M1 最小可用版）和 `plot_mesh()`（M2 完整版）两个函数 | `GFileData`，`Mesh2D`，输出路径 | `.png` 文件（副作用） | 不得修改任何数据对象 |
 
 ---
 
@@ -96,9 +110,11 @@ LinkMesh/
 
 ### 2.1 `GFileData`：GFile 读取结果（OFT Adapter 输出）
 
-【已确认事实】`GFileData` 是 `readers/gfile_reader.py` 这个薄 Adapter 的输出对象。其字段值**全部来自对 OFT `GEQDSKEquilibrium` 对象属性的直接提取**，LinkMesh 侧不执行任何原始文本解析。
+【已确认事实】`GFileData` 是 `src/linkmesh/readers/gfile_reader.py` 这个薄 Adapter 的输出对象。其字段值**全部来自对 OFT `GEQDSKEquilibrium` 对象属性的直接提取**，LinkMesh 侧不执行任何原始文本解析。
 
 相比旧草案，`GFileData` 已大幅精简，移除了 `nw`、`nh`、`rdim`、`zdim`、`rleft`、`zmid`、`simag`、`sibry`、`psi_grid`、`r_grid`、`z_grid`、`fpol`、`pres`、`qpsi` 等 14 个字段——这些字段由 OFT 内部管理，LinkMesh 无需重复存储。
+
+【已确认事实】`current` 字段单位为安培（A），来源为 OFT `GEQDSKEquilibrium.Ip`，后者直接读取 EQDSK 文件中的 `CURRENT` 字段，全程不进行任何单位缩放。以 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 为例，服务器冒烟测试实测值为约 `1.56e7 A`（即约 15.6 MA），Python 类型为 `float`。
 
 ```python
 from dataclasses import dataclass
@@ -109,7 +125,7 @@ import numpy as np
 class GFileData:
     """GFile/EQDSK 平衡文件读取结果（OFT Adapter 输出）。
 
-    所有字段均由 readers/gfile_reader.py 从 OFT GEQDSKEquilibrium 对象属性
+    所有字段均由 src/linkmesh/readers/gfile_reader.py 从 OFT GEQDSKEquilibrium 对象属性
     中直接提取，LinkMesh 侧不执行任何原始文本解析。
 
     所有坐标单位均为米（SI 单位制）。
@@ -124,7 +140,7 @@ class GFileData:
         wall_z   ← eq.limiter_Z    (eqdsk.py 属性 limiter_Z)，若为空则 None
         rcentr   ← eq.R_center     (eqdsk.py 属性 R_center)
         bcentr   ← eq.B_center     (eqdsk.py 属性 B_center)
-        current  ← eq.Ip           (eqdsk.py 属性 Ip)
+        current  ← eq.Ip           (eqdsk.py 属性 Ip)，单位 A，不缩放
     """
 
     # LCFS 边界坐标（最后闭合磁面）
@@ -142,20 +158,21 @@ class GFileData:
     # 基本平衡参数（可选，用于后续物理验证与可视化）
     rcentr: Optional[float] = None   # 参考大半径 R0 [m]
     bcentr: Optional[float] = None   # 参考磁场强度 B0 [T]
-    current: Optional[float] = None  # 等离子体电流 Ip [A]
+    current: Optional[float] = None  # 等离子体电流 Ip [A]，来源 eq.Ip，不缩放
+                                     # ITER 样例实测值约 1.56e7 A（约 15.6 MA）
 ```
 
 ### 2.2 `BoundaryConfig`：Triangle 输入配置
 
-【已确认事实】字段命名与 TokaMaker OFT `meshing.py` 中 `alpha` 字典的键名保持一致（`vertices`、`segments`、`regions`），这是 `mesher/triangle_wrapper.py` 构造 `alpha` 字典的直接来源。
+【已确认事实】字段命名与 TokaMaker OFT `meshing.py` 中 `alpha` 字典的键名保持一致（`vertices`、`segments`、`regions`），这是 `src/linkmesh/mesher/triangle_wrapper.py` 构造 `alpha` 字典的直接来源。
 
 ```python
 @dataclass
 class BoundaryConfig:
     """Triangle 网格生成的输入配置。
 
-    该对象由 cli.py 根据 GFileData 和用户参数构造，
-    传递给 mesher/triangle_wrapper.py（TokaMaker/Triangle 唯一底座）。
+    该对象由 src/linkmesh/cli.py 根据 GFileData 和用户参数构造，
+    传递给 src/linkmesh/mesher/triangle_wrapper.py（TokaMaker/Triangle 唯一底座）。
 
     字段命名与 TokaMaker OFT meshing.py 中 alpha 字典的键名保持一致：
         alpha = dict(vertices=..., segments=..., regions=...)
@@ -192,8 +209,8 @@ class BoundaryConfig:
 class Mesh2D:
     """LinkMesh 核心内存网格对象。
 
-    该对象是 mesher/triangle_wrapper.py（TokaMaker/Triangle 唯一底座）的输出，
-    同时也是 writers/hdf5_writer.py 和 writers/smb_writer.py 的共同输入。
+    该对象是 src/linkmesh/mesher/triangle_wrapper.py（TokaMaker/Triangle 唯一底座）的输出，
+    同时也是 src/linkmesh/writers/hdf5_writer.py 和 src/linkmesh/writers/smb_writer.py 的共同输入。
     所有索引均从 0 开始（Python 约定，由 Triangle 'z' 控制字符保证）。
     写出时各 writer 负责按目标格式约定进行索引转换。
 
@@ -253,13 +270,13 @@ class Mesh2D:
 
 ### 3.1 完整数据管道
 
-LinkMesh 的数据流是以 `mesher/triangle_wrapper.py`（TokaMaker/Triangle）为绝对核心的**单向分发映射结构**：上游唯一，下游双轨。
+LinkMesh 的数据流是以 `src/linkmesh/mesher/triangle_wrapper.py`（TokaMaker/Triangle）为绝对核心的**单向分发映射结构**：上游唯一，下游双轨。
 
 ```text
 GFile 平衡文本
   │
   ↓ [薄 Adapter：调用 OFT GEQDSKEquilibrium，提取边界坐标，绝不手动解析文本]
-readers/gfile_reader.py
+src/linkmesh/readers/gfile_reader.py
   │  ← from OpenFUSIONToolkit.TokaMaker.eqdsk import GEQDSKEquilibrium
   │  ← eq = GEQDSKEquilibrium(filepath)
   │  ← 提取 eq.boundary_R / eq.boundary_Z / eq.R_mag / eq.Z_mag 等属性
@@ -268,7 +285,7 @@ readers/gfile_reader.py
 GFileData
   │
   ↓ [构造 alpha 字典，调用 Triangle 唯一底座]
-mesher/triangle_wrapper.py
+src/linkmesh/mesher/triangle_wrapper.py
   │  ← alpha = dict(vertices=..., segments=..., regions=...)  [TokaMaker 风格]
   │  ← beta  = tr.triangulate(alpha, opts)
   │  ← 提取 beta['vertices'], beta['triangles'], beta['triangle_attributes'] 等
@@ -277,21 +294,33 @@ mesher/triangle_wrapper.py
 Mesh2D  (内存核心数据结构，所有索引 0-based)
   │
   ├──→ [第一阶段战役：HDF5 映射对齐]
-  │      writers/hdf5_writer.py
+  │      src/linkmesh/writers/hdf5_writer.py
   │      (严格对照 docs/trimeg/loadfemmesh_h5.m 黄金标尺)
   │        │
   │        ↓
   │      TRIMEG 求解器消费的 HDF5 静态网格
   │
   └──→ [第二阶段战役：二进制字节流逆向]
-         writers/smb_writer.py
+         src/linkmesh/writers/smb_writer.py
          (逆向分析 scorec/pumi 开源 C++ 底层解析规范)
            │
            ↓
          M3DC1 求解器消费的 .smb 静态二进制网格
 ```
 
-### 3.2 CLI 参数规范
+### 3.2 CLI 参数规范与调用方式
+
+【已确认事实】以下两种调用方式最终必须进入同一个 `linkmesh.cli.main` 函数：
+
+```text
+# 方式 A：通过 python -m linkmesh（依赖 src/linkmesh/__main__.py）
+python -m linkmesh [选项]
+
+# 方式 B：通过控制台命令（依赖 pyproject.toml 中的 console_scripts 入口）
+linkmesh [选项]
+```
+
+两种方式的参数规范完全相同：
 
 ```text
 用法：linkmesh [选项]
@@ -315,7 +344,7 @@ Mesh2D  (内存核心数据结构，所有索引 0-based)
 
 ## 4. 数据格式对齐规范（两阶段战役核心方法论）
 
-本节是 LinkMesh 两大 Writer 模块的核心实现方法论，Aider 在编写 `writers/` 下任何代码前必须完整阅读本节。
+本节是 LinkMesh 两大 Writer 模块的核心实现方法论，Aider 在编写 `src/linkmesh/writers/` 下任何代码前必须完整阅读本节。
 
 ### 4.1 第一战役：TokaMaker → TRIMEG HDF5 格式映射
 
@@ -346,7 +375,7 @@ Mesh2D  (内存核心数据结构，所有索引 0-based)
 
 #### 4.1.3 完整字段映射契约（Field Mapping Contract）
 
-以下表格是 `writers/hdf5_writer.py` 的唯一实现依据，每一行均为【已确认事实】，直接来自 `docs/trimeg/loadfemmesh_h5.m` 逐行解析。
+以下表格是 `src/linkmesh/writers/hdf5_writer.py` 的唯一实现依据，每一行均为【已确认事实】，直接来自 `docs/trimeg/loadfemmesh_h5.m` 逐行解析。
 
 | HDF5 数据集路径 | HDF5 中存储的 shape | MATLAB 读取后 shape | dtype | 数据来源（Python `Mesh2D` 字段） | 转换公式 |
 |---|---|---|---|---|---|
@@ -386,7 +415,7 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
 
 【已确认事实】`loadfemmesh_h5.m` 中 `nbcRZ`、`Rbc`、`Zbc` 三个字段被包裹在 `try...catch` 块中，读取失败时仅打印 warning 而不报错。这说明这三个字段在 TRIMEG 中是**可选字段**。
 
-`writers/hdf5_writer.py` 的处理策略：**始终写出这三个字段**（因为 `Mesh2D` 中 `node_markers` 始终存在，边界节点坐标可以直接提取），不需要做条件判断。
+`src/linkmesh/writers/hdf5_writer.py` 的处理策略：**始终写出这三个字段**（因为 `Mesh2D` 中 `node_markers` 始终存在，边界节点坐标可以直接提取），不需要做条件判断。
 
 ### 4.2 第二战役：TokaMaker → M3DC1 PUMI .smb 二进制格式逆向
 
@@ -401,8 +430,8 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
    - 数值精度（节点坐标 float32 vs float64；索引 int32 vs int64）
    - 拓扑排列顺序（节点坐标块、三角形连接块、区域标记块、边界标记块的先后顺序）
    - 索引约定（0-based vs 1-based）
-3. **Python 实现**：在 `writers/smb_writer.py` 中使用 Python `struct` 模块，按逆向得到的字节流协议，将 `Mesh2D` 对象的各字段打包为对齐的二进制字节流并写出。
-4. **前置条件**：`writers/smb_writer.py` 的具体实现**必须等待**只读侦察任务完成并经主管确认后方可开始编写。在侦察完成前，`write_smb()` 函数保持占位实现（`raise NotImplementedError`）。
+3. **Python 实现**：在 `src/linkmesh/writers/smb_writer.py` 中使用 Python `struct` 模块，按逆向得到的字节流协议，将 `Mesh2D` 对象的各字段打包为对齐的二进制字节流并写出。
+4. **前置条件**：`src/linkmesh/writers/smb_writer.py` 的具体实现**必须等待**只读侦察任务完成并经主管确认后方可开始编写。在侦察完成前，`write_smb()` 函数保持占位实现（`raise NotImplementedError`）。
 
 **【待源码确认】当前推断的 `.smb` 格式关键事实**：
 
@@ -423,7 +452,7 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
 
 ### 5.1 区域标记（region_id）约定
 
-LinkMesh 在当前 P0 阶段使用以下整数区域标记约定，该约定必须在 `BoundaryConfig.regions`、`Mesh2D.region_ids`、`writers/hdf5_writer.py` 和 `writers/smb_writer.py` 中保持一致：
+LinkMesh 在当前 P0 阶段使用以下整数区域标记约定，该约定必须在 `BoundaryConfig.regions`、`Mesh2D.region_ids`、`src/linkmesh/writers/hdf5_writer.py` 和 `src/linkmesh/writers/smb_writer.py` 中保持一致：
 
 | region_id | 物理含义 | 对应 M3DC1 语义 | 对应 TRIMEG 语义 |
 |---|---|---|---|
@@ -435,7 +464,7 @@ LinkMesh 在当前 P0 阶段使用以下整数区域标记约定，该约定必�
 
 ### 5.2 边界标记（boundary_marker）约定
 
-LinkMesh 在当前 P0 阶段使用以下整数边界标记约定，该约定必须在 `BoundaryConfig.segment_markers`、`Mesh2D.boundary_markers`、`writers/hdf5_writer.py` 和 `writers/smb_writer.py` 中保持一致：
+LinkMesh 在当前 P0 阶段使用以下整数边界标记约定，该约定必须在 `BoundaryConfig.segment_markers`、`Mesh2D.boundary_markers`、`src/linkmesh/writers/hdf5_writer.py` 和 `src/linkmesh/writers/smb_writer.py` 中保持一致：
 
 | boundary_marker | 物理含义 | 对应 M3DC1 语义 |
 |---|---|---|
@@ -446,21 +475,51 @@ LinkMesh 在当前 P0 阶段使用以下整数边界标记约定，该约定必�
 
 ---
 
-## 6. readers/gfile_reader.py 实现规范（OFT Adapter 模式）
+## 6. src/linkmesh/readers/gfile_reader.py 实现规范（OFT Adapter 模式）
 
 ### 6.1 设计原则：薄 Adapter，绝不重复造轮子
 
-【已确认事实】`readers/gfile_reader.py` 的唯一职责是作为**薄 Adapter（接线员）**：
+【已确认事实】`src/linkmesh/readers/gfile_reader.py` 的唯一职责是作为**薄 Adapter（接线员）**：
 
 1. 调用 OFT（OpenFUSIONToolkit）提供的 `GEQDSKEquilibrium` 类读取 GFile；
 2. 从 OFT 返回对象的属性中提取 LinkMesh 所需的字段；
 3. 封装为 `GFileData` 对象返回。
 
-**【绝对禁止】** 在 `readers/gfile_reader.py` 中手动执行任何原始 GFile 文本 I/O、字符串切分、Fortran 格式化数值解析或 EQDSK 格式字段手动提取。OFT 已经提供了完整、经过验证的 GFile 解析实现，LinkMesh 直接复用即可。
+**【绝对禁止】** 在 `src/linkmesh/readers/gfile_reader.py` 中手动执行任何原始 GFile 文本 I/O、字符串切分、Fortran 格式化数值解析或 EQDSK 格式字段手动提取。OFT 已经提供了完整、经过验证的 GFile 解析实现，LinkMesh 直接复用即可。
 
-### 6.2 OFT 可用 API 清单（已确认事实）
+### 6.2 OFT 运行依赖（已确认事实）
 
-【已确认事实】以下两个 OFT API 均可用于读取 GFile，来源为只读侦察 `TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/TokaMaker/eqdsk.py`：
+【已确认事实】以下 OFT 版本已在 Linux x86_64 服务器（liustation）上通过 pip 安装官方 manylinux wheel 并完成真实冒烟测试验证：
+
+```text
+openfusiontoolkit==26.6
+```
+
+**版本约定**：
+- 当前记录的经过真实验证的版本为 `openfusiontoolkit==26.6`，不得写成 `>=26.6`，不得声称其他版本已经验证。
+- 最终运行安装**不要求**携带整个 `TOKAMAKER/` 源码树；`TOKAMAKER/` 继续作为开发期绝对只读参考区，不参与运行时依赖。
+
+### 6.3 PYTHONPATH 规则（已确认事实，铁律）
+
+【已确认事实】以下 PYTHONPATH 规则来自服务器冒烟测试中的实际故障排查，必须严格遵守：
+
+**【绝对禁止】** 将 `TOKAMAKER/OpenFUSIONToolkit/src/python` 加入运行环境的 `PYTHONPATH`。该路径下的 OFT 源码快照**不包含编译后的 `liboftpy.so`**，若加入 PYTHONPATH 会遮蔽 `site-packages` 中带有 `liboftpy.so` 的正式安装包，导致 `ImportError`。
+
+**开发期临时规则**：
+- 标准安装完成后（`pip install -e .` 或 `pip install .`），最终用户**不应**依靠手动设置 PYTHONPATH 来发现 LinkMesh。
+- 开发期尚未安装时，可以临时将仓库 `src/` 目录加入 PYTHONPATH（`export PYTHONPATH=/path/to/LinkMesh/src:$PYTHONPATH`），但**绝对不得**同时加入 `TOKAMAKER/OpenFUSIONToolkit/src/python`。
+
+```bash
+# 正确：开发期临时将 src/ 加入 PYTHONPATH
+export PYTHONPATH=/path/to/LinkMesh/src:$PYTHONPATH
+
+# 错误：绝对禁止将 OFT 源码路径加入 PYTHONPATH
+# export PYTHONPATH=/path/to/TOKAMAKER/OpenFUSIONToolkit/src/python:$PYTHONPATH  # 禁止！
+```
+
+### 6.4 OFT 可用 API 清单（已确认事实）
+
+【已确认事实】以下两个 OFT API 均可用于读取 GFile，来源为只读侦察 `TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/TokaMaker/eqdsk.py`，并已通过 `openfusiontoolkit==26.6` 官方 wheel 在服务器上验证可导入：
 
 #### 方案 A：`read_eqdsk`（轻量字典接口）
 
@@ -494,12 +553,12 @@ eq = GEQDSKEquilibrium(filepath)
 #   eq.limiter_Z    → 第一壁 Z 坐标数组 [m]（属性 limiter_Z，来自 _raw['ZLIM']）
 #   eq.R_center     → 参考大半径 R0 [m]（属性 R_center，来自 _raw['RCENTR']）
 #   eq.B_center     → 参考磁场强度 B0 [T]（属性 B_center，来自 _raw['BCENTR']）
-#   eq.Ip           → 等离子体电流 Ip [A]（属性 Ip，来自 _raw['CURRENT']）
+#   eq.Ip           → 等离子体电流 Ip [A]（属性 Ip，来自 _raw['CURRENT']，不缩放）
 ```
 
 **当前采用方案 B**（`GEQDSKEquilibrium`），因为其属性命名语义清晰，且已提供 `boundary_R`/`boundary_Z`、`limiter_R`/`limiter_Z`、`R_mag`/`Z_mag` 等 LinkMesh 直接需要的字段，无需额外键名猜测。
 
-### 6.3 `read_gfile()` 函数接口（已实现）
+### 6.5 `read_gfile()` 函数接口（已实现）
 
 【已确认事实】以下为 `src/linkmesh/readers/gfile_reader.py` 中已实现的函数签名与核心逻辑：
 
@@ -530,17 +589,17 @@ def read_gfile(filepath: str) -> GFileData:
     ...
 ```
 
-### 6.4 LCFS 边界后处理（LinkMesh 侧唯一允许的后处理）
+### 6.6 LCFS 边界后处理（LinkMesh 侧唯一允许的后处理）
 
-从 OFT 提取的 LCFS 坐标可能存在以下问题，`gfile_reader.py` 必须处理（这是 LinkMesh 侧唯一允许的后处理逻辑，不属于原始文本解析）：
+从 OFT 提取的 LCFS 坐标可能存在以下问题，`src/linkmesh/readers/gfile_reader.py` 必须处理（这是 LinkMesh 侧唯一允许的后处理逻辑，不属于原始文本解析）：
 
 1. **闭合性**（`_ensure_lcfs_closed`）：确保 LCFS 首尾点相同。使用相对容差（首尾点距离 < 总周长的 0.1%）判断，若不满足则追加首点到末尾。
 2. **方向性**（`_ensure_lcfs_ccw`）：使用 Shoelace 公式计算有向面积，若为负值（顺时针）则反转数组为逆时针。
-3. **重采样**：LCFS 点数可能过多或过少，`mesher/triangle_wrapper.py` 在调用 Triangle 前负责重采样（非 `gfile_reader.py` 职责）。
+3. **重采样**：LCFS 点数可能过多或过少，`src/linkmesh/mesher/triangle_wrapper.py` 在调用 Triangle 前负责重采样（非 `gfile_reader.py` 职责）。
 
 ---
 
-## 7. mesher/triangle_wrapper.py 实现规范（TokaMaker/Triangle 唯一底座）
+## 7. src/linkmesh/mesher/triangle_wrapper.py 实现规范（TokaMaker/Triangle 唯一底座）
 
 ### 7.1 Triangle Python 包调用方式与 TokaMaker 风格对齐
 
@@ -627,11 +686,11 @@ mesh = Mesh2D(
 
 ---
 
-## 8. writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
+## 8. src/linkmesh/writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
 
 ### 8.1 实现依据与黄金标尺
 
-【已确认事实】`writers/hdf5_writer.py` 的唯一实现依据是 `docs/trimeg/loadfemmesh_h5.m`。该脚本是 TRIMEG 求解器读取网格 HDF5 文件的 MATLAB 实现，其每一行 `h5read` 调用直接揭示了 TRIMEG 对 HDF5 文件结构的期望。所有数据集路径名、存储形状、数据类型和索引约定均以该脚本为最终裁决依据，不得凭推断自行补充。
+【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 的唯一实现依据是 `docs/trimeg/loadfemmesh_h5.m`。该脚本是 TRIMEG 求解器读取网格 HDF5 文件的 MATLAB 实现，其每一行 `h5read` 调用直接揭示了 TRIMEG 对 HDF5 文件结构的期望。所有数据集路径名、存储形状、数据类型和索引约定均以该脚本为最终裁决依据，不得凭推断自行补充。
 
 ### 8.2 TRIMEG HDF5 物理文件结构树
 
@@ -701,7 +760,7 @@ grp.create_dataset("tria", data=tria_4col.T.astype(np.int32))
 
 ### 8.5 `write_hdf5()` 实现状态
 
-【已确认事实】`writers/hdf5_writer.py` 中的 `write_hdf5(mesh, filepath, verbose=True)` 函数已**完整实现**（非占位），按 §8.3 映射契约逐一写出全部 11 个数据集，包括：
+【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 中的 `write_hdf5(mesh, filepath, verbose=True)` 函数已**完整实现**（非占位），按 §8.3 映射契约逐一写出全部 11 个数据集，包括：
 
 - 4 个标量元数据（`nvert`、`ntria`、`nvert_in`、`nvert_ex`）
 - 转置写入的 `vert`（`mesh.nodes.T`）
@@ -713,11 +772,11 @@ grp.create_dataset("tria", data=tria_4col.T.astype(np.int32))
 
 ---
 
-## 9. writers/smb_writer.py 实现规范（第二战役：PUMI .smb 二进制逆向）
+## 9. src/linkmesh/writers/smb_writer.py 实现规范（第二战役：PUMI .smb 二进制逆向）
 
 ### 9.1 实现依据与前置条件
 
-`writers/smb_writer.py` 的实现依赖对 `SCOREC/PUMI` 开源 C++ 源码的只读侦察结果。**在侦察任务完成并经主管确认前，本模块保持占位实现，严禁提前编写任何字节流打包逻辑。**
+`src/linkmesh/writers/smb_writer.py` 的实现依赖对 `SCOREC/PUMI` 开源 C++ 源码的只读侦察结果。**在侦察任务完成并经主管确认前，本模块保持占位实现，严禁提前编写任何字节流打包逻辑。**
 
 侦察目标文件（只读，严禁修改）：
 - `M3DC1/m3dc1_scorec/src/m3dc1_mesh.cc`：`.smb` 文件读取的 C++ 实现入口
@@ -743,7 +802,7 @@ def write_smb(mesh: Mesh2D, filepath: str) -> None:
 
 ### 9.3 配套 model .txt 文件规范（占位）
 
-M3DC1 在读取 `.smb` 网格文件的同时，还需要读取配套的 model `.txt` 文件来获取区域语义和边界条件定义。`writers/smb_writer.py` 在写出 `.smb` 文件时，应同时写出配套的 model `.txt` 文件。
+M3DC1 在读取 `.smb` 网格文件的同时，还需要读取配套的 model `.txt` 文件来获取区域语义和边界条件定义。`src/linkmesh/writers/smb_writer.py` 在写出 `.smb` 文件时，应同时写出配套的 model `.txt` 文件。
 
 **【待源码确认】**：model `.txt` 文件的具体格式需通过只读侦察 `M3DC1/m3dc1_scorec/src/m3dc1_model.cc` 中 `load_model` 函数确认。从已侦察的 `m3dc1_model.cc` 可知，文件头格式为：
 
@@ -755,11 +814,11 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 
 ---
 
-## 10. utils/plotter.py 实现规范
+## 10. src/linkmesh/utils/plotter.py 实现规范
 
 ### 10.1 已实现的两个函数
 
-【已确认事实】`utils/plotter.py` 已完整实现以下两个函数：
+【已确认事实】`src/linkmesh/utils/plotter.py` 已完整实现以下两个函数：
 
 #### `plot_lcfs_only(gfile_data, filepath)`（M1 最小可用版本）
 
@@ -784,29 +843,26 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 
 ---
 
-## 11. requirements.txt 依赖清单
+## 11. 依赖清单
+
+### 11.1 核心运行依赖
 
 ```text
-# LinkMesh Python 依赖清单
-# 使用 pip install -r requirements.txt 安装
-
-# 核心科学计算
 numpy>=1.24.0
-
-# Triangle 网格生成（TokaMaker/Triangle 唯一底座）
 triangle>=20230923
-
-# HDF5 文件读写（第一战役：TRIMEG HDF5 格式映射）
 h5py>=3.8.0
-
-# 可视化自检
 matplotlib>=3.7.0
+openfusiontoolkit==26.6
+```
 
-# OFT（OpenFUSIONToolkit）：GFile 读取 Adapter 依赖
-# 注意：OFT 通过 TOKAMAKER/ 目录下的源码提供，需确保其 Python 包已安装或在 PYTHONPATH 中
-# OpenFUSIONToolkit（本地安装，见 TOKAMAKER/ 目录）
+**说明**：
+- `openfusiontoolkit==26.6` 为当前在 Linux x86_64 服务器（liustation）上通过 pip 安装官方 manylinux wheel 并完成真实冒烟测试验证的版本，不得写成 `>=26.6`，不得声称其他版本已经验证。
+- OFT 通过 pip 安装官方 wheel 获取，**不依赖** `TOKAMAKER/` 源码树。
+- `pyproject.toml` 和 `requirements.txt` 的核心运行依赖和版本约束必须保持一致（见第 14 节）。
 
-# 开发与测试（可选）
+### 11.2 开发与测试依赖（可选）
+
+```text
 pytest>=7.0.0
 ```
 
@@ -818,20 +874,33 @@ pytest>=7.0.0
 
 ### 里程碑 M1：GFile 读取验收（P0 第一步）
 
+**当前状态**：【M1 Reader 核心链路冒烟测试成功，M1 正式验收尚未完成】
+
+【已确认事实】服务器冒烟测试（liustation，`openfusiontoolkit==26.6`，`ITER_test.eqdsk`）已验证：
+- 磁轴 R=6.3624 m，Z=0.5328 m
+- LCFS 点数 64，首尾闭合
+- 第一壁点数 153
+- `current` ≈ 1.56e7 A（Python float，来源 `eq.Ip`，不缩放）
+
+上述结果证明 M1 Reader 核心链路（`GEQDSKEquilibrium` 导入 + 字段提取）冒烟测试成功。**但 M1 正式验收尚未完成**，仍需完成以下项目：
+
 **目标**：能够通过 OFT Adapter 从真实 GFile 文件中提取 LCFS 边界坐标并可视化。
 
-**验收标准**：
-1. `python -m linkmesh --gfile sample.geqdsk --no-hdf5 --no-smb --plot lcfs_check.png` 能够运行；
+**M1 正式验收标准**（尚未全部通过）：
+1. `python -m linkmesh --gfile sample.geqdsk --no-hdf5 --no-smb --plot lcfs_check.png` 能够运行（需要 `src/linkmesh/__main__.py` 存在）；
 2. 生成的 `lcfs_check.png` 中 LCFS 边界曲线闭合、方向正确；
 3. 终端打印：`LCFS 点数: N，磁轴: (R=X.XX, Z=X.XX)`；
 4. `GFileData` 对象的所有必填字段均已正确填充；
-5. **`readers/gfile_reader.py` 中不存在任何手动文本解析逻辑，所有字段均来自 OFT `GEQDSKEquilibrium` 属性**。
+5. **`src/linkmesh/readers/gfile_reader.py` 中不存在任何手动文本解析逻辑，所有字段均来自 OFT `GEQDSKEquilibrium` 属性**；
+6. `tests/test_gfile_reader.py` 中的 M1 自动测试全部通过。
 
-**涉及模块**：`readers/gfile_reader.py`（OFT Adapter），`utils/plotter.py`（`plot_lcfs_only` 函数）
+**涉及模块**：`src/linkmesh/__main__.py`（已新建，git: 1fc04f8），`src/linkmesh/readers/gfile_reader.py`（OFT Adapter），`src/linkmesh/utils/plotter.py`（`plot_lcfs_only` 函数），`tests/test_gfile_reader.py`（需新建）
 
 ---
 
 ### 里程碑 M2：Triangle 网格生成验收（P0 第二步）
+
+**当前状态**：【尚未完成服务器网格生成和质量验收】
 
 **目标**：能够从 LCFS 边界调用 TokaMaker/Triangle 唯一底座生成二维三角网格并可视化。
 
@@ -841,14 +910,17 @@ pytest>=7.0.0
 3. 终端打印：`节点数: N，三角形数: T，边界线段数: S`；
 4. `Mesh2D` 对象的所有字段均已正确填充；
 5. 所有三角形的最小内角 ≥ 设定的 `min_angle` 参数值；
-6. **`mesher/triangle_wrapper.py` 中 `alpha` 字典的键名为 `vertices`、`segments`、`regions`（TokaMaker 风格），`beta` 字典的提取键名为 `vertices`、`triangles`、`triangle_attributes`**；
-7. **`cli.py` 中 `_build_boundary_config()` 已完整实现**（git: 994c415）：从 `GFileData.lcfs_r/lcfs_z` 等弧长重采样，构造 LCFS 线段、外边界矩形、可选第一壁线段，设置 plasma/vacuum 区域标记点，封装为 `BoundaryConfig`。
+6. **`src/linkmesh/mesher/triangle_wrapper.py` 中 `alpha` 字典的键名为 `vertices`、`segments`、`regions`（TokaMaker 风格），`beta` 字典的提取键名为 `vertices`、`triangles`、`triangle_attributes`**；
+7. **`src/linkmesh/cli.py` 中 `_build_boundary_config()` 已完整实现**（git: 994c415）：从 `GFileData.lcfs_r/lcfs_z` 等弧长重采样，构造 LCFS 线段、外边界矩形、可选第一壁线段，设置 plasma/vacuum 区域标记点，封装为 `BoundaryConfig`；
+8. `tests/test_triangle_wrapper.py` 中的 M2 自动测试全部通过。
 
-**涉及模块**：`mesher/triangle_wrapper.py`，`utils/plotter.py`（`plot_mesh` 函数），`cli.py`（`_build_boundary_config` 函数）
+**涉及模块**：`src/linkmesh/mesher/triangle_wrapper.py`，`src/linkmesh/utils/plotter.py`（`plot_mesh` 函数），`src/linkmesh/cli.py`（`_build_boundary_config` 函数），`tests/test_triangle_wrapper.py`（需新建）
 
 ---
 
 ### 里程碑 M3：TRIMEG HDF5 输出验收（P0 第三步，第一战役闭环）
+
+**当前状态**：【尚未完成 HDF5 结构、索引、11 个数据集和 MATLAB/TRIMEG 消费验证】
 
 **目标**：将 TokaMaker/Triangle 生成的三角网格写出为 TRIMEG 可消费的 HDF5 文件，并通过 `loadfemmesh_h5.m` 读取验证，确认网格几何物理质量完全合格。
 
@@ -858,13 +930,16 @@ pytest>=7.0.0
 3. `h5py` 读取验证：`/femmesh/vert` shape=`(2,N)`，`/femmesh/tria` shape=`(4,T)`，`/femmesh/nvert`=N，`/femmesh/ntria`=T；
 4. 使用 `loadfemmesh_h5.m` 在 MATLAB 中读取 `mesh.h5`，`femmesh.vert` shape=`(N,2)`，`femmesh.tria` shape=`(T,4)`，无报错；
 5. 节点索引为 1-based（`femmesh.tria(:,1:3)` 最小值为 1，最大值为 N）；
-6. 终端打印：`HDF5 写出完成：mesh.h5，节点数: N，三角形数: T`。
+6. 终端打印：`HDF5 写出完成：mesh.h5，节点数: N，三角形数: T`；
+7. `tests/test_hdf5_writer.py` 中的 M3 自动测试全部通过。
 
-**涉及模块**：`writers/hdf5_writer.py`（已完整实现）
+**涉及模块**：`src/linkmesh/writers/hdf5_writer.py`（已完整实现），`tests/test_hdf5_writer.py`（需新建）
 
 ---
 
 ### 里程碑 M4：PUMI .smb 输出验收（P0 第四步，第二战役攻坚）
+
+**当前状态**：【占位，待 M3 验收通过后开始】
 
 **目标**：在 M3 完全验收通过、网格质量确认合格后，将同一 `Mesh2D` 对象写出为 M3DC1 可消费的 PUMI `.smb` 静态二进制网格文件。
 
@@ -879,11 +954,13 @@ pytest>=7.0.0
 3. M3DC1 读取后能正确识别节点数、三角形数、区域标记和边界标记；
 4. 终端打印：`.smb 写出完成：mesh.smb`。
 
-**涉及模块**：`writers/smb_writer.py`（当前为占位实现）
+**涉及模块**：`src/linkmesh/writers/smb_writer.py`（当前为占位实现）
 
 ---
 
 ### 里程碑 M5：完整 CLI 端到端验收（P0 完成）
+
+**当前状态**：【占位，待 M4 验收通过后开始】
 
 **目标**：一条命令完成从 GFile 到 HDF5 + .smb + PNG 的完整转换链路。
 
@@ -906,7 +983,111 @@ linkmesh \
 
 ---
 
-## 13. 蓝图更新纪律
+## 13. 测试目录规划（M1～M3 验收测试）
+
+【已确认事实】实际仓库当前不存在 `tests/` 目录，需按以下规划新建。本轮不新增 `tests/test_smb_writer.py`，M4 开始前不创建该文件。
+
+### 13.1 测试文件职责
+
+| 测试文件 | 服务里程碑 | 核心验收内容 |
+|---|---|---|
+| `tests/test_gfile_reader.py` | M1 | 验证 `read_gfile()` 能正确读取 EQDSK 文件；`GFileData` 所有字段类型与形状正确；LCFS 首尾闭合；LCFS 方向为逆时针；`current` 单位为 A（不缩放）；`gfile_reader.py` 中无手动文本解析逻辑 |
+| `tests/test_triangle_wrapper.py` | M2 | 验证 `generate_mesh()` 能从合法 `BoundaryConfig` 生成 `Mesh2D`；`Mesh2D` 所有字段类型与形状正确；三角形索引为 0-based；`region_ids` 取值在约定范围内；最小内角满足约束 |
+| `tests/test_hdf5_writer.py` | M3 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部 11 个数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引为 1-based；`region_id` 列无偏置；`nvert`/`ntria` 标量值正确 |
+
+### 13.2 测试依赖
+
+- 测试框架：`pytest>=7.0.0`
+- M1 测试需要访问 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 作为测试 fixture（只读）
+- M2/M3 测试可使用 M1 测试生成的 `GFileData` 作为上游 fixture，或使用最小合成 `BoundaryConfig`/`Mesh2D` 进行单元测试
+
+---
+
+## 14. 包安装与运行环境规范
+
+### 14.1 src 布局与标准安装
+
+【已确认事实】实际仓库采用 `src/linkmesh/` 包布局（src layout）。仓库根目录需要 `pyproject.toml` 来支持标准 Python 包安装。
+
+**`pyproject.toml` 的职责**：
+1. 声明标准 Python 包元数据（名称、版本、描述、作者等）
+2. 配置 src 布局的包发现（`packages = {find = {where = ["src"]}}`）
+3. 声明控制台入口：`linkmesh = "linkmesh.cli:main"`
+4. 声明正式运行依赖（与 `requirements.txt` 核心依赖保持一致）
+
+**`pyproject.toml` 规划示例**（待实施时创建，本轮不创建）：
+
+```toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "linkmesh"
+version = "0.1.0"
+description = "轻量级托卡马克二维非结构网格转换命令行工具"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.24.0",
+    "triangle>=20230923",
+    "h5py>=3.8.0",
+    "matplotlib>=3.7.0",
+    "openfusiontoolkit==26.6",
+]
+
+[project.scripts]
+linkmesh = "linkmesh.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+```
+
+### 14.2 `src/linkmesh/__main__.py` 规范
+
+【已确认事实】`src/linkmesh/__main__.py` 已新建（git: 1fc04f8）。其唯一职责是使 `python -m linkmesh` 调用进入 `linkmesh.cli.main`。
+
+**规范**：
+- 文件内容极简，仅调用 `linkmesh.cli.main()`，不承载任何参数解析或业务逻辑
+- 不得在 `__main__.py` 中重复定义 `argparse` 参数或任何业务函数
+
+```python
+# src/linkmesh/__main__.py
+from linkmesh.cli import main
+
+if __name__ == "__main__":
+    main()
+```
+
+### 14.3 两种调用方式的等价性
+
+【已确认事实】以下两种调用方式最终必须进入同一个 `linkmesh.cli.main` 函数，行为完全等价：
+
+| 调用方式 | 依赖条件 | 入口路径 |
+|---|---|---|
+| `python -m linkmesh` | `src/linkmesh/__main__.py` 存在（已完成）；`src/` 在 PYTHONPATH 中或已安装 | `__main__.py` → `linkmesh.cli.main` |
+| `linkmesh`（控制台命令） | `pyproject.toml` 中 `console_scripts` 已配置；包已通过 `pip install` 安装 | `linkmesh.cli:main` 直接调用 |
+
+### 14.4 `pyproject.toml` 与 `requirements.txt` 的关系
+
+- **`pyproject.toml`**：正式安装元数据与运行依赖依据。通过 `pip install .` 或 `pip install -e .` 安装时使用。
+- **`requirements.txt`**：服务器部署用的直接依赖清单，适合 `pip install -r requirements.txt` 快速部署。
+- **一致性要求**：两者的核心运行依赖和版本约束必须保持一致。当 `openfusiontoolkit` 版本约束更新时，两个文件必须同步修改。
+
+### 14.5 PYTHONPATH 与安装规则汇总
+
+【已确认事实】以下规则来自服务器冒烟测试实际故障排查，为铁律：
+
+| 场景 | 规则 |
+|---|---|
+| 标准安装后（`pip install .`） | 最终用户不应依靠手动设置 PYTHONPATH 来发现 LinkMesh；`linkmesh` 控制台命令直接可用 |
+| 开发期未安装时 | 可临时将仓库 `src/` 加入 PYTHONPATH：`export PYTHONPATH=/path/to/LinkMesh/src:$PYTHONPATH` |
+| OFT 源码路径 | **绝对禁止**将 `TOKAMAKER/OpenFUSIONToolkit/src/python` 加入任何运行环境的 PYTHONPATH；该路径下的源码快照不含 `liboftpy.so`，会遮蔽正式安装包导致 `ImportError` |
+| OFT 运行依赖 | 通过 `pip install openfusiontoolkit==26.6` 获取官方 manylinux wheel；不依赖 `TOKAMAKER/` 源码树 |
+| `TOKAMAKER/` 目录 | 继续作为开发期绝对只读参考区；不参与运行时依赖；不得修改其中任何文件 |
+
+---
+
+## 15. 蓝图更新纪律
 
 本文档是 LinkMesh 项目的单事实真理源。以下情况必须先更新本文档，再进入代码实现：
 
@@ -917,7 +1098,10 @@ linkmesh \
 5. 确认 `.smb` 二进制格式的任何细节（将【待源码确认】转为【已确认事实】）；
 6. 新增任何 CLI 参数；
 7. 调整任何里程碑的验收标准；
-8. **修改 OFT API 的调用方式（如从 `GEQDSKEquilibrium` 切换到 `read_eqdsk` 或反之，或新增/移除 OFT 依赖）**。
+8. **修改 OFT API 的调用方式（如从 `GEQDSKEquilibrium` 切换到 `read_eqdsk` 或反之，或新增/移除 OFT 依赖）**；
+9. **修改 `openfusiontoolkit` 版本约束**（需同步更新 `pyproject.toml` 和 `requirements.txt`）；
+10. **修改 `src/linkmesh/__main__.py` 的职责或内容**；
+11. **修改 `pyproject.toml` 中的控制台入口或包发现配置**。
 
 **蓝图更新流程**：
 1. Aider 在对话中向主管提出蓝图迭代修改建议；
