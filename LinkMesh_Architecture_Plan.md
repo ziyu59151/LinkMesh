@@ -3,13 +3,20 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 v1.5（M1 验收写入 + M2 契约校正）
+- 文档状态：正式版 v1.6（M2 区域简化批准 + 真实验收结果记录 + 区域传递契约建立）
 - 最高依据：本文档自身即为 LinkMesh 项目的最高技术依据；开发纪律与协作规范见 CONTEXT.md
 - 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认事实】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【计划新增】的内容为蓝图已批准、但尚未在仓库中创建的文件或目录；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
 - 主要用途：本文档为 LinkMesh 项目的单事实真理源（Single Source of Truth），不作为人类泛读材料，专门用于指导 Aider 自动化编码、RAG 知识库精准检索以及下游模块的硬核参数对齐。凡 Aider 在执行编码、新建文件、修改具体业务代码前，必须查阅并严格对齐本文档。
 - 场外架构师检索用途：当场外架构师需要判断 LinkMesh 某模块的职责边界、某数据结构的字段定义、某输出格式的对齐标准，或某开发阶段的验收条件时，应优先召回本文档。
 - Aider 执行用途：Aider 必须以本文档为最高技术权威。编写任何 `.py` 业务源码前，必须先核对本文档对应章节的接口定义、数据结构字段和验收标准。如发现实际需求与本文档不符，必须先在对话中提出蓝图迭代建议，待主管确认并更新本文档后，方可动手编写代码。
 - 修改前置条件：任何对本文档的修改，必须由人类主管在对话中明确确认后方可执行。Aider 严禁自发修改本文档中的接口定义、数据结构、验收标准或禁止事项。
+
+### 修订记录
+
+| 版本 | 修订摘要 |
+|---|---|
+| v1.5 | M1 验收写入；M2 契约校正（reshape(-1) 替代 squeeze()；mock 目标修正） |
+| v1.6 | 批准含第一壁 DIII-D P0 默认三区域简化方案（region_id=1/2/3）；明确无可用壁轮廓降级两区域方案（region_id=1/2）；建立轻量的按表区域传递契约（Wrapper/Writer 不写死区域数）；补充区域种子几何条件与失败原则；记录 M2 自动测试 36/36 通过但真实 region_id=0 阻塞 M2 总体验收；保留 M4 Multi Region 侦察空间 |
 
 ---
 
@@ -80,7 +87,7 @@ LinkMesh/
 │
 ├── tests/                             # 单元测试目录（M1～M3 验收测试）
 │   ├── test_gfile_reader.py           # M1 验收测试（已通过，git: f52a75f）
-│   ├── test_triangle_wrapper.py       # M2 验收测试（待修正后执行）
+│   ├── test_triangle_wrapper.py       # M2 验收测试（自动测试 36/36 通过；真实区域编号 BLOCKED，待修复）
 │   └── test_hdf5_writer.py            # 【计划新增】M3 验收测试
 │
 └── examples/                          # 【计划新增】示例文件目录
@@ -100,8 +107,8 @@ LinkMesh/
 | `src/linkmesh/__main__.py` | `python -m linkmesh` 入口：仅调用 `linkmesh.cli.main()`，不承载任何参数解析或业务逻辑 | `sys.argv`（透传） | 无（副作用：调用 `cli.main`） | 不得包含任何业务逻辑；不得直接操作文件；不得重复定义参数解析 |
 | `src/linkmesh/cli.py` | 解析命令行参数；按顺序调用 reader → mesher → writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑；不得直接操作文件 |
 | `src/linkmesh/readers/gfile_reader.py` | **薄 Adapter（接线员）**：调用 OFT `GEQDSKEquilibrium` 读取 GFile，从返回对象属性中提取 LCFS 边界坐标、磁轴坐标、第一壁点集等，封装为 `GFileData` 对象 | GFile 文件路径（`str`） | `GFileData` dataclass | **绝对禁止**在 LinkMesh 侧手动执行任何原始 GFile 文本 I/O 与字符串切分；不得调用 Triangle；不得写文件 |
-| `src/linkmesh/mesher/triangle_wrapper.py` | **唯一网格生成底座**：接收 `BoundaryConfig`；按 TokaMaker 风格构造 `alpha` 字典；调用 Python `triangle` 包生成二维三角网格；从 `beta` 字典提取输出；返回 `Mesh2D` 对象 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎 |
-| `src/linkmesh/writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑 |
+| `src/linkmesh/mesher/triangle_wrapper.py` | **唯一网格生成底座**：接收 `BoundaryConfig`；按 TokaMaker 风格构造 `alpha` 字典；调用 Python `triangle` 包生成二维三角网格；从 `beta` 字典提取输出；返回 `Mesh2D` 对象 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎；**不得写死区域数量**；不得推断区域物理含义 |
+| `src/linkmesh/writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；**不得重编号、偏置、压缩或排序 `region_ids`**；不得推断区域物理含义 |
 | `src/linkmesh/writers/smb_writer.py` | **第二战役占位模块**：在 M3 完整验收及 SCOREC/PUMI/M3DC1 只读侦察完成后，按主管确认的实现路线将 `Mesh2D` 转换为 M3DC1 可消费的 `.smb`；当前不得锁定具体序列化方式；保持 `NotImplementedError` 占位 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用，M4 实现后） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；M3 验收前不得实现任何字节流逻辑 |
 | `src/linkmesh/utils/plotter.py` | 绘制 LCFS 边界与生成三角网格的叠加图；输出 `.png` 自检图；提供 `plot_lcfs_only()`（M1 最小可用版）和 `plot_mesh()`（M2 完整版）两个函数 | `GFileData`，`Mesh2D`，输出路径 | `.png` 文件（副作用） | 不得修改任何数据对象 |
 
@@ -116,6 +123,10 @@ LinkMesh/
 相比旧草案，`GFileData` 已大幅精简，移除了 `nw`、`nh`、`rdim`、`zdim`、`rleft`、`zmid`、`simag`、`sibry`、`psi_grid`、`r_grid`、`z_grid`、`fpol`、`pres`、`qpsi` 等 14 个字段——这些字段由 OFT 内部管理，LinkMesh 无需重复存储。
 
 【已确认事实】`current` 字段单位为安培（A），来源为 OFT `GEQDSKEquilibrium.Ip`，后者直接读取 EQDSK 文件中的 `CURRENT` 字段，全程不进行任何单位缩放。以 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 为例，服务器冒烟测试实测值为约 `1.56e7 A`（即约 15.6 MA），Python 类型为 `float`。以 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 为例，M1 正式验收实测值为 `493324.5 A`（约 0.49 MA），Python 类型为 `float`。
+
+**关于 `wall_r` / `wall_z` 字段的物理含义说明**：
+
+`GFileData.wall_r` 和 `wall_z` 为可选字段，表示输入 GFile 是否提供了可供 LinkMesh 使用的 limiter/第一壁二维轮廓。字段为 `None` 或空数组只表示"输入文件未提供可用壁轮廓"，**不表示物理装置不存在第一壁**。LinkMesh 不得在缺少壁几何时凭空推断真实壁形状。
 
 ```python
 from dataclasses import dataclass
@@ -144,7 +155,7 @@ class GFileData:
         current  ← eq.Ip           (eqdsk.py 属性 Ip)，单位 A，不缩放
     """
 
-    # LCFS 边界坐标（最后闭合磁面）
+    # LCFS 边界坐标（最后闭合磁面，plasma-vacuum interface）
     lcfs_r: np.ndarray               # shape=(N_lcfs,)，LCFS 上各点 R 坐标 [m]
     lcfs_z: np.ndarray               # shape=(N_lcfs,)，LCFS 上各点 Z 坐标 [m]
 
@@ -152,7 +163,9 @@ class GFileData:
     rmaxis: float                    # 磁轴 R 坐标 [m]
     zmaxis: float                    # 磁轴 Z 坐标 [m]
 
-    # 第一壁点集（可选，若 GFile 不含则为 None）
+    # 第一壁/limiter 点集（可选）
+    # 若 GFile 提供了可用壁轮廓则为数组，否则为 None
+    # 字段为 None 只表示"输入文件未提供可用壁轮廓"，不表示物理装置不存在第一壁
     wall_r: Optional[np.ndarray]     # shape=(N_wall,)，第一壁 R 坐标 [m]
     wall_z: Optional[np.ndarray]     # shape=(N_wall,)，第一壁 Z 坐标 [m]
 
@@ -167,6 +180,8 @@ class GFileData:
 ### 2.2 `BoundaryConfig`：Triangle 输入配置
 
 【已确认事实】字段命名与 TokaMaker OFT `meshing.py` 中 `alpha` 字典的键名保持一致（`vertices`、`segments`、`regions`），这是 `src/linkmesh/mesher/triangle_wrapper.py` 构造 `alpha` 字典的直接来源。`segment_markers` 字段用于保留 LCFS、第一壁和外边界的物理标签，与 `segments` 逐项对应，是 `alpha` 字典的必要组成部分（见第 7.2 节）。
+
+**区域数量说明**：`BoundaryConfig.regions` 的行数由 `_build_boundary_config()` 根据输入是否提供有效壁轮廓动态决定（含壁时 3 行，无壁时 2 行），不在 Triangle Wrapper 或 Writer 中写死。
 
 ```python
 @dataclass
@@ -190,13 +205,14 @@ class BoundaryConfig:
     # 区域标记点（Triangle regions 输入）
     # 对应 Triangle alpha 字典的 'regions' 键
     # 每行格式：[R, Z, region_id, max_area_hint]
-    # region_id 约定：1=plasma, 2=vacuum, 3=wall（见第 5 节）
+    # region_id 约定：1=plasma, 2=vacuum, 3=equivalent outer/wall-conductor（见第 5 节）
     # max_area_hint=-1 表示不限制该区域面积（使用全局 max_area 约束）
-    regions: np.ndarray           # shape=(K, 4)，dtype=float64
+    # 行数由 _build_boundary_config() 根据输入动态决定，不写死
+    regions: np.ndarray           # shape=(K, 4)，dtype=float64，K 由输入决定
 
     # 边界标记（对应 segments 的整数标记，与 segments 逐项对应）
     # 对应 Triangle alpha 字典的 'segment_markers' 键
-    # 标记约定：1=LCFS, 2=first_wall, 3=outer_boundary（见第 5 节）
+    # 标记约定：1=LCFS, 2=first_wall/limiter, 3=outer_boundary（见第 5 节）
     segment_markers: np.ndarray   # shape=(M,)，dtype=int32
 
     # Triangle 质量控制参数
@@ -244,8 +260,10 @@ class Mesh2D:
     triangles: np.ndarray            # shape=(T, 3)，三角形三顶点节点索引，dtype=int32
 
     # 三角形区域标记（来自 Triangle triangleattributelist / beta['triangle_attributes']）
-    # 约定：1=plasma, 2=vacuum, 3=wall
+    # 约定：1=plasma, 2=vacuum, 3=equivalent outer/wall-conductor（见第 5 节）
     # 提取：np.asarray(beta['triangle_attributes'], dtype=np.int32).reshape(-1)
+    # 全局区域传递契约：编号必须全部来自 BoundaryConfig.regions[:,2] 显式配置的非零物理编号
+    # 不得出现 region_id=0（Triangle 默认属性，不是合法 P0 物理区域）
     region_ids: np.ndarray           # shape=(T,)，每个三角形的区域 ID，dtype=int32
 
     # 边界线段连接表
@@ -254,7 +272,7 @@ class Mesh2D:
     boundary_segments: np.ndarray    # shape=(S, 2)，边界线段端点节点索引，dtype=int32
 
     # 边界线段标记（来自 Triangle segmentmarkerlist / beta['segment_markers']）
-    # 约定：1=LCFS, 2=first_wall, 3=outer_boundary
+    # 约定：1=LCFS, 2=first_wall/limiter, 3=outer_boundary
     # 提取：np.asarray(beta['segment_markers'], dtype=np.int32).reshape(-1)
     boundary_markers: np.ndarray     # shape=(S,)，每条边界线段的标记，dtype=int32
 
@@ -300,17 +318,21 @@ src/linkmesh/readers/gfile_reader.py
 GFileData
   │
   ↓ [构造 alpha 字典，调用 Python triangle 包唯一底座]
+  │  [_build_boundary_config() 根据是否有可用壁轮廓动态决定区域数（2 或 3）]
+  │  [区域种子必须通过点在闭合多边形内外关系检查，不满足则停止并报错]
 src/linkmesh/mesher/triangle_wrapper.py
   │  ← alpha = dict(vertices=..., segments=..., segment_markers=..., regions=...)
   │  ← beta  = tr.triangulate(alpha, opts)
   │  ← 提取 beta['vertices'], beta['triangles'], beta['triangle_attributes'] 等
+  │  ← Wrapper 按契约传递区域，不推断区域物理含义，不写死区域数
   │
   ↓ [生成统一内存网格对象]
-Mesh2D  (内存核心数据结构，所有索引 0-based)
+Mesh2D  (内存核心数据结构，所有索引 0-based，region_ids 不得含 0)
   │
   ├──→ [第一阶段战役：HDF5 映射对齐]
   │      src/linkmesh/writers/hdf5_writer.py
   │      (严格对照 docs/trimeg/loadfemmesh_h5.m 黄金标尺)
+  │      (Writer 不重编号、偏置、压缩或排序 region_ids)
   │        │
   │        ↓
   │      TRIMEG 求解器消费的 HDF5 静态网格
@@ -415,7 +437,7 @@ linkmesh [选项]
 # Step 1：将三角形连接表从 0-based 转换为 1-based
 tria_nodes_1based = (mesh.triangles + 1).astype(np.int32)   # shape=(T, 3)
 
-# Step 2：将 region_ids 扩展为列向量
+# Step 2：将 region_ids 扩展为列向量（不需要偏置，region_id 是物理标记非节点索引）
 region_col = mesh.region_ids.reshape(-1, 1).astype(np.int32)  # shape=(T, 1)
 
 # Step 3：水平拼接，构造 (T, 4) 矩阵
@@ -448,12 +470,23 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
    - 数值精度（节点坐标 float32 vs float64；索引 int32 vs int64）
    - 拓扑排列顺序（节点坐标块、三角形连接块、区域标记块、边界标记块的先后顺序）
    - 索引约定（0-based vs 1-based）
+   - MeshFile 与 ModelFile 的配对关系（见第 4.2.1 节）
 3. **实现路线**：由侦察结果和主管确认决定，可能包括但不限于：
    - Python 二进制写出；
    - 调用 SCOREC/PUMI 官方 API；
    - 调用经确认的官方转换程序；
    - 其他由直接证据确认的方式。
 4. **前置条件**：`src/linkmesh/writers/smb_writer.py` 的具体实现**必须等待** M3 完整验收通过、只读侦察任务完成并经主管确认后方可开始编写。
+
+#### 4.2.1 M4 侦察线索（组内交流，非直接源码证据）
+
+以下内容来自组内交流，记录为 M4 侦察线索，不得升级为已确认格式事实：
+
+- M3DC1 可能存在 Multi Region 网格，区域数可能依装置、算例和 ModelFile 而变化；
+- MeshFile 可能保存离散网格，ModelFile 可能保存边界/模型信息；
+- 导体和线圈的完整含时物理功能可能有限。
+
+M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile、MeshFile 和 M3DC1/SCOREC/PUMI 源码进行只读侦察，确认区域数量、D1B、几何分类、索引、文件配对和 `.smb` 契约；不得据此提前实现 `.smb`。P0 默认三区域方案不得被外推为 M3DC1 永久固定三区域。
 
 **【待源码确认】当前推断的 `.smb` 格式关键事实**：
 
@@ -468,35 +501,78 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
 | 索引约定 | 1-based（Fortran/PUMI 约定） | 【待源码确认】 |
 | 高阶节点 | 是否需要边中点（C1 单元需求） | 【待源码确认，见缺口 G1】 |
 | 序列化方式 | Python 二进制写出或其他 | 【待侦察后由主管确认】 |
+| MeshFile/ModelFile 配对 | 区域数量和 ModelFile 格式 | 【待源码确认，见 M4 侦察线索】 |
 
 ---
 
 ## 5. 区域标记与边界标记约定
 
-### 5.1 区域标记（region_id）约定
+### 5.1 P0 区域方案总览
 
-LinkMesh 在当前 P0 阶段使用以下整数区域标记约定，该约定必须在 `BoundaryConfig.regions`、`Mesh2D.region_ids`、`src/linkmesh/writers/hdf5_writer.py` 和 `src/linkmesh/writers/smb_writer.py` 中保持一致：
+LinkMesh P0 阶段采用**轻量的按表区域传递契约**：区域由 `BoundaryConfig.regions` 中的显式种子定义，Triangle 将每个三角形的区域属性写入 `Mesh2D.region_ids`，Wrapper 和 Writer 只按契约传递区域，不负责推断区域物理含义，不写死区域数量。
 
-| region_id | 物理含义 | 对应 M3DC1 语义 | 对应 TRIMEG 语义 |
-|---|---|---|---|
-| 1 | 等离子体区（plasma） | plasma region | plasma zone |
-| 2 | 真空区（vacuum） | vacuum region | vacuum zone |
-| 3 | 第一壁/导体区（wall/conductor） | resistive wall region | wall zone |
+**P0 当前支持两种方案**，由 `_build_boundary_config()` 根据输入动态选择：
 
-**注意**：`region_id` 是物理标签，不得执行索引式 `+1` 偏置。当 GFile 不含第一壁信息时，LinkMesh 只生成 plasma 区（region_id=1）和 vacuum 区（region_id=2）。
+#### 方案 A：含有效第一壁轮廓的默认三区域方案（当前 DIII-D P0 验收方案）
 
-### 5.2 边界标记（boundary_marker）约定
+当 GFile 提供有效、闭合且满足嵌套关系的第一壁/limiter 轮廓时，P0 默认计算域从内到外定义为：
 
-LinkMesh 在当前 P0 阶段使用以下整数边界标记约定，该约定必须在 `BoundaryConfig.segment_markers`、`Mesh2D.boundary_markers`、`src/linkmesh/writers/hdf5_writer.py` 和 `src/linkmesh/writers/smb_writer.py` 中保持一致：
+| region_id | 物理含义 | 几何范围 | 对应 M3DC1 语义 | 对应 TRIMEG 语义 |
+|---|---|---|---|---|
+| 1 | plasma | LCFS 内部 | plasma region | plasma zone |
+| 2 | vacuum | LCFS 外且第一壁内 | vacuum region | vacuum zone |
+| 3 | equivalent outer/wall-conductor computational region | 第一壁外且人工 outer boundary 内 | 待 M4 侦察确认 | wall zone |
 
-| boundary_marker | 物理含义 | 对应 M3DC1 语义 |
+**重要说明**：`region_id=3` 是 P0 等效计算区域，只用于完成多区域网格翻译和接口验收，不代表真实导体厚度、材料、线圈或电路模型。人工 outer boundary 是 LinkMesh 构造的数值截断边界，不是 GFile 提供的真实装置外表面，不得将其解释成真实装置外壁。
+
+#### 方案 B：无可用第一壁轮廓的降级两区域方案
+
+若 GFile 未提供可用第一壁轮廓（`GFileData.wall_r` 为 `None` 或空），则 P0 降级为：
+
+| region_id | 物理含义 | 几何范围 |
 |---|---|---|
-| 1 | 最后闭合磁面（LCFS） | plasma-vacuum interface |
-| 2 | 第一壁内表面 | wall inner surface |
-| 3 | 外边界（计算域边界） | outer boundary |
+| 1 | plasma | LCFS 内部 |
+| 2 | vacuum | LCFS 外且人工 outer boundary 内 |
+
+**重要说明**：不生成 `region_id=3`，因为 LinkMesh 没有壁几何依据。该方案的含义只是"输入缺少可用壁轮廓"，不得写成"物理装置没有第一壁"。
+
+### 5.2 区域标记（region_id）约定
+
+| region_id | 物理含义 | 方案 A（含壁） | 方案 B（无壁） |
+|---|---|---|---|
+| 1 | plasma | ✅ | ✅ |
+| 2 | vacuum | ✅ | ✅ |
+| 3 | equivalent outer/wall-conductor computational region | ✅ | 不生成 |
+
+**注意**：`region_id` 是物理标签，不得执行索引式 `+1` 偏置。`region_id=0` 是 Triangle 默认属性，不是合法 P0 物理区域，最终 `Mesh2D` 中不得出现。
+
+### 5.3 边界标记（boundary_marker）约定
+
+| boundary_marker | 物理含义 | 几何含义 |
+|---|---|---|
+| 1 | LCFS | plasma-vacuum interface；区域 1 与区域 2 的界面 |
+| 2 | first wall/limiter | vacuum 与 P0 等效区域 3 的界面（仅方案 A） |
+| 3 | outer boundary | LinkMesh 构造的人工数值截断边界；P0 计算域的数值外边界 |
 | 0 | 内部节点（非边界） | — |
 
-**注意**：`boundary_markers` 不得被清零、偏置或改写；Wrapper 规范化 shape/dtype 后必须保持原始物理编号。
+**注意**：`boundary_markers` 不得被清零、偏置或改写；Wrapper 规范化 shape/dtype 后必须保持原始物理编号。边界标记和区域编号不是一一对应的数组索引关系：`segment_markers` 标记几何曲线或界面，`region_ids` 标记二维三角形所属的计算区域，两者均为物理/几何标签。
+
+### 5.4 全局区域传递契约
+
+以下规则作为稳定契约，不把所有网格永久锁死为三区域：
+
+1. `BoundaryConfig.regions` 每行仍为 `[R, Z, region_id, max_area_hint]`；
+2. 本次区域方案中的每个区域必须由显式种子定义；
+3. 最终 `Mesh2D.region_ids` 中的编号必须全部来自本次 `BoundaryConfig.regions[:,2]` 显式配置的非零物理编号；
+4. Triangle 默认属性 `region_id=0` 不是合法 P0 物理区域，最终 `Mesh2D` 中不得出现；
+5. 每个显式配置的区域编号必须至少对应一个三角形；
+6. 输出区域编号集合应与本次区域方案配置的区域编号集合一致；
+7. `len(mesh.region_ids) == mesh.n_triangles`；
+8. 不得在 Triangle 输出后通过将 `0` 批量替换为某个编号来掩盖缺失种子，必须在 `BoundaryConfig.regions` 构造阶段正确配置区域；
+9. 当前 DIII-D 含第一壁的 P0 默认方案期望 `{1,2,3}`；
+10. 无可用第一壁轮廓的降级方案期望 `{1,2}`；
+11. 上述集合是具体 P0 区域方案的验收条件，不是对未来所有 M3DC1 Multi Region 网格永久写死区域数；
+12. Triangle Wrapper 和 Writer 不得写死区域数量，不得推断区域物理含义，不得重编号、压缩、排序或自行推断区域。
 
 ---
 
@@ -663,13 +739,14 @@ LinkMesh 的 `triangle_wrapper.py` 使用 Python `triangle` 包（`tr.triangulat
 | `vertices` | `(N, 2)` | float64 | 所有边界点 [R, Z] 坐标，来自 `config.vertices` |
 | `segments` | `(M, 2)` | int32 | 线段端点索引对，0-based，来自 `config.segments` |
 | `segment_markers` | `(M,)` | int32 | 与 `segments` 逐项对应的边界标记，来自 `config.segment_markers` |
-| `regions` | `(K, 4)` | float64 | 每行 `[R, Z, region_id, max_area_hint]`，来自 `config.regions` |
+| `regions` | `(K, 4)` | float64 | 每行 `[R, Z, region_id, max_area_hint]`，来自 `config.regions`；K 由输入决定，不写死 |
 
 **物理语义保证**：
 - `vertices` 不交换 R/Z、不缩放；
 - `segments` 节点索引保持 0-based，不提前转换为 1-based；
-- `segment_markers` 保持原始物理编号（1=LCFS, 2=first_wall, 3=outer_boundary），不清零、不偏置；
-- `regions` 中的 `region_id` 是物理标签（1=plasma, 2=vacuum, 3=wall），不执行 `+1`。
+- `segment_markers` 保持原始物理编号（1=LCFS, 2=first_wall/limiter, 3=outer_boundary），不清零、不偏置；
+- `regions` 中的 `region_id` 是物理标签（1=plasma, 2=vacuum, 3=equivalent outer/wall-conductor），不执行 `+1`；
+- Wrapper 不写死区域数量，不推断区域物理含义。
 
 ```python
 # Triangle 输入字典格式（正式契约）
@@ -716,7 +793,7 @@ def _build_triangle_opts(config: BoundaryConfig) -> str:
 |---|---|---|---|---|---|
 | `nodes` | `beta["vertices"]` | `.astype(np.float64)` | `(N, 2)` | float64 | R/Z 不交换、不缩放 |
 | `triangles` | `beta["triangles"]` | `.astype(np.int32)` | `(T, 3)` | int32 | 保持 0-based，不转 1-based |
-| `region_ids` | `beta["triangle_attributes"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(T,)` | int32 | 不执行 `+1`；T==1 时仍为一维 |
+| `region_ids` | `beta["triangle_attributes"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(T,)` | int32 | 不执行 `+1`；T==1 时仍为一维；不得含 0 |
 | `boundary_segments` | `beta["segments"]` | `.astype(np.int32)` | `(S, 2)` | int32 | 保持 0-based，不转 1-based |
 | `boundary_markers` | `beta["segment_markers"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(S,)` | int32 | 不清零、不偏置；S==1 时仍为一维 |
 | `node_markers` | `beta["vertex_markers"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(N,)` | int32 | 不清零、不偏置；N==1 时仍为一维 |
@@ -753,13 +830,62 @@ node_markers = np.asarray(
 
 ---
 
-## 8. src/linkmesh/writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
+## 8. src/linkmesh/cli.py 中 `_build_boundary_config()` 实现规范
 
-### 8.1 实现依据与黄金标尺
+### 8.1 职责与区域方案选择
+
+`_build_boundary_config()` 是 M2 里程碑的核心胶水代码，负责将 `GFileData` 中的 LCFS 边界坐标转换为 Triangle 所需的分段线性复合体（PLC）描述格式，并根据输入是否提供有效壁轮廓动态选择区域方案：
+
+- **含有效第一壁轮廓**：构造三区域方案（region_id=1/2/3），生成 3 行 `regions`；
+- **无可用第一壁轮廓**：构造两区域方案（region_id=1/2），生成 2 行 `regions`。
+
+### 8.2 区域种子几何契约（正式规范）
+
+`_build_boundary_config()` 必须满足以下区域种子几何条件：
+
+1. **plasma seed（region_id=1）**：必须严格位于 LCFS 内；
+2. **vacuum seed（region_id=2）**：
+   - 含第一壁时：必须严格位于 LCFS 外且第一壁内；
+   - 无第一壁时：必须严格位于 LCFS 外且人工 outer boundary 内；
+3. **region 3 seed（region_id=3，仅含第一壁时）**：必须严格位于第一壁外且人工 outer boundary 内；
+4. 种子不得落在 LCFS、第一壁或人工 outer boundary 的线段上；
+5. 不能继续无条件使用"LCFS 最右端与人工 outer boundary 最右端的中点"作为 vacuum seed，因为真实 DIII-D 证据表明该公式不能保证种子位于 LCFS 与第一壁之间；
+6. 种子必须经过确定性的点在闭合多边形内外关系检查（用于验证种子位于哪个几何环带；不能替代边界闭合、自交、嵌套和最终网格质量验收）；
+7. 边界必须满足 P0 预期嵌套关系：
+   - 含第一壁：LCFS 位于第一壁内，第一壁位于人工 outer boundary 内；
+   - 无第一壁：LCFS 位于人工 outer boundary 内；
+8. 若边界不闭合、发生不允许的相交、不满足嵌套关系或无法找到合法种子，`_build_boundary_config()` 必须停止并抛出明确错误，不得继续生成可能含 `region_id=0` 的网格；
+9. 本蓝图规定几何条件、失败原则和确定性要求，不锁定未经实现审查的具体种子搜索算法。
+
+### 8.3 三条 P0 几何边界的含义
+
+| 边界 | 来源 | 含义 |
+|---|---|---|
+| LCFS | GFile/OFT | plasma-vacuum interface |
+| first wall/limiter | GFile/OFT 的可用壁轮廓（可选） | vacuum 与 P0 等效外部区域之间的内部界面 |
+| outer boundary | LinkMesh 构造的人工数值截断边界 | P0 计算域的数值外边界，不是 GFile 提供的真实装置外表面 |
+
+### 8.4 实现步骤概要（已实现，待修复区域种子部分）
+
+【已确认事实】`_build_boundary_config()` 已在 `src/linkmesh/cli.py` 中实现（git: 994c415），当前实现步骤：
+
+1. LCFS 点集重采样（等弧长插值）；
+2. 构造人工 outer boundary 矩形；
+3. 组装顶点列表与线段连接表（LCFS + outer boundary + 第一壁（若有））；
+4. 设置区域标记点（regions）——**此步骤存在 region_id=0 缺陷，待修复**；
+5. 封装为 `BoundaryConfig` 对象。
+
+**当前已知缺陷**：vacuum seed 使用"LCFS 最右端与 outer boundary 最右端的中点"公式，真实 DIII-D 验收证明该公式不能保证种子位于 LCFS 与第一壁之间，导致 245 个三角形出现 `region_id=0`。修复必须引入确定性的点在闭合多边形内外关系检查，并满足第 8.2 节的全部几何条件。
+
+---
+
+## 9. src/linkmesh/writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
+
+### 9.1 实现依据与黄金标尺
 
 【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 的唯一实现依据是 `docs/trimeg/loadfemmesh_h5.m`。该脚本是 TRIMEG 求解器读取网格 HDF5 文件的 MATLAB 实现，其每一行 `h5read` 调用直接揭示了 TRIMEG 对 HDF5 文件结构的期望。所有数据集路径名、存储形状、数据类型和索引约定均以该脚本为最终裁决依据，不得凭推断自行补充。
 
-### 8.2 TRIMEG HDF5 物理文件结构树
+### 9.2 TRIMEG HDF5 物理文件结构树
 
 【已确认事实】以下结构树直接来自 `loadfemmesh_h5.m` 逐行解析，所有字段均为已确认事实：
 
@@ -782,14 +908,14 @@ mesh.h5
     ├── tria         [shape=(4,T), int32]     # 三角形数据，HDF5 中存 (4,T)
     │                                          # MATLAB h5read 后转置得 (T,4)
     │                                          # 列顺序：列0-2=节点索引(1-based)
-    │                                          #         列3=region_id（无偏置）
+    │                                          #         列3=region_id（无偏置，原样写出）
     │
     ├── nbcRZ        [标量, int32]      # 边界节点坐标点数（等于 nvert_ex）
     ├── Rbc          [shape=(nbcRZ,), float64]  # 边界节点 R 坐标 [m]（始终写出）
     └── Zbc          [shape=(nbcRZ,), float64]  # 边界节点 Z 坐标 [m]（始终写出）
 ```
 
-### 8.3 精确字段映射契约（Field Mapping Contract）
+### 9.3 精确字段映射契约（Field Mapping Contract）
 
 【已确认事实】以下每一行均为从 `loadfemmesh_h5.m` 直接提取的确凿映射规则，`write_hdf5()` 已按此完整实现：
 
@@ -802,12 +928,12 @@ mesh.h5
 | `/femmesh/vert` | `(2, N)` | float64 | `mesh.nodes.T.astype(np.float64)` | **转置**：Python 中 `nodes` 为 `(N,2)`，转置后写入得 `(2,N)` |
 | `/femmesh/idxivert` | `(nvert_in,)` | int32 | `(np.where(mesh.node_markers == 0)[0] + 1).astype(np.int32)` | **+1 偏置**：0-based 下标转 1-based 全局索引 |
 | `/femmesh/idxevert` | `(nvert_ex,)` | int32 | `(np.where(mesh.node_markers != 0)[0] + 1).astype(np.int32)` | **+1 偏置**：0-based 下标转 1-based 全局索引 |
-| `/femmesh/tria` | `(4, T)` | int32 | 见 §8.4 精确构造公式 | **+1 偏置（节点列）+ 转置** |
+| `/femmesh/tria` | `(4, T)` | int32 | 见 §9.4 精确构造公式 | **+1 偏置（节点列）+ 转置；region_id 列原样写出** |
 | `/femmesh/nbcRZ` | 标量 | int32 | `np.int32(np.sum(mesh.node_markers != 0))` | 无转换（等于 nvert_ex） |
 | `/femmesh/Rbc` | `(nbcRZ,)` | float64 | `mesh.nodes[mesh.node_markers != 0, 0].astype(np.float64)` | 无转换，提取边界节点 R 列 |
 | `/femmesh/Zbc` | `(nbcRZ,)` | float64 | `mesh.nodes[mesh.node_markers != 0, 1].astype(np.float64)` | 无转换，提取边界节点 Z 列 |
 
-### 8.4 `/femmesh/tria` 精确构造公式
+### 9.4 `/femmesh/tria` 精确构造公式
 
 【已确认事实】已在 `write_hdf5()` 中完整实现：
 
@@ -815,7 +941,7 @@ mesh.h5
 # Step 1：节点索引从 0-based 转换为 1-based
 tria_nodes_1based = (mesh.triangles + 1).astype(np.int32)      # shape=(T, 3)
 
-# Step 2：region_ids 扩展为列向量（不需要偏置，region_id 是物理标记非节点索引）
+# Step 2：region_ids 扩展为列向量（不需要偏置，region_id 是物理标记非节点索引，原样写出）
 region_col = mesh.region_ids.reshape(-1, 1).astype(np.int32)   # shape=(T, 1)
 
 # Step 3：水平拼接为 (T, 4) 矩阵
@@ -825,23 +951,17 @@ tria_4col = np.hstack([tria_nodes_1based, region_col])          # shape=(T, 4)
 grp.create_dataset("tria", data=tria_4col.T.astype(np.int32))
 ```
 
-### 8.5 `write_hdf5()` 实现状态
+### 9.5 `write_hdf5()` 实现状态与 M3 前置条件
 
-【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 中的 `write_hdf5(mesh, filepath, verbose=True)` 函数已**完整实现**（非占位），按 §8.3 映射契约逐一写出全部 11 个数据集，包括：
+【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 中的 `write_hdf5(mesh, filepath, verbose=True)` 函数已**完整实现**（非占位），按 §9.3 映射契约逐一写出全部 11 个数据集。
 
-- 4 个标量元数据（`nvert`、`ntria`、`nvert_in`、`nvert_ex`）
-- 转置写入的 `vert`（`mesh.nodes.T`）
-- +1 偏置的 `idxivert`、`idxevert`
-- +1 偏置 + 转置的 `tria`（`tria_4col.T`）
-- 始终写出的 `nbcRZ`、`Rbc`、`Zbc`
-
-函数签名：`write_hdf5(mesh: Mesh2D, filepath: str, verbose: bool = True) -> None`
+**M3 前置条件**：M3 真实验收必须基于已经通过 M2 的无 `region_id=0` 网格。在 M2 区域种子修复并通过验收之前，不得进入 M3 验收。
 
 ---
 
-## 9. src/linkmesh/writers/smb_writer.py 实现规范（第二战役：M3 验收后侦察确定实现路线）
+## 10. src/linkmesh/writers/smb_writer.py 实现规范（第二战役：M3 验收后侦察确定实现路线）
 
-### 9.1 实现依据与前置条件
+### 10.1 实现依据与前置条件
 
 `src/linkmesh/writers/smb_writer.py` 的实现依赖对 `SCOREC/PUMI` 开源 C++ 源码的只读侦察结果，以及主管对实现路线的确认。**在 M3 完整验收通过、侦察任务完成并经主管确认前，本模块保持 `NotImplementedError` 占位实现，严禁提前编写任何字节流或序列化逻辑。**
 
@@ -850,7 +970,7 @@ grp.create_dataset("tria", data=tria_4col.T.astype(np.int32))
 - `M3DC1/m3dc1_scorec/include/m3dc1_model.h`：model `.txt` 配套文件格式
 - `M3DC1/m3dc1_scorec/src/m3dc1_field.cc`：高阶节点需求确认
 
-### 9.2 `write_smb()` 函数接口（占位，待 M4 里程碑实现）
+### 10.2 `write_smb()` 函数接口（占位，待 M4 里程碑实现）
 
 【已确认事实】当前 `write_smb()` 保持 `raise NotImplementedError` 占位实现，同时定义了 `_write_model_txt()` 内部函数占位（同样为 `raise NotImplementedError`）。实现路线（包括但不限于 Python 二进制写出、调用官方 API 或其他方式）必须由侦察结果和主管确认决定，不得提前锁定。
 
@@ -869,7 +989,7 @@ def write_smb(mesh: Mesh2D, filepath: str) -> None:
     raise NotImplementedError(...)
 ```
 
-### 9.3 配套 model .txt 文件规范（占位）
+### 10.3 配套 model .txt 文件规范（占位）
 
 M3DC1 在读取 `.smb` 网格文件的同时，还需要读取配套的 model `.txt` 文件来获取区域语义和边界条件定义。`src/linkmesh/writers/smb_writer.py` 在写出 `.smb` 文件时，应同时写出配套的 model `.txt` 文件。
 
@@ -883,9 +1003,9 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 
 ---
 
-## 10. src/linkmesh/utils/plotter.py 实现规范
+## 11. src/linkmesh/utils/plotter.py 实现规范
 
-### 10.1 已实现的两个函数
+### 11.1 已实现的两个函数
 
 【已确认事实】`src/linkmesh/utils/plotter.py` 已完整实现以下两个函数：
 
@@ -914,9 +1034,9 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 
 ---
 
-## 11. 依赖清单
+## 12. 依赖清单
 
-### 11.1 核心运行依赖
+### 12.1 核心运行依赖
 
 ```text
 numpy>=1.24.0
@@ -929,9 +1049,9 @@ openfusiontoolkit==26.6
 **说明**：
 - `openfusiontoolkit==26.6` 为当前在 Linux x86_64 服务器（liustation）上通过 pip 安装官方 manylinux wheel 并完成真实冒烟测试验证的版本，不得写成 `>=26.6`，不得声称其他版本已经验证。
 - OFT 通过 pip 安装官方 wheel 获取，**不依赖** `TOKAMAKER/` 源码树。
-- `pyproject.toml`（计划新增）和 `requirements.txt` 的核心运行依赖和版本约束必须保持一致（见第 14 节）。
+- `pyproject.toml`（计划新增）和 `requirements.txt` 的核心运行依赖和版本约束必须保持一致（见第 15 节）。
 
-### 11.2 开发与测试依赖（可选）
+### 12.2 开发与测试依赖（可选）
 
 ```text
 pytest>=7.0.0
@@ -939,7 +1059,7 @@ pytest>=7.0.0
 
 ---
 
-## 12. 敏捷渐进里程碑（MVP 开发阶段）
+## 13. 敏捷渐进里程碑（MVP 开发阶段）
 
 **【铁律】开发时序严格锁死：先完成 M3（TRIMEG HDF5 闭环验证），确认网格几何物理质量完全合格后，再进军 M4（`.smb` 侦察与实现）。严禁跳序。**
 
@@ -967,8 +1087,6 @@ pytest>=7.0.0
 
 **非阻塞问题**：matplotlib `DejaVu Sans` 缺少中文字形，产生 `Glyph missing` 警告，不影响物理验收，当前不要求修改业务源码。
 
-**History 归档状态**：`History.md` 第 7 条已有部分记录（"已在服务器上完成 M1 的 Mock 测试和 DIIID 的真实 GFile 测试"），本轮完整证据（19 passed、DIII-D 具体数值、人工几何检查结论）待归档。
-
 **M1 验收标准逐项确认**：
 1. ✅ `python -m linkmesh --gfile ... --no-hdf5 --no-smb --plot lcfs_check.png` 能够运行
 2. ✅ 生成的 PNG 中 LCFS 边界曲线闭合、方向正确
@@ -983,85 +1101,102 @@ pytest>=7.0.0
 
 ### 里程碑 M2：Triangle 网格生成验收（P0 第二步）
 
-**当前状态**：【进行中，自动测试待修正后执行，真实集成测试尚未执行】
+**当前状态**：【BLOCKED——自动测试 36/36 通过、几何与质量检查通过、PNG 人工检查通过，但真实 region_id=0 阻塞，不得进入 M3】
 
-**目标**：能够从 LCFS 边界调用 Python `triangle` 包唯一底座生成二维三角网格并可视化。
+#### M2 已确认结果（本轮真实验收直接证据）
 
-**M2 测试前置修正要求**（静态审查结论，运行前必须修正）：
+**自动测试**：
+- 运行环境：Linux、Python 3.12.13、pytest 9.1.1
+- 结果：`36 passed in 0.19s`，退出码 0
+- 其中 27 项受控 mock 契约测试和 9 项真实 Triangle 最小集成测试全部通过
+- 临时日志：`/tmp/m2_triangle_wrapper_test.log`，不保证长期保存
 
-当前 `tests/test_triangle_wrapper.py` 存在以下已知问题，运行前必须修正，不得用 `create=True` 掩盖：
-- mock 目标为 `linkmesh.mesher.triangle_wrapper.tr.triangulate`，但业务源码在 `generate_mesh()` 内局部执行 `import triangle as tr`，`tr` 不是模块属性；正确 patch 目标应为 `triangle.triangulate`
-- 文件头 `AUTHORED_NOT_RUN`、`PENDING_MANUAL_REVIEW` 状态文字会在运行后过期，应替换为稳定说明
-- `_make_minimal_mesh2d()` 的 `n_nodes`、`n_tria`、`n_seg` 参数未使用
-- 三个测试声明了未使用的 `tmp_path`
-- 当前边界标记测试只检查值域，不能证明标记被原样保留
-- 当前测试缺少 `segment_markers` 输入验证、六个输出字段的精确内容映射、单元素 shape、边界索引和空输出异常覆盖
+**真实 DIII-D 链路验收**：
+- 真实 GFile：`TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440`
+- 真实链路：`DIII-D GFile → read_gfile → GFileData → _build_boundary_config → generate_mesh → Mesh2D → plot_mesh`
+- 输入 `BoundaryConfig`：`vertices (171,2) float64`，`segments (171,2) int32`，`segment_markers (171,) int32`，`regions (2,4) float64`
+- 输入边界标记计数：`{1:80, 2:87, 3:4}`（LCFS 80 条、第一壁 87 条、outer boundary 4 条）
+- 输出 `Mesh2D`：308 个节点、574 个三角形、207 条边界线段
+- 输出边界标记计数：`{1:80, 2:87, 3:40}`（outer boundary 的 4 条输入边被 Triangle 合法细分为 40 条输出边界线段，不作为失败）
+- 三角形和边界索引合法；重复顶点三角形为 0；面积不大于 `1e-12 m²` 的三角形为 0；非正有向面积三角形为 0
+- 实际最小内角：`20.01391400°`，满足 `20.0° - 0.01°` 的验收下限
+- PNG：`/tmp/linkmesh_diiid_m2.png` 已生成
+- User 人工确认：网格覆盖、LCFS、第一壁、人工 outer boundary、磁轴位置及三角形几何外观基本正常
+- matplotlib 中文 `Glyph missing` 警告：非阻塞显示问题
 
-**M2 自动测试验收要求**（修正后执行，尚未通过）：
+**区域编号验收失败（阻塞 M2）**：
+- 输出区域计数：`{0:245, 1:176, 2:153}`
+- 245 个三角形出现不允许的 `region_id=0`（Triangle 默认属性，不是合法 P0 物理区域）
+- 当前确认：三条闭合边界、两个区域种子（regions 行数为 2）、245 个默认区域 0 三角形
+- 不确认：`region_id=0` 具体位于哪一个几何环带（不作为已确认事实）
+- 根本原因：`_build_boundary_config()` 中 vacuum seed 使用"LCFS 最右端与 outer boundary 最右端的中点"公式，不能保证种子位于 LCFS 与第一壁之间；且当前 `regions` 只有 2 行（缺少 region_id=3 的种子），不符合含第一壁三区域方案
 
-模拟契约测试（mock `triangle.triangulate`）：
-1. 验证 alpha 字典包含四个字段（`vertices`、`segments`、`segment_markers`、`regions`）及其 shape、dtype、内容
-2. 验证 Triangle 选项字符串包含 `p`、`q`（含数值）、`A`、`z`、`Q`；`max_area` 不为 None 时包含小写 `a`；`max_area` 为 None 时不含面积约束数值
-3. 精确验证 beta 六个字段到 `Mesh2D` 的映射（内容、shape、dtype 均正确）
-4. 验证 `triangles` 和 `boundary_segments` 满足 `0 <= index < n_nodes`
-5. 验证 `region_ids` 和 `boundary_markers` 未被错误偏置或改写（输入值与输出值精确一致）
-6. 验证单三角形（T==1）和单元素标记输出仍为一维数组（shape `(1,)` 而非 `()`）
-7. 验证空节点或空三角形输出被 Wrapper 拒绝并抛出异常（精确异常类型待 User 裁决，见第 7.5 节）
+#### M2 目标：修复后验收标准
 
-真实 Triangle 集成测试（不 mock，调用真实 `generate_mesh`）：
-1. 验证合法 `BoundaryConfig` 生成合法 `Mesh2D`（节点数 > 0，三角形数 > 0）
-2. 验证所有节点坐标有限（`np.isfinite`）
-3. 验证所有三角形索引合法且为 0-based（`0 <= index < n_nodes`）
-4. 验证无退化三角形（三顶点索引互不相同）
-5. 验证无零面积三角形（面积 > 1e-12）
-6. 验证 `region_ids` 取值在约定范围内（`{1, 2, 3}` 的子集）
-7. 验证边界线段数与边界标记数一致
-8. 验证实际最小内角满足 `actual_min_angle >= min_angle - 0.01°`（容差仅用于浮点误差，不得掩盖 Triangle 质量约束失败）
+**区域编号验收**：
+- 含有效第一壁的当前 DIII-D P0 默认方案，`Mesh2D.region_ids` 集合必须精确为 `{1,2,3}`；
+- 无可用第一壁轮廓的降级方案，集合必须精确为 `{1,2}`；
+- 任何 P0 方案都不得出现 `0` 或未配置编号；
+- 每个配置区域必须至少包含一个三角形；
+- 通过三角形质心相对 LCFS、第一壁和人工 outer boundary 的内外关系，验证区域编号与几何环带一致；
+- 数值区域统计负责验证区域编号，默认不按区域着色的 PNG 不能替代该检查。
 
-**M2 真实 GFile 端到端验收要求**（自动测试通过后执行，尚未执行）：
+**几何与质量验收（继续检查）**：
+- 节点与边界索引合法（0-based，范围内）
+- 数组 shape/dtype 正确
+- 重复顶点三角形为 0
+- 近零面积三角形为 0（面积 > 1e-12）
+- 非正有向面积三角形为 0
+- 实际最小内角满足 `actual_min_angle >= min_angle - 0.01°`
 
-执行完整链路：DIII-D `GFileData → BoundaryConfig → Triangle → Mesh2D`，检查：
-- 节点数、三角形数、边界线段数的合理性
-- 所有索引合法（0-based，范围内）
-- 区域编号正确（plasma=1, vacuum=2）
-- 无退化单元和零面积三角形
-- 实际最小内角满足约束
-- 生成 M2 PNG（`plot_mesh`）
+**测试要求**：
+- 修复后必须重跑现有 `tests/test_triangle_wrapper.py`（36 项）；
+- 必须新增或扩展 `_build_boundary_config()` 的测试，至少覆盖：
+  - 含第一壁三区域方案（region_ids 集合为 `{1,2,3}`）
+  - 无第一壁两区域方案（region_ids 集合为 `{1,2}`）
+  - 种子内外关系（plasma seed 在 LCFS 内，vacuum seed 在正确环带内，region 3 seed 在第一壁外）
+  - 非法嵌套时停止并报错
+  - 无法找到合法种子时停止并报错
+  - 不得出现未配置区域（不得出现 `region_id=0`）
+- 必须重跑真实 DIII-D 链路并重新生成 PNG；
+- 只有上述全部通过并由 User 确认后，M2 才能改为 `PASSED` 并进入 M3。
 
-User 人工检查 M2 PNG：
-- 三角网格覆盖 LCFS 内部（plasma 区）和 LCFS 与外边界之间（vacuum 区）
-- LCFS 边界曲线与网格边界吻合
-- 若有第一壁，第一壁边界可见
-- 外边界矩形可见
-- 三角形质量视觉合理（无明显退化或极细长三角形）
-
-**M2 验收标准**（尚未全部通过）：
+**M2 验收标准完整列表**（修复后逐项确认）：
 1. `python -m linkmesh --gfile sample.geqdsk --no-smb --plot mesh_check.png` 能够运行
 2. 生成的 `mesh_check.png` 中三角网格覆盖 LCFS 内部区域，无明显退化三角形
 3. 终端打印：`节点数: N，三角形数: T，边界线段数: S`
 4. `Mesh2D` 对象的所有字段均已正确填充
 5. 计算生成网格中全部三角形的真实内角，记录实际最小角 `actual_min_angle`，验证：`actual_min_angle >= min_angle - angle_tolerance`（`angle_tolerance` 约为 0.01°，仅用于浮点误差）；若真实网格明显低于 `min_angle`，测试必须失败并输出最小角及对应三角形
 6. `triangle_wrapper.py` 中 `alpha` 字典包含 `vertices`、`segments`、`segment_markers`、`regions` 四个字段（对齐正式契约），`beta` 字典提取键名为 `vertices`、`triangles`、`triangle_attributes`、`segments`、`segment_markers`、`vertex_markers`
-7. `cli.py` 中 `_build_boundary_config()` 已完整实现（git: 994c415）
-8. `tests/test_triangle_wrapper.py` 中的 M2 自动测试全部通过（修正后执行）
+7. `cli.py` 中 `_build_boundary_config()` 已完整实现（git: 994c415），区域种子修复后满足第 8.2 节全部几何条件
+8. 含第一壁时 `Mesh2D.region_ids` 集合精确为 `{1,2,3}`，无第一壁时精确为 `{1,2}`，任何方案不得出现 `0`
+9. `tests/test_triangle_wrapper.py` 中的 M2 自动测试全部通过（修复后重跑）
+10. `_build_boundary_config()` 的新增测试全部通过
 
-**涉及模块**：`src/linkmesh/mesher/triangle_wrapper.py`，`src/linkmesh/utils/plotter.py`（`plot_mesh` 函数），`src/linkmesh/cli.py`（`_build_boundary_config` 函数），`tests/test_triangle_wrapper.py`（待修正后执行）
+**涉及模块**：`src/linkmesh/mesher/triangle_wrapper.py`，`src/linkmesh/utils/plotter.py`（`plot_mesh` 函数），`src/linkmesh/cli.py`（`_build_boundary_config` 函数，待修复区域种子），`tests/test_triangle_wrapper.py`（已 36/36 通过，修复后重跑）
 
 ---
 
 ### 里程碑 M3：TRIMEG HDF5 输出验收（P0 第三步，第一战役闭环）
 
-**当前状态**：【占位，待 M2 验收通过后开始】
+**当前状态**：【占位，待 M2 完整验收通过后开始；M3 真实验收必须基于无 region_id=0 的网格】
 
 **目标**：将 Python `triangle` 包生成的三角网格写出为 TRIMEG 可消费的 HDF5 文件，并通过 `loadfemmesh_h5.m` 读取验证，确认网格几何物理质量完全合格。
+
+**M3 边界**：
+- Writer 不推断区域物理含义；
+- Writer 不重编号、偏置、压缩或排序 `region_ids`；
+- 节点连接表按契约从 0-based 转为 1-based；
+- `region_id` 原样写出，不执行 `+1`；
+- 本轮不得宣称 M3 已开始或通过。
 
 **验收标准**：
 1. `python -m linkmesh --gfile sample.geqdsk --output mesh.h5 --no-smb` 能够运行；
 2. 生成的 `mesh.h5` 文件可用 `h5py` 正常打开；
 3. `h5py` 读取验证：`/femmesh/vert` shape=`(2,N)`，`/femmesh/tria` shape=`(4,T)`，`/femmesh/nvert`=N，`/femmesh/ntria`=T；
 4. 使用 `loadfemmesh_h5.m` 在 MATLAB 中读取 `mesh.h5`，`femmesh.vert` shape=`(N,2)`，`femmesh.tria` shape=`(T,4)`，无报错；
-5. 节点索引合法性验证：`femmesh.tria(:,1:3)` 中所有节点索引均为整数，且满足 `1 <= index <= N`（最小节点索引不得小于 1，最大节点索引不得大于 N）；若需验证无孤立节点，应作为独立拓扑验收项：所有 N 个节点均至少被一个三角形引用；
-6. `region_id` 列（`femmesh.tria(:,4)`）无 `+1` 偏置，取值为物理标记值（1=plasma, 2=vacuum, 3=wall）；
+5. 节点索引合法性验证：`femmesh.tria(:,1:3)` 中所有节点索引均为整数，且满足 `1 <= index <= N`；
+6. `region_id` 列（`femmesh.tria(:,4)`）无 `+1` 偏置，取值为物理标记值（1=plasma, 2=vacuum, 3=equivalent outer/wall-conductor），不得含 0；
 7. 终端打印：`HDF5 写出完成：mesh.h5，节点数: N，三角形数: T`；
 8. `tests/test_hdf5_writer.py` 中的 M3 自动测试全部通过（测试文件计划新增）。
 
@@ -1074,6 +1209,8 @@ User 人工检查 M2 PNG：
 **当前状态**：【占位，待 M3 验收通过后开始侦察】
 
 **目标**：在 M3 完全验收通过、网格质量确认合格后，完成 SCOREC/PUMI/M3DC1 只读侦察，由主管确认实现路线，将同一 `Mesh2D` 对象写出为 M3DC1 可消费的 `.smb` 静态网格文件。
+
+**M4 侦察范围**：M4 必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile、MeshFile 和 M3DC1/SCOREC/PUMI 源码进行只读侦察，确认区域数量、D1B、几何分类、索引、文件配对和 `.smb` 契约。P0 默认三区域方案不得被外推为 M3DC1 永久固定三区域；M3DC1 实际区域数量和 ModelFile 格式待侦察确认。
 
 **前置条件**：
 1. M3 里程碑已完全验收通过；
@@ -1115,17 +1252,17 @@ linkmesh \
 
 ---
 
-## 13. 测试目录规划（M1～M3 验收测试）
+## 14. 测试目录规划（M1～M3 验收测试）
 
-### 13.1 测试文件职责
+### 14.1 测试文件职责
 
 | 测试文件 | 服务里程碑 | 状态 | 核心验收内容 |
 |---|---|---|---|
 | `tests/test_gfile_reader.py` | M1 | 已通过（19 passed，git: f52a75f） | 验证 `read_gfile()` 能正确读取 EQDSK 文件；`GFileData` 所有字段类型与形状正确；LCFS 首尾闭合；LCFS 方向为逆时针；`current` 单位为 A（不缩放）；`gfile_reader.py` 中无手动文本解析逻辑 |
-| `tests/test_triangle_wrapper.py` | M2 | 待修正后执行 | 验证 `generate_mesh()` 能从合法 `BoundaryConfig` 生成 `Mesh2D`；alpha 四字段契约；beta 六字段映射；`Mesh2D` 所有字段类型与形状正确；三角形索引为 0-based；`region_ids` 取值在约定范围内；最小内角满足约束（含容差规则，见 M2 验收标准第 5 条）；单元素 shape 为一维 |
-| `tests/test_hdf5_writer.py` | M3 | 【计划新增】 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部 11 个数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引满足 `1 <= index <= N`；`region_id` 列无偏置；`nvert`/`ntria` 标量值正确 |
+| `tests/test_triangle_wrapper.py` | M2 | 自动测试 36/36 通过；真实区域编号 BLOCKED，待修复后重跑 | 验证 `generate_mesh()` 能从合法 `BoundaryConfig` 生成 `Mesh2D`；alpha 四字段契约；beta 六字段映射；`Mesh2D` 所有字段类型与形状正确；三角形索引为 0-based；`region_ids` 取值在约定范围内；最小内角满足约束；单元素 shape 为一维；修复后新增 `_build_boundary_config()` 区域种子测试 |
+| `tests/test_hdf5_writer.py` | M3 | 【计划新增】 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部 11 个数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引满足 `1 <= index <= N`；`region_id` 列无偏置、不含 0；`nvert`/`ntria` 标量值正确 |
 
-### 13.2 测试数据来源与许可证边界
+### 14.2 测试数据来源与许可证边界
 
 **测试分层原则**：
 
@@ -1153,9 +1290,9 @@ linkmesh \
 
 ---
 
-## 14. 包安装与运行环境规范
+## 15. 包安装与运行环境规范
 
-### 14.1 src 布局与标准安装
+### 15.1 src 布局与标准安装
 
 【已确认事实】实际仓库采用 `src/linkmesh/` 包布局（src layout）。仓库根目录需要 `pyproject.toml` 来支持标准 Python 包安装。**`pyproject.toml` 当前尚不存在，为计划新增文件，待主管批准后创建。**
 
@@ -1192,7 +1329,7 @@ linkmesh = "linkmesh.cli:main"
 where = ["src"]
 ```
 
-### 14.2 `src/linkmesh/__main__.py` 规范
+### 15.2 `src/linkmesh/__main__.py` 规范
 
 【已确认事实】`src/linkmesh/__main__.py` 已新建（git: 1fc04f8）。其唯一职责是使 `python -m linkmesh` 调用进入 `linkmesh.cli.main`。
 
@@ -1208,7 +1345,7 @@ if __name__ == "__main__":
     main()
 ```
 
-### 14.3 两种调用方式的等价性
+### 15.3 两种调用方式的等价性
 
 【已确认事实】以下两种调用方式最终必须进入同一个 `linkmesh.cli.main` 函数，行为完全等价：
 
@@ -1217,13 +1354,13 @@ if __name__ == "__main__":
 | `python -m linkmesh` | `src/linkmesh/__main__.py` 存在（已完成，git: 1fc04f8）；`src/` 在 PYTHONPATH 中或已安装 | `__main__.py` → `linkmesh.cli.main` |
 | `linkmesh`（控制台命令） | `pyproject.toml` 中 `console_scripts` 已配置（计划新增）；包已通过 `pip install` 安装 | `linkmesh.cli:main` 直接调用 |
 
-### 14.4 `pyproject.toml` 与 `requirements.txt` 的关系
+### 15.4 `pyproject.toml` 与 `requirements.txt` 的关系
 
 - **`pyproject.toml`**（计划新增）：正式安装元数据与运行依赖依据。通过 `pip install .` 或 `pip install -e .` 安装时使用。
 - **`requirements.txt`**：服务器部署用的直接依赖清单，适合 `pip install -r requirements.txt` 快速部署。
 - **一致性要求**：两者的核心运行依赖和版本约束必须保持一致。当 `openfusiontoolkit` 版本约束更新时，两个文件必须同步修改。
 
-### 14.5 PYTHONPATH 与安装规则汇总
+### 15.5 PYTHONPATH 与安装规则汇总
 
 【已确认事实】以下规则来自服务器冒烟测试实际故障排查，为铁律：
 
@@ -1237,7 +1374,7 @@ if __name__ == "__main__":
 
 ---
 
-## 15. 蓝图更新纪律
+## 16. 蓝图更新纪律
 
 本文档是 LinkMesh 项目的单事实真理源。以下情况必须先更新本文档，再进入代码实现：
 
@@ -1251,7 +1388,9 @@ if __name__ == "__main__":
 8. **修改 OFT API 的调用方式（如从 `GEQDSKEquilibrium` 切换到 `read_geqdsk` 或反之，或新增/移除 OFT 依赖）**；
 9. **修改 `openfusiontoolkit` 版本约束**（需同步更新 `pyproject.toml` 和 `requirements.txt`）；
 10. **修改 `src/linkmesh/__main__.py` 的职责或内容**；
-11. **修改 `pyproject.toml` 中的控制台入口或包发现配置**。
+11. **修改 `pyproject.toml` 中的控制台入口或包发现配置**；
+12. **修改 P0 区域方案（含壁三区域 / 无壁两区域）或全局区域传递契约**；
+13. **修改区域种子几何条件或失败原则**。
 
 **蓝图更新流程**：
 1. Aider 在对话中向主管提出蓝图迭代修改建议；
