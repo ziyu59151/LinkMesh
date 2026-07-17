@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 v1.4（窄范围校正）
+- 文档状态：正式版 v1.5（M1 验收写入 + M2 契约校正）
 - 最高依据：本文档自身即为 LinkMesh 项目的最高技术依据；开发纪律与协作规范见 CONTEXT.md
 - 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认事实】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【计划新增】的内容为蓝图已批准、但尚未在仓库中创建的文件或目录；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
 - 主要用途：本文档为 LinkMesh 项目的单事实真理源（Single Source of Truth），不作为人类泛读材料，专门用于指导 Aider 自动化编码、RAG 知识库精准检索以及下游模块的硬核参数对齐。凡 Aider 在执行编码、新建文件、修改具体业务代码前，必须查阅并严格对齐本文档。
@@ -78,9 +78,9 @@ LinkMesh/
 │           ├── __init__.py
 │           └── plotter.py             # matplotlib 可视化自检工具
 │
-├── tests/                             # 【计划新增】单元测试目录（M1～M3 验收测试）
-│   ├── test_gfile_reader.py           # 【计划新增】M1 验收测试
-│   ├── test_triangle_wrapper.py       # 【计划新增】M2 验收测试
+├── tests/                             # 单元测试目录（M1～M3 验收测试）
+│   ├── test_gfile_reader.py           # M1 验收测试（已通过，git: f52a75f）
+│   ├── test_triangle_wrapper.py       # M2 验收测试（待修正后执行）
 │   └── test_hdf5_writer.py            # 【计划新增】M3 验收测试
 │
 └── examples/                          # 【计划新增】示例文件目录
@@ -89,7 +89,6 @@ LinkMesh/
 ```
 
 **注意**：
-- `tests/` 目录当前尚不存在，需按 M1～M3 验收要求新建（见第 13 节）。
 - `examples/` 目录当前尚不存在，其中的 `sample.geqdsk` 来源和许可证待确认（见第 13.2 节）。
 - `pyproject.toml` 当前尚不存在，待主管批准后创建（见第 14.1 节）。
 - 本轮不新增 `tests/test_smb_writer.py`，M4 开始前不创建该文件。
@@ -116,7 +115,7 @@ LinkMesh/
 
 相比旧草案，`GFileData` 已大幅精简，移除了 `nw`、`nh`、`rdim`、`zdim`、`rleft`、`zmid`、`simag`、`sibry`、`psi_grid`、`r_grid`、`z_grid`、`fpol`、`pres`、`qpsi` 等 14 个字段——这些字段由 OFT 内部管理，LinkMesh 无需重复存储。
 
-【已确认事实】`current` 字段单位为安培（A），来源为 OFT `GEQDSKEquilibrium.Ip`，后者直接读取 EQDSK 文件中的 `CURRENT` 字段，全程不进行任何单位缩放。以 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 为例，服务器冒烟测试实测值为约 `1.56e7 A`（即约 15.6 MA），Python 类型为 `float`。
+【已确认事实】`current` 字段单位为安培（A），来源为 OFT `GEQDSKEquilibrium.Ip`，后者直接读取 EQDSK 文件中的 `CURRENT` 字段，全程不进行任何单位缩放。以 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 为例，服务器冒烟测试实测值为约 `1.56e7 A`（即约 15.6 MA），Python 类型为 `float`。以 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 为例，M1 正式验收实测值为 `493324.5 A`（约 0.49 MA），Python 类型为 `float`。
 
 ```python
 from dataclasses import dataclass
@@ -162,11 +161,12 @@ class GFileData:
     bcentr: Optional[float] = None   # 参考磁场强度 B0 [T]
     current: Optional[float] = None  # 等离子体电流 Ip [A]，来源 eq.Ip，不缩放
                                      # ITER 样例实测值约 1.56e7 A（约 15.6 MA）
+                                     # DIII-D 样例实测值约 4.93e5 A（约 0.49 MA）
 ```
 
 ### 2.2 `BoundaryConfig`：Triangle 输入配置
 
-【已确认事实】字段命名与 TokaMaker OFT `meshing.py` 中 `alpha` 字典的键名保持一致（`vertices`、`segments`、`regions`），这是 `src/linkmesh/mesher/triangle_wrapper.py` 构造 `alpha` 字典的直接来源。
+【已确认事实】字段命名与 TokaMaker OFT `meshing.py` 中 `alpha` 字典的键名保持一致（`vertices`、`segments`、`regions`），这是 `src/linkmesh/mesher/triangle_wrapper.py` 构造 `alpha` 字典的直接来源。`segment_markers` 字段用于保留 LCFS、第一壁和外边界的物理标签，与 `segments` 逐项对应，是 `alpha` 字典的必要组成部分（见第 7.2 节）。
 
 ```python
 @dataclass
@@ -177,23 +177,25 @@ class BoundaryConfig:
     传递给 src/linkmesh/mesher/triangle_wrapper.py（Python triangle 包唯一底座）。
 
     字段命名与 TokaMaker OFT meshing.py 中 alpha 字典的键名保持一致：
-        alpha = dict(vertices=..., segments=..., regions=...)
+        alpha = dict(vertices=..., segments=..., segment_markers=..., regions=...)
     """
     # 边界点集（分段线性复合体 PLC 的顶点）
-    # 对应 TokaMaker alpha 字典的 'vertices' 键
+    # 对应 Triangle alpha 字典的 'vertices' 键
     vertices: np.ndarray          # shape=(N, 2)，所有边界点 [R, Z] 坐标，dtype=float64
 
     # 边界线段连接表（PLC 的边）
-    # 对应 TokaMaker alpha 字典的 'segments' 键
-    segments: np.ndarray          # shape=(M, 2)，线段端点索引对，dtype=int32
+    # 对应 Triangle alpha 字典的 'segments' 键
+    segments: np.ndarray          # shape=(M, 2)，线段端点索引对，dtype=int32，0-based
 
     # 区域标记点（Triangle regions 输入）
-    # 对应 TokaMaker alpha 字典的 'regions' 键
-    # 每行格式：[R, Z, region_id, max_area]
+    # 对应 Triangle alpha 字典的 'regions' 键
+    # 每行格式：[R, Z, region_id, max_area_hint]
     # region_id 约定：1=plasma, 2=vacuum, 3=wall（见第 5 节）
+    # max_area_hint=-1 表示不限制该区域面积（使用全局 max_area 约束）
     regions: np.ndarray           # shape=(K, 4)，dtype=float64
 
-    # 边界标记（对应 segments 的整数标记）
+    # 边界标记（对应 segments 的整数标记，与 segments 逐项对应）
+    # 对应 Triangle alpha 字典的 'segment_markers' 键
     # 标记约定：1=LCFS, 2=first_wall, 3=outer_boundary（见第 5 节）
     segment_markers: np.ndarray   # shape=(M,)，dtype=int32
 
@@ -204,7 +206,9 @@ class BoundaryConfig:
 
 ### 2.3 `Mesh2D`：内存二维三角网格对象（唯一核心数据结构）
 
-【已确认事实】`Mesh2D` 的字段命名与 TokaMaker `run_triangle` 函数返回字典的键名直接对应，已通过只读侦察 `TOKAMAKER/.../TokaMaker/meshing.py` 确认：
+【已确认事实】`Mesh2D` 的字段命名与 TokaMaker `run_triangle` 函数返回字典的键名直接对应，已通过只读侦察 `TOKAMAKER/.../TokaMaker/meshing.py` 确认。
+
+**一维数组 shape 契约**（v1.5 校正）：`region_ids`、`boundary_markers`、`node_markers` 均为严格一维数组。提取时使用 `.reshape(-1)` 而非 `.squeeze()`，以保证即使 `T==1`、`S==1` 或 `N==1` 时仍得到 shape `(T,)`、`(S,)`、`(N,)` 的一维数组，而非 shape `()` 的零维数组。
 
 ```python
 @dataclass
@@ -219,10 +223,16 @@ class Mesh2D:
     字段来源（对应 TokaMaker run_triangle / tr.triangulate 返回字典键名）：
         nodes             ← beta['vertices']
         triangles         ← beta['triangles']
-        region_ids        ← beta['triangle_attributes'].squeeze().astype(int32)
+        region_ids        ← beta['triangle_attributes']，reshape(-1)，dtype=int32
         boundary_segments ← beta['segments']
-        boundary_markers  ← beta['segment_markers'].squeeze()
-        node_markers      ← beta['vertex_markers'].squeeze()
+        boundary_markers  ← beta['segment_markers']，reshape(-1)，dtype=int32
+        node_markers      ← beta['vertex_markers']，reshape(-1)，dtype=int32
+
+    一维 shape 契约（v1.5 校正）：
+        region_ids.shape    == (T,)，即使 T==1 也保持一维
+        boundary_markers.shape == (S,)，即使 S==1 也保持一维
+        node_markers.shape  == (N,)，即使 N==1 也保持一维
+        提取方式：np.asarray(..., dtype=np.int32).reshape(-1)，不使用 .squeeze()
     """
     # 节点坐标
     # 来源：beta['vertices']，shape=(N, 2)
@@ -235,6 +245,7 @@ class Mesh2D:
 
     # 三角形区域标记（来自 Triangle triangleattributelist / beta['triangle_attributes']）
     # 约定：1=plasma, 2=vacuum, 3=wall
+    # 提取：np.asarray(beta['triangle_attributes'], dtype=np.int32).reshape(-1)
     region_ids: np.ndarray           # shape=(T,)，每个三角形的区域 ID，dtype=int32
 
     # 边界线段连接表
@@ -244,10 +255,12 @@ class Mesh2D:
 
     # 边界线段标记（来自 Triangle segmentmarkerlist / beta['segment_markers']）
     # 约定：1=LCFS, 2=first_wall, 3=outer_boundary
+    # 提取：np.asarray(beta['segment_markers'], dtype=np.int32).reshape(-1)
     boundary_markers: np.ndarray     # shape=(S,)，每条边界线段的标记，dtype=int32
 
     # 节点边界标记（来自 Triangle pointmarkerlist / beta['vertex_markers']）
     # 0=内部节点，非零=边界节点
+    # 提取：np.asarray(beta['vertex_markers'], dtype=np.int32).reshape(-1)
     node_markers: np.ndarray         # shape=(N,)，每个节点的边界标记，dtype=int32
 
     @property
@@ -288,7 +301,7 @@ GFileData
   │
   ↓ [构造 alpha 字典，调用 Python triangle 包唯一底座]
 src/linkmesh/mesher/triangle_wrapper.py
-  │  ← alpha = dict(vertices=..., segments=..., regions=...)  [对齐 TokaMaker 风格]
+  │  ← alpha = dict(vertices=..., segments=..., segment_markers=..., regions=...)
   │  ← beta  = tr.triangulate(alpha, opts)
   │  ← 提取 beta['vertices'], beta['triangles'], beta['triangle_attributes'] 等
   │
@@ -470,7 +483,7 @@ LinkMesh 在当前 P0 阶段使用以下整数区域标记约定，该约定必�
 | 2 | 真空区（vacuum） | vacuum region | vacuum zone |
 | 3 | 第一壁/导体区（wall/conductor） | resistive wall region | wall zone |
 
-**注意**：当 GFile 不含第一壁信息时，LinkMesh 只生成 plasma 区（region_id=1）和 vacuum 区（region_id=2）。
+**注意**：`region_id` 是物理标签，不得执行索引式 `+1` 偏置。当 GFile 不含第一壁信息时，LinkMesh 只生成 plasma 区（region_id=1）和 vacuum 区（region_id=2）。
 
 ### 5.2 边界标记（boundary_marker）约定
 
@@ -482,6 +495,8 @@ LinkMesh 在当前 P0 阶段使用以下整数边界标记约定，该约定必�
 | 2 | 第一壁内表面 | wall inner surface |
 | 3 | 外边界（计算域边界） | outer boundary |
 | 0 | 内部节点（非边界） | — |
+
+**注意**：`boundary_markers` 不得被清零、偏置或改写；Wrapper 规范化 shape/dtype 后必须保持原始物理编号。
 
 ---
 
@@ -569,7 +584,7 @@ eq = GEQDSKEquilibrium(filepath)
 #   eq.Ip           → 等离子体电流 Ip [A]（属性 Ip，来自 _raw['CURRENT']，不缩放）
 ```
 
-**事实等级**：`GEQDSKEquilibrium` 已通过只读源码侦察确认存在，且已在服务器（liustation，`openfusiontoolkit==26.6`）上实际运行验证，成功读取 `ITER_test.eqdsk` 并提取全部所需字段。
+**事实等级**：`GEQDSKEquilibrium` 已通过只读源码侦察确认存在，且已在服务器（liustation，`openfusiontoolkit==26.6`）上实际运行验证，成功读取 `ITER_test.eqdsk` 和 `DIIID/g192185.02440` 并提取全部所需字段。
 
 **当前正式采用方案 B**（`GEQDSKEquilibrium`），因为其属性命名语义清晰，且已提供 `boundary_R`/`boundary_Z`、`limiter_R`/`limiter_Z`、`R_mag`/`Z_mag` 等 LinkMesh 直接需要的字段，并已通过服务器运行验证。
 
@@ -639,12 +654,25 @@ regions = beta['triangle_attributes'].astype('int32').ravel()
 
 LinkMesh 的 `triangle_wrapper.py` 使用 Python `triangle` 包（`tr.triangulate`）复现相同的调用模式，返回字典键名与 TokaMaker `run_triangle` 返回值一致。
 
-### 7.2 Triangle 输入字典构造（TokaMaker alpha 字典风格）
+### 7.2 Triangle 输入字典构造（alpha 字典正式契约）
 
-【已确认事实】以下为已实现的 `alpha` 字典构造方式，键名严格对齐 TokaMaker `meshing.py`：
+【已确认事实】以下为 `alpha` 字典的正式字段契约，Wrapper 必须严格按此构造：
+
+| 字段名 | shape | dtype | 语义 |
+|---|---|---|---|
+| `vertices` | `(N, 2)` | float64 | 所有边界点 [R, Z] 坐标，来自 `config.vertices` |
+| `segments` | `(M, 2)` | int32 | 线段端点索引对，0-based，来自 `config.segments` |
+| `segment_markers` | `(M,)` | int32 | 与 `segments` 逐项对应的边界标记，来自 `config.segment_markers` |
+| `regions` | `(K, 4)` | float64 | 每行 `[R, Z, region_id, max_area_hint]`，来自 `config.regions` |
+
+**物理语义保证**：
+- `vertices` 不交换 R/Z、不缩放；
+- `segments` 节点索引保持 0-based，不提前转换为 1-based；
+- `segment_markers` 保持原始物理编号（1=LCFS, 2=first_wall, 3=outer_boundary），不清零、不偏置；
+- `regions` 中的 `region_id` 是物理标签（1=plasma, 2=vacuum, 3=wall），不执行 `+1`。
 
 ```python
-# Triangle 输入字典格式（严格对齐 TokaMaker OFT meshing.py 的 alpha 字典）
+# Triangle 输入字典格式（正式契约）
 alpha = {
     "vertices":        np.ascontiguousarray(config.vertices, dtype=np.float64),
     "segments":        np.ascontiguousarray(config.segments, dtype=np.int32),
@@ -653,58 +681,75 @@ alpha = {
 }
 ```
 
-### 7.3 Triangle 控制字符串
+### 7.3 Triangle 控制字符串（`_build_triangle_opts` 正式契约）
 
-【已确认事实】控制字符串参考 TokaMaker `meshing.py` 中的 `b'pqaAzQ'`，已实现的 `_build_triangle_opts` 函数：
+【已确认事实】控制字符串参考 TokaMaker `meshing.py` 中的 `b'pqaAzQ'`，已实现的 `_build_triangle_opts` 函数。各控制字符的正式语义如下：
+
+| 字符 | 语义 | 条件 |
+|---|---|---|
+| `p` | PLC/segments 输入模式 | 始终包含 |
+| `q<min_angle>` | 质量约束与最小内角（数值语义：角度值，单位度） | 始终包含；`min_angle` 为数值，不强制要求特定字符串格式 |
+| `a<max_area>` | 全局最大面积约束（小写 `a`） | 仅当 `max_area is not None` 时加入 |
+| `A` | 输出区域属性 `triangle_attributes`（大写 `A`） | 始终包含 |
+| `z` | 0-based 节点索引 | 始终包含 |
+| `Q` | 静默 Triangle 内部日志 | 始终包含 |
+
+**注意**：小写 `a` 和大写 `A` 语义不同，不得混淆。`_build_triangle_opts` 当前实现的精确字符串格式为：
 
 ```python
 def _build_triangle_opts(config: BoundaryConfig) -> str:
-    """构造 Triangle 控制字符串。
-
-    控制字符含义（参考 TokaMaker meshing.py 中 run_triangle 使用的 b'pqaAzQ'）：
-        p  - 使用分段线性复合体（PLC）输入模式
-        q  - 质量网格生成（最小角约束）
-        a  - 面积约束
-        A  - 将区域属性写入三角形（生成 triangle_attributes）
-        z  - 节点索引从 0 开始（Python 友好，保证 Mesh2D 中所有索引为 0-based）
-        Q  - 静默模式（不打印 Triangle 内部日志）
-
-    示例：
-        min_angle=20, max_area=0.001 → "pq20.0a0.001AzQ"
-        min_angle=20, max_area=None  → "pq20.0AzQ"
-    """
     opts = "p"
-    opts += f"q{config.min_angle:.1f}"
+    opts += f"q{config.min_angle:.1f}"   # 数值格式为 .1f，如 "20.0"
     if config.max_area is not None:
         opts += f"a{config.max_area:.6g}"
     opts += "AzQ"
     return opts
+# 示例：min_angle=20, max_area=0.001 → "pq20.0a0.001AzQ"
+# 示例：min_angle=20, max_area=None  → "pq20.0AzQ"
 ```
 
-### 7.4 Triangle 输出字段提取（从 beta 字典到 Mesh2D）
+### 7.4 Triangle 输出字段提取（beta 字典到 Mesh2D 的正式映射契约）
 
-【已确认事实】以下字段提取方式与 TokaMaker `run_triangle` 返回值的键名完全对齐，已在 `generate_mesh()` 中完整实现：
+【已确认事实】以下为 beta 字典六个字段到 `Mesh2D` 的正式映射契约，Wrapper 必须严格按此提取：
+
+| `Mesh2D` 字段 | beta 字典键 | 提取方式 | shape 契约 | dtype | 物理语义保证 |
+|---|---|---|---|---|---|
+| `nodes` | `beta["vertices"]` | `.astype(np.float64)` | `(N, 2)` | float64 | R/Z 不交换、不缩放 |
+| `triangles` | `beta["triangles"]` | `.astype(np.int32)` | `(T, 3)` | int32 | 保持 0-based，不转 1-based |
+| `region_ids` | `beta["triangle_attributes"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(T,)` | int32 | 不执行 `+1`；T==1 时仍为一维 |
+| `boundary_segments` | `beta["segments"]` | `.astype(np.int32)` | `(S, 2)` | int32 | 保持 0-based，不转 1-based |
+| `boundary_markers` | `beta["segment_markers"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(S,)` | int32 | 不清零、不偏置；S==1 时仍为一维 |
+| `node_markers` | `beta["vertex_markers"]` | `np.asarray(..., dtype=np.int32).reshape(-1)` | `(N,)` | int32 | 不清零、不偏置；N==1 时仍为一维 |
+
+**一维 shape 契约（v1.5 校正）**：`region_ids`、`boundary_markers`、`node_markers` 使用 `.reshape(-1)` 而非 `.squeeze()`，保证即使 `T==1`、`S==1` 或 `N==1` 时仍得到一维数组，而非零维数组。
+
+**缺失字段处理**：`boundary_segments`、`boundary_markers`、`node_markers` 使用 `beta.get(key, fallback)` 提供默认值。若 beta 字典缺少必要字段（`vertices`、`triangles`、`triangle_attributes`），Wrapper 应抛出异常；缺失必要字段时的精确异常类型待 User 裁决（见第 7.5 节）。
 
 ```python
-beta = tr.triangulate(alpha, opts)
+# 正式提取方式（v1.5 校正，使用 reshape(-1) 替代 squeeze()）
+nodes = beta["vertices"].astype(np.float64)
+triangles = beta["triangles"].astype(np.int32)
+region_ids = np.asarray(beta["triangle_attributes"], dtype=np.int32).reshape(-1)
 
-mesh = Mesh2D(
-    nodes=beta["vertices"].astype(np.float64),
-    triangles=beta["triangles"].astype(np.int32),
-    region_ids=beta["triangle_attributes"].squeeze().astype(np.int32),
-    boundary_segments=beta.get("segments", np.zeros((0, 2), dtype=np.int32)).astype(np.int32),
-    boundary_markers=np.asarray(
-        beta.get("segment_markers", np.zeros((0,), dtype=np.int32)),
-        dtype=np.int32
-    ).squeeze(),
-    node_markers=np.asarray(
-        beta.get("vertex_markers", np.zeros((len(beta["vertices"]),), dtype=np.int32)),
-        dtype=np.int32
-    ).squeeze(),
+boundary_segments = np.asarray(
+    beta.get("segments", np.zeros((0, 2), dtype=np.int32)),
+    dtype=np.int32
 )
+boundary_markers = np.asarray(
+    beta.get("segment_markers", np.zeros((0,), dtype=np.int32)),
+    dtype=np.int32
+).reshape(-1)
+node_markers = np.asarray(
+    beta.get("vertex_markers", np.zeros((len(beta["vertices"]),), dtype=np.int32)),
+    dtype=np.int32
+).reshape(-1)
 ```
 
-**注意**：Python `triangle` 包（`tr.triangulate`）的返回字典键名与 TokaMaker `run_triangle` 返回字典键名一致（`vertices`、`triangles`、`triangle_attributes`），这是选择该包的重要原因之一。
+### 7.5 待 User 裁决事项
+
+以下事项当前蓝图未明确规定，不得自行发明，待 User 确认后写入蓝图：
+
+- **缺失必要 beta 字段的异常类型**：当 `beta` 字典缺少 `vertices`、`triangles` 或 `triangle_attributes` 时，Wrapper 应抛出何种异常（`ValueError`、`KeyError` 或其他）？当前实现抛出 `ValueError`（节点数或三角形数为 0），但未覆盖键缺失场景。
 
 ---
 
@@ -853,6 +898,8 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 - 输出统计信息文本框（LCFS 点数、磁轴坐标）
 - 保存为 PNG 文件，dpi=150
 
+**已知非阻塞问题**：matplotlib 默认字体 `DejaVu Sans` 缺少中文字形，使用中文标签时会产生 `Glyph missing` 警告。该警告不影响 PNG 生成和物理验收，当前不要求修改业务源码。
+
 #### `plot_mesh(gfile_data, mesh, filepath, show_boundary_markers=True, show_region_ids=False)`（M2 完整版本）
 
 绘制 LCFS 边界与生成三角网格的叠加图。功能：
@@ -898,55 +945,113 @@ pytest>=7.0.0
 
 ### 里程碑 M1：GFile 读取验收（P0 第一步）
 
-**当前状态**：【M1 Reader 核心链路冒烟测试成功，M1 正式验收尚未完成】
+**当前状态**：【M1 已通过，允许进入 M2】
 
-【已确认事实】服务器冒烟测试（liustation，`openfusiontoolkit==26.6`，`ITER_test.eqdsk`）已验证：
-- 磁轴 R=6.3624 m，Z=0.5328 m
-- LCFS 点数 64，首尾闭合
-- 第一壁点数 153
-- `current` ≈ 1.56e7 A（Python float，来源 `eq.Ip`，不缩放）
+【已确认事实】M1 全部验收项均已通过，具体证据如下：
 
-上述结果证明 M1 Reader 核心链路（`GEQDSKEquilibrium` 导入 + 字段提取）冒烟测试成功。**但 M1 正式验收尚未完成**，仍需完成以下项目：
+**自动测试**：`tests/test_gfile_reader.py` 运行结果 `19 passed in 0.61s`，退出码 `0`（git: f52a75f）。临时日志路径 `/tmp/m1_reader_test.log`，该路径不保证长期保存。
 
-**目标**：能够通过 OFT Adapter 从真实 GFile 文件中提取 LCFS 边界坐标并可视化。
+**真实 GFile 验收**：
+- 样例文件：`TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440`
+- 调用链：DIII-D GFile → 正式安装的 OFT `GEQDSKEquilibrium`（`openfusiontoolkit==26.6`）→ LinkMesh `read_gfile` → `GFileData`，未使用 mock
+- 实测结果：LCFS 81 点；第一壁 88 点；磁轴 `R=1.78029311 m`、`Z=-0.0421587565 m`；等离子体电流 `493324.5 A`
+- CLI 路径：`--no-hdf5 --no-smb --plot` 进入 M1 专用路径，不调用 M2 Triangle、M3 HDF5 或 M4 SMB
+- PNG 临时路径：`/tmp/linkmesh_diiid_m1.png`，该路径不保证长期保存
 
-**M1 正式验收标准**（尚未全部通过）：
-1. `python -m linkmesh --gfile sample.geqdsk --no-hdf5 --no-smb --plot lcfs_check.png` 能够运行（`src/linkmesh/__main__.py` 已新建，git: 1fc04f8）；
-2. 生成的 `lcfs_check.png` 中 LCFS 边界曲线闭合、方向正确；
-3. 终端打印：`LCFS 点数: N，磁轴: (R=X.XX, Z=X.XX)`；
-4. `GFileData` 对象的所有必填字段均已正确填充；
-5. **`src/linkmesh/readers/gfile_reader.py` 中不存在任何手动文本解析逻辑，所有字段均来自 OFT `GEQDSKEquilibrium` 属性**；
-6. `tests/test_gfile_reader.py` 中的 M1 自动测试全部通过（测试文件计划新增）。
+**人工几何检查**（User 已确认）：
+- LCFS 闭合连续，无明显跳点或自交
+- 第一壁整体包围 LCFS
+- 磁轴位于 LCFS 内
+- R/Z 方向和尺度合理
+- DIII-D 极向截面形状正常
 
-**涉及模块**：`src/linkmesh/__main__.py`（已新建，git: 1fc04f8），`src/linkmesh/readers/gfile_reader.py`（OFT Adapter），`src/linkmesh/utils/plotter.py`（`plot_lcfs_only` 函数），`tests/test_gfile_reader.py`（计划新增）
+**非阻塞问题**：matplotlib `DejaVu Sans` 缺少中文字形，产生 `Glyph missing` 警告，不影响物理验收，当前不要求修改业务源码。
+
+**History 归档状态**：`History.md` 第 7 条已有部分记录（"已在服务器上完成 M1 的 Mock 测试和 DIIID 的真实 GFile 测试"），本轮完整证据（19 passed、DIII-D 具体数值、人工几何检查结论）待归档。
+
+**M1 验收标准逐项确认**：
+1. ✅ `python -m linkmesh --gfile ... --no-hdf5 --no-smb --plot lcfs_check.png` 能够运行
+2. ✅ 生成的 PNG 中 LCFS 边界曲线闭合、方向正确
+3. ✅ 终端打印 LCFS 点数、磁轴坐标
+4. ✅ `GFileData` 对象所有必填字段均已正确填充
+5. ✅ `gfile_reader.py` 中不存在任何手动文本解析逻辑（AST 测试通过）
+6. ✅ `tests/test_gfile_reader.py` 中的 M1 自动测试全部通过（19 passed）
+
+**涉及模块**：`src/linkmesh/__main__.py`（已新建，git: 1fc04f8），`src/linkmesh/readers/gfile_reader.py`（OFT Adapter），`src/linkmesh/utils/plotter.py`（`plot_lcfs_only` 函数），`tests/test_gfile_reader.py`（已通过，git: f52a75f）
 
 ---
 
 ### 里程碑 M2：Triangle 网格生成验收（P0 第二步）
 
-**当前状态**：【尚未完成服务器网格生成和质量验收】
+**当前状态**：【进行中，自动测试待修正后执行，真实集成测试尚未执行】
 
 **目标**：能够从 LCFS 边界调用 Python `triangle` 包唯一底座生成二维三角网格并可视化。
 
-**验收标准**：
-1. `python -m linkmesh --gfile sample.geqdsk --no-smb --plot mesh_check.png` 能够运行；
-2. 生成的 `mesh_check.png` 中三角网格覆盖 LCFS 内部区域，无明显退化三角形；
-3. 终端打印：`节点数: N，三角形数: T，边界线段数: S`；
-4. `Mesh2D` 对象的所有字段均已正确填充；
-5. 计算生成网格中全部三角形的真实内角，记录实际最小角 `actual_min_angle`，验证：
-   `actual_min_angle >= min_angle - angle_tolerance`
-   其中 `angle_tolerance` 仅用于处理浮点计算误差（量级约为 0.01°），不得用于掩盖边界尖角或 Triangle 质量约束失败；若真实网格明显低于 `min_angle`，测试必须失败并输出最小角及对应三角形；
-6. **`src/linkmesh/mesher/triangle_wrapper.py` 中 `alpha` 字典的键名为 `vertices`、`segments`、`regions`（对齐 TokaMaker 风格），`beta` 字典的提取键名为 `vertices`、`triangles`、`triangle_attributes`**；
-7. **`src/linkmesh/cli.py` 中 `_build_boundary_config()` 已完整实现**（git: 994c415）：从 `GFileData.lcfs_r/lcfs_z` 等弧长重采样，构造 LCFS 线段、外边界矩形、可选第一壁线段，设置 plasma/vacuum 区域标记点，封装为 `BoundaryConfig`；
-8. `tests/test_triangle_wrapper.py` 中的 M2 自动测试全部通过（测试文件计划新增）。
+**M2 测试前置修正要求**（静态审查结论，运行前必须修正）：
 
-**涉及模块**：`src/linkmesh/mesher/triangle_wrapper.py`，`src/linkmesh/utils/plotter.py`（`plot_mesh` 函数），`src/linkmesh/cli.py`（`_build_boundary_config` 函数），`tests/test_triangle_wrapper.py`（计划新增）
+当前 `tests/test_triangle_wrapper.py` 存在以下已知问题，运行前必须修正，不得用 `create=True` 掩盖：
+- mock 目标为 `linkmesh.mesher.triangle_wrapper.tr.triangulate`，但业务源码在 `generate_mesh()` 内局部执行 `import triangle as tr`，`tr` 不是模块属性；正确 patch 目标应为 `triangle.triangulate`
+- 文件头 `AUTHORED_NOT_RUN`、`PENDING_MANUAL_REVIEW` 状态文字会在运行后过期，应替换为稳定说明
+- `_make_minimal_mesh2d()` 的 `n_nodes`、`n_tria`、`n_seg` 参数未使用
+- 三个测试声明了未使用的 `tmp_path`
+- 当前边界标记测试只检查值域，不能证明标记被原样保留
+- 当前测试缺少 `segment_markers` 输入验证、六个输出字段的精确内容映射、单元素 shape、边界索引和空输出异常覆盖
+
+**M2 自动测试验收要求**（修正后执行，尚未通过）：
+
+模拟契约测试（mock `triangle.triangulate`）：
+1. 验证 alpha 字典包含四个字段（`vertices`、`segments`、`segment_markers`、`regions`）及其 shape、dtype、内容
+2. 验证 Triangle 选项字符串包含 `p`、`q`（含数值）、`A`、`z`、`Q`；`max_area` 不为 None 时包含小写 `a`；`max_area` 为 None 时不含面积约束数值
+3. 精确验证 beta 六个字段到 `Mesh2D` 的映射（内容、shape、dtype 均正确）
+4. 验证 `triangles` 和 `boundary_segments` 满足 `0 <= index < n_nodes`
+5. 验证 `region_ids` 和 `boundary_markers` 未被错误偏置或改写（输入值与输出值精确一致）
+6. 验证单三角形（T==1）和单元素标记输出仍为一维数组（shape `(1,)` 而非 `()`）
+7. 验证空节点或空三角形输出被 Wrapper 拒绝并抛出异常（精确异常类型待 User 裁决，见第 7.5 节）
+
+真实 Triangle 集成测试（不 mock，调用真实 `generate_mesh`）：
+1. 验证合法 `BoundaryConfig` 生成合法 `Mesh2D`（节点数 > 0，三角形数 > 0）
+2. 验证所有节点坐标有限（`np.isfinite`）
+3. 验证所有三角形索引合法且为 0-based（`0 <= index < n_nodes`）
+4. 验证无退化三角形（三顶点索引互不相同）
+5. 验证无零面积三角形（面积 > 1e-12）
+6. 验证 `region_ids` 取值在约定范围内（`{1, 2, 3}` 的子集）
+7. 验证边界线段数与边界标记数一致
+8. 验证实际最小内角满足 `actual_min_angle >= min_angle - 0.01°`（容差仅用于浮点误差，不得掩盖 Triangle 质量约束失败）
+
+**M2 真实 GFile 端到端验收要求**（自动测试通过后执行，尚未执行）：
+
+执行完整链路：DIII-D `GFileData → BoundaryConfig → Triangle → Mesh2D`，检查：
+- 节点数、三角形数、边界线段数的合理性
+- 所有索引合法（0-based，范围内）
+- 区域编号正确（plasma=1, vacuum=2）
+- 无退化单元和零面积三角形
+- 实际最小内角满足约束
+- 生成 M2 PNG（`plot_mesh`）
+
+User 人工检查 M2 PNG：
+- 三角网格覆盖 LCFS 内部（plasma 区）和 LCFS 与外边界之间（vacuum 区）
+- LCFS 边界曲线与网格边界吻合
+- 若有第一壁，第一壁边界可见
+- 外边界矩形可见
+- 三角形质量视觉合理（无明显退化或极细长三角形）
+
+**M2 验收标准**（尚未全部通过）：
+1. `python -m linkmesh --gfile sample.geqdsk --no-smb --plot mesh_check.png` 能够运行
+2. 生成的 `mesh_check.png` 中三角网格覆盖 LCFS 内部区域，无明显退化三角形
+3. 终端打印：`节点数: N，三角形数: T，边界线段数: S`
+4. `Mesh2D` 对象的所有字段均已正确填充
+5. 计算生成网格中全部三角形的真实内角，记录实际最小角 `actual_min_angle`，验证：`actual_min_angle >= min_angle - angle_tolerance`（`angle_tolerance` 约为 0.01°，仅用于浮点误差）；若真实网格明显低于 `min_angle`，测试必须失败并输出最小角及对应三角形
+6. `triangle_wrapper.py` 中 `alpha` 字典包含 `vertices`、`segments`、`segment_markers`、`regions` 四个字段（对齐正式契约），`beta` 字典提取键名为 `vertices`、`triangles`、`triangle_attributes`、`segments`、`segment_markers`、`vertex_markers`
+7. `cli.py` 中 `_build_boundary_config()` 已完整实现（git: 994c415）
+8. `tests/test_triangle_wrapper.py` 中的 M2 自动测试全部通过（修正后执行）
+
+**涉及模块**：`src/linkmesh/mesher/triangle_wrapper.py`，`src/linkmesh/utils/plotter.py`（`plot_mesh` 函数），`src/linkmesh/cli.py`（`_build_boundary_config` 函数），`tests/test_triangle_wrapper.py`（待修正后执行）
 
 ---
 
 ### 里程碑 M3：TRIMEG HDF5 输出验收（P0 第三步，第一战役闭环）
 
-**当前状态**：【尚未完成 HDF5 结构、索引、11 个数据集和 MATLAB/TRIMEG 消费验证】
+**当前状态**：【占位，待 M2 验收通过后开始】
 
 **目标**：将 Python `triangle` 包生成的三角网格写出为 TRIMEG 可消费的 HDF5 文件，并通过 `loadfemmesh_h5.m` 读取验证，确认网格几何物理质量完全合格。
 
@@ -1012,15 +1117,13 @@ linkmesh \
 
 ## 13. 测试目录规划（M1～M3 验收测试）
 
-【已确认事实】实际仓库当前不存在 `tests/` 目录，需按以下规划新建。本轮不新增 `tests/test_smb_writer.py`，M4 开始前不创建该文件。
-
 ### 13.1 测试文件职责
 
-| 测试文件 | 服务里程碑 | 核心验收内容 |
-|---|---|---|
-| `tests/test_gfile_reader.py` | M1 | 验证 `read_gfile()` 能正确读取 EQDSK 文件；`GFileData` 所有字段类型与形状正确；LCFS 首尾闭合；LCFS 方向为逆时针；`current` 单位为 A（不缩放）；`gfile_reader.py` 中无手动文本解析逻辑 |
-| `tests/test_triangle_wrapper.py` | M2 | 验证 `generate_mesh()` 能从合法 `BoundaryConfig` 生成 `Mesh2D`；`Mesh2D` 所有字段类型与形状正确；三角形索引为 0-based；`region_ids` 取值在约定范围内；最小内角满足约束（含容差规则，见 M2 验收标准第 5 条） |
-| `tests/test_hdf5_writer.py` | M3 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部 11 个数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引满足 `1 <= index <= N`；`region_id` 列无偏置；`nvert`/`ntria` 标量值正确 |
+| 测试文件 | 服务里程碑 | 状态 | 核心验收内容 |
+|---|---|---|---|
+| `tests/test_gfile_reader.py` | M1 | 已通过（19 passed，git: f52a75f） | 验证 `read_gfile()` 能正确读取 EQDSK 文件；`GFileData` 所有字段类型与形状正确；LCFS 首尾闭合；LCFS 方向为逆时针；`current` 单位为 A（不缩放）；`gfile_reader.py` 中无手动文本解析逻辑 |
+| `tests/test_triangle_wrapper.py` | M2 | 待修正后执行 | 验证 `generate_mesh()` 能从合法 `BoundaryConfig` 生成 `Mesh2D`；alpha 四字段契约；beta 六字段映射；`Mesh2D` 所有字段类型与形状正确；三角形索引为 0-based；`region_ids` 取值在约定范围内；最小内角满足约束（含容差规则，见 M2 验收标准第 5 条）；单元素 shape 为一维 |
+| `tests/test_hdf5_writer.py` | M3 | 【计划新增】 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部 11 个数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引满足 `1 <= index <= N`；`region_id` 列无偏置；`nvert`/`ntria` 标量值正确 |
 
 ### 13.2 测试数据来源与许可证边界
 
@@ -1029,16 +1132,16 @@ linkmesh \
 | 测试层次 | 数据来源 | 依赖范围 | 说明 |
 |---|---|---|---|
 | 单元测试 | 受控合成对象或 mock | 不依赖 `TOKAMAKER/` 源码树 | 验证 Adapter 后处理逻辑（闭合性、方向性等），不需要真实 GFile |
-| 集成测试（开发期） | 只读访问 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` | 依赖 `TOKAMAKER/` 源码树（只读） | 验证 OFT 真实读取链路；仅在开发环境中使用，不得打包进最终交付物 |
+| 集成测试（开发期） | 只读访问 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 或 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` | 依赖 `TOKAMAKER/` 源码树（只读） | 验证 OFT 真实读取链路；仅在开发环境中使用，不得打包进最终交付物 |
 | 交付测试 | LinkMesh 自有、来源明确、许可允许分发的样例 GFile | 不依赖 `TOKAMAKER/` 源码树 | 【计划新增，待许可确认】 |
 
 **许可证说明**：
 
-`TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 受 `TOKAMAKER/OpenFUSIONToolkit/LICENSE`（GNU LGPL v3.0）约束。在未经主管和法务确认该 EQDSK 样例可单独复制和再分发之前：
+`TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` 和 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 均受 `TOKAMAKER/OpenFUSIONToolkit/LICENSE`（GNU LGPL v3.0）约束。在未经主管和法务确认这些 EQDSK 样例可单独复制和再分发之前：
 
-- 该文件**不得**被复制到 `tests/data/` 或 `examples/` 目录。
-- 该文件**不得**作为 LinkMesh 正式自动测试或交付测试的唯一数据来源。
-- 开发期集成测试可以通过只读路径访问该文件，但必须在测试代码中明确标注为"开发期集成测试，不打包进交付物"。
+- 这些文件**不得**被复制到 `tests/data/` 或 `examples/` 目录。
+- 这些文件**不得**作为 LinkMesh 正式自动测试或交付测试的唯一数据来源。
+- 开发期集成测试可以通过只读路径访问这些文件，但必须在测试代码中明确标注为"开发期集成测试，不打包进交付物"。
 
 **计划新增的自有样例**（待许可确认后实施）：
 
