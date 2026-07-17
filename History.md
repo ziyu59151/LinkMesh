@@ -11,3 +11,5 @@
 5. 完成 M2 里程碑 PLC 边界构造实现（git: 994c415）：在 cli.py 中完整实现 _build_boundary_config() 函数，从 GFileData.lcfs_r/lcfs_z 出发，经等弧长重采样（_resample_closed_curve，纯 numpy 实现，目标点数 max(40, min(200, 原始点数))），构造 LCFS 闭合线段（boundary_marker=1）、外边界矩形（boundary_marker=3，向外扩展 15%）、可选第一壁线段（boundary_marker=2），设置 plasma 区种子点（磁轴坐标，region_id=1）与 vacuum 区种子点（LCFS 右侧与外边界中点，region_id=2），封装为 BoundaryConfig 对象；至此 M1+M2+M3 所需全部代码均已落盘，等待真实 GFile 端到端验收。
 
 6. 完成 M1～M3 阶段蓝图修订与包结构正式化（git: 1fc04f8，蓝图升至 v1.4）：在 Linux x86_64 服务器（liustation）完成 M1 Reader 核心链路冒烟测试（openfusiontoolkit==26.6 官方 wheel，ITER_test.eqdsk，磁轴 R=6.3624 m/Z=0.5328 m，LCFS 点数 64，current≈1.56e7 A）；将仓库正式目录结构修订为 src/linkmesh/ 包布局（src layout），新建 src/linkmesh/__main__.py 以支持 python -m linkmesh 入口；蓝图新增第 13 节（tests/ 目录规划，M1～M3 三个测试文件职责）、第 14 节（pyproject.toml 规划、PYTHONPATH 铁律、两种调用方式等价性）、第 15 节（蓝图更新纪律扩充至 11 条）；将 openfusiontoolkit==26.6 写入 requirements.txt 作为正式运行依赖；明确 M1 正式验收尚未完成，M2/M3 尚未通过服务器验收。
+
+7. 主管声明：已在服务器上完成 M1 的 Mock 测试和 DIIID 的真实 GFile 测试，相关证据已保存在服务器上。
