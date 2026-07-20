@@ -13,3 +13,5 @@
 6. 完成 M1～M3 阶段蓝图修订与包结构正式化（git: 1fc04f8，蓝图升至 v1.4）：在 Linux x86_64 服务器（liustation）完成 M1 Reader 核心链路冒烟测试（openfusiontoolkit==26.6 官方 wheel，ITER_test.eqdsk，磁轴 R=6.3624 m/Z=0.5328 m，LCFS 点数 64，current≈1.56e7 A）；将仓库正式目录结构修订为 src/linkmesh/ 包布局（src layout），新建 src/linkmesh/__main__.py 以支持 python -m linkmesh 入口；蓝图新增第 13 节（tests/ 目录规划，M1～M3 三个测试文件职责）、第 14 节（pyproject.toml 规划、PYTHONPATH 铁律、两种调用方式等价性）、第 15 节（蓝图更新纪律扩充至 11 条）；将 openfusiontoolkit==26.6 写入 requirements.txt 作为正式运行依赖；明确 M1 正式验收尚未完成，M2/M3 尚未通过服务器验收。
 
 7. 主管声明：已在服务器上完成 M1 的 Mock 测试和 DIIID 的真实 GFile 测试，相关证据已保存在服务器上。
+
+8. 完成 LinkMesh 技术蓝图最小化重构（蓝图升至 v1.7）：确立 OFT 优先数据流（GFile → OFT GEQDSKEquilibrium → GFileData → OFT gs_Domain/build_mesh → Mesh2D → TRIMEG HDF5 / M3DC1 .smb）；LinkMesh 最小化为输入编排、统一对象适配、目标格式翻译和 CLI；删除 LinkMesh 固定区域编号（1=plasma/2=vacuum/3=wall）全局表述，改为 OFT 区域模型输出原样传递；根据 loadfemmesh_h5.m 直接证据修正 TRIMEG HDF5 消费契约（明确 boundary_segments/boundary_markers/node_markers 非 TRIMEG 直接消费字段，/femmesh/tria 第四列含义标注为待真实样例核对）；Mesh2D 重新定义为轻量统一网格对象，boundary_segments/boundary_markers/node_markers 降级为可选内部/适配字段；新增 M2-0 OFT 可行性验证里程碑；明确不修改、不维护 OFT 分支；保留 M4 对 M3DC1 特有要求的 LinkMesh 侧适配空间。
