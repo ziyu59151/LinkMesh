@@ -14,6 +14,11 @@ v1.9 M2 说明：
     - LCFS/第一壁来自 GFileData，绘制时若首尾不同则临时追加首点用于显示闭合（不修改 GFileData）；
     - boundary_segments/boundary_markers 为空时跳过旧边界段绘制。
 
+用户可见文本约定（v1.9 M2 PNG 修复）：
+    - 所有会渲染进 PNG（标题、图例、统计框）或打印到终端的字符串一律使用英文，
+      以避免服务器默认 DejaVu Sans 字体缺少中文字形导致的 Glyph missing 警告。
+    - 代码注释与文档字符串保留中文（不交给 Matplotlib 渲染）。
+
 参考规范：
     LinkMesh_Architecture_Plan.md v1.9 第 11 节
 """
@@ -69,16 +74,23 @@ def plot_mesh(
 
     实现要点（v1.9 M2）：
         1. 使用 matplotlib.tri.Triangulation 绘制三角网格（仅依赖 nodes/triangles）
-        2. 区域着色只使用实际 region_ids，标签为 "OFT region <id>"
+        2. 区域着色只使用实际 region_ids，图例标签为 "OFT region <id>"，
+           三角形填色与图例色块严格共用同一离散颜色来源
         3. 叠加绘制 LCFS 边界曲线（红色实线，显示闭合）
         4. 若有第一壁数据，叠加绘制第一壁曲线（蓝色虚线，显示闭合）
         5. 标注磁轴位置（红色叉号）
         6. 保持纵横比相等（aspect='equal'），保存为 PNG，dpi=150
+
+    离散区域颜色一致性：
+        对排序后的实际 OFT 区域 ID 建立确定的离散索引映射
+        （actual OFT ID → 0,1,...,N-1），使用 ListedColormap 配合 BoundaryNorm，
+        使 tripcolor() 中每个三角形的颜色与图例代理色块严格一致。
+        不写死区域数量或固定 {1,2,3}，合法 N=1 与 N>3 均可绘制。
     """
     try:
         import matplotlib.pyplot as plt
         import matplotlib.tri as mtri
-        from matplotlib import cm
+        from matplotlib.colors import BoundaryNorm, ListedColormap
     except ImportError as e:
         raise ImportError(
             "无法导入 matplotlib。请运行：pip install matplotlib"
@@ -92,35 +104,50 @@ def plot_mesh(
     Z = mesh.nodes[:, 1]
     triang = mtri.Triangulation(R, Z, mesh.triangles)
 
+    legend_handles = []
+
     if show_region_ids and mesh.region_ids is not None and len(mesh.region_ids) > 0:
-        # 按排序后的实际 region ID 生成通用离散颜色
+        # 对排序后的实际 region ID 建立确定的离散索引映射：
+        #   actual OFT ID → 0, 1, ..., N-1
+        # 不根据整数值推断 plasma/vacuum/outer，不写死区域数量。
         unique_regions = sorted(set(int(x) for x in mesh.region_ids.tolist()))
         n_reg = len(unique_regions)
-        cmap = cm.get_cmap("tab10", max(n_reg, 1))
-        id_to_color = {rid: cmap(i) for i, rid in enumerate(unique_regions)}
+        region_to_index = {rid: i for i, rid in enumerate(unique_regions)}
 
-        # 每个三角形按其 region ID 上色（facecolors 使用 region 索引映射）
+        # 离散颜色表（长度等于实际区域数），来自稳定的 tab10 采样，
+        # 使用 ListedColormap + BoundaryNorm 明确离散归一化，
+        # 保证三角形填色与图例色块严格一致。
+        base_colors = plt.get_cmap("tab10")(np.linspace(0.0, 1.0, 10))
+        region_colors = [base_colors[i % 10] for i in range(n_reg)]
+        listed_cmap = ListedColormap(region_colors)
+        # 边界覆盖 [-0.5, 0.5, ..., N-0.5]，使离散索引 i 落在第 i 个颜色格
+        bounds = np.arange(-0.5, n_reg + 0.5, 1.0)
+        norm = BoundaryNorm(bounds, listed_cmap.N)
+
+        # 每个三角形对应的离散索引
         reg_index = np.array(
-            [unique_regions.index(int(r)) for r in mesh.region_ids],
+            [region_to_index[int(r)] for r in mesh.region_ids],
             dtype=np.float64,
         )
         ax.tripcolor(
             triang,
             facecolors=reg_index,
-            cmap=cmap,
+            cmap=listed_cmap,
+            norm=norm,
             alpha=0.35,
             edgecolors="none",
         )
-        # 图例代理（通用 OFT region 标签）
+
+        # 图例代理色块直接使用同一颜色表中的对应颜色
         from matplotlib.patches import Patch
         legend_handles = [
-            Patch(facecolor=id_to_color[rid], alpha=0.35, label=f"OFT region {rid}")
+            Patch(facecolor=region_colors[region_to_index[rid]], alpha=0.35,
+                  label=f"OFT region {rid}")
             for rid in unique_regions
         ]
         # 叠加网格线
         ax.triplot(triang, color="#555555", linewidth=0.3, alpha=0.6)
     else:
-        legend_handles = []
         # 仅绘制网格线
         ax.triplot(triang, color="#555555", linewidth=0.3, alpha=0.8)
 
@@ -144,7 +171,7 @@ def plot_mesh(
             color="blue",
             linewidth=1.2,
             linestyle="--",
-            label="第一壁",
+            label="First wall",
             zorder=3,
         )
 
@@ -156,7 +183,7 @@ def plot_mesh(
         color="red",
         markersize=8,
         markeredgewidth=2,
-        label=f"磁轴 ({gfile_data.rmaxis:.3f}, {gfile_data.zmaxis:.3f})",
+        label=f"Magnetic axis ({gfile_data.rmaxis:.3f}, {gfile_data.zmaxis:.3f})",
         zorder=4,
     )
 
@@ -171,9 +198,10 @@ def plot_mesh(
     if has_boundary:
         # 通用着色：按实际 marker 值分配颜色，不使用固定语义文本
         unique_markers = sorted(set(int(m) for m in mesh.boundary_markers.tolist()))
-        from matplotlib import cm as _cm
-        mcmap = _cm.get_cmap("Set1", max(len(unique_markers), 1))
-        marker_to_color = {mk: mcmap(i) for i, mk in enumerate(unique_markers)}
+        base_marker_colors = plt.get_cmap("Set1")(np.linspace(0.0, 1.0, 9))
+        marker_to_color = {
+            mk: base_marker_colors[i % 9] for i, mk in enumerate(unique_markers)
+        }
         plotted: set = set()
         for i in range(mesh.n_boundary_segments):
             seg = mesh.boundary_segments[i]
@@ -181,7 +209,7 @@ def plot_mesh(
             if marker == 0:
                 continue
             color = marker_to_color.get(marker, "gray")
-            label = f"边界 marker {marker}" if marker not in plotted else None
+            label = f"Boundary marker {marker}" if marker not in plotted else None
             plotted.add(marker)
             p0 = mesh.nodes[seg[0]]
             p1 = mesh.nodes[seg[1]]
@@ -197,7 +225,7 @@ def plot_mesh(
     # --- 格式设置 ---
     ax.set_xlabel("R [m]", fontsize=11)
     ax.set_ylabel("Z [m]", fontsize=11)
-    ax.set_title("LinkMesh 网格自检图", fontsize=13)
+    ax.set_title("LinkMesh Mesh Validation", fontsize=13)
     ax.set_aspect("equal")
 
     # 合并图例（区域填充代理 + 曲线/磁轴自动图例）
@@ -209,11 +237,15 @@ def plot_mesh(
         ax.legend(handles, labels, loc="upper right", fontsize=8, framealpha=0.8)
 
     # --- 统计信息文本框 ---
-    info_text = (
-        f"节点数: {mesh.n_nodes}\n"
-        f"三角形数: {mesh.n_triangles}\n"
-        f"边界线段数: {mesh.n_boundary_segments}"
-    )
+    # 始终显示 Nodes / Triangles；仅当存在真实边界段时显示 Boundary segments，
+    # 避免空兼容边界数组导致误导性的 "Boundary segments: 0"。
+    info_lines = [
+        f"Nodes: {mesh.n_nodes}",
+        f"Triangles: {mesh.n_triangles}",
+    ]
+    if mesh.n_boundary_segments > 0:
+        info_lines.append(f"Boundary segments: {mesh.n_boundary_segments}")
+    info_text = "\n".join(info_lines)
     ax.text(
         0.02, 0.02, info_text,
         transform=ax.transAxes,
@@ -225,7 +257,7 @@ def plot_mesh(
     fig.tight_layout()
     fig.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"自检图已保存：{filepath}")
+    print(f"Mesh validation plot saved: {filepath}")
 
 
 def plot_lcfs_only(
@@ -267,7 +299,7 @@ def plot_lcfs_only(
             color="blue",
             linewidth=1.2,
             linestyle="--",
-            label="第一壁",
+            label="First wall",
         )
 
     # 标注磁轴位置（红色叉号）
@@ -278,19 +310,19 @@ def plot_lcfs_only(
         color="red",
         markersize=8,
         markeredgewidth=2,
-        label=f"磁轴 ({gfile_data.rmaxis:.3f}, {gfile_data.zmaxis:.3f})",
+        label=f"Magnetic axis ({gfile_data.rmaxis:.3f}, {gfile_data.zmaxis:.3f})",
     )
 
     ax.set_xlabel("R [m]", fontsize=11)
     ax.set_ylabel("Z [m]", fontsize=11)
-    ax.set_title("LinkMesh LCFS 边界自检图", fontsize=13)
+    ax.set_title("LinkMesh LCFS Validation", fontsize=13)
     ax.set_aspect("equal")
     ax.legend(loc="upper right", fontsize=9)
 
     # 统计信息
     info_text = (
-        f"LCFS 点数: {len(gfile_data.lcfs_r)}\n"
-        f"磁轴: R={gfile_data.rmaxis:.4f} m, Z={gfile_data.zmaxis:.4f} m"
+        f"LCFS points: {len(gfile_data.lcfs_r)}\n"
+        f"Magnetic axis: R={gfile_data.rmaxis:.4f} m, Z={gfile_data.zmaxis:.4f} m"
     )
     ax.text(
         0.02, 0.02, info_text,
@@ -303,5 +335,5 @@ def plot_lcfs_only(
     fig.tight_layout()
     fig.savefig(filepath, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"LCFS 自检图已保存：{filepath}")
-    print(f"LCFS 点数: {len(gfile_data.lcfs_r)}，磁轴: (R={gfile_data.rmaxis:.4f}, Z={gfile_data.zmaxis:.4f})")
+    print(f"LCFS validation plot saved: {filepath}")
+    print(f"LCFS points: {len(gfile_data.lcfs_r)}, Magnetic axis: (R={gfile_data.rmaxis:.4f}, Z={gfile_data.zmaxis:.4f})")

@@ -225,11 +225,14 @@ def _run(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------ #
     # Step 5：可视化自检（M2 完整版）                                        #
     # ------------------------------------------------------------------ #
+    # 显式启用 OFT 区域填色（show_region_ids=True），使正式 M2 PNG 默认显示
+    # 各 OFT 区域的离散颜色。不修改 plot_mesh() 的全局默认参数，其他调用方
+    # 仍可只画网格线。
     if args.plot:
         from linkmesh.utils.plotter import plot_mesh
         if args.verbose:
             print(f"[LinkMesh] 生成网格自检图：{args.plot}")
-        plot_mesh(gfile_data, mesh, args.plot)
+        plot_mesh(gfile_data, mesh, args.plot, show_region_ids=True)
 
 
 def _build_boundary_config(
