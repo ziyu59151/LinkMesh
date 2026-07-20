@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 v1.8（固化 M2-0 OFT 通过证据；新增正式 mesher/oft_adapter.py 模块；Triangle Wrapper 降级为历史/过渡路径；明确轻量 Mesh2D 核心三数组；明确 OFT 区域编号与元数据规则；授权下一轮最小 M2 Adapter 实现）
+- 文档状态：正式版 v1.9（明确单区域 plasma-only 合法性与物理边界；明确不存在网格层面的最少两区域要求；建立 `mesh_from_oft_domain()` 通用 N 区域核心、`build_oft_domain_from_gfile()` 默认策略层和 `generate_mesh()` 便利入口三层接口；补充单区域与 N>3 测试规划；保持 CLI 默认 GFile 策略和 M3/M4 边界不变）
 - 最高依据：本文档自身即为 LinkMesh 项目的最高技术依据；开发纪律与协作规范见 CONTEXT.md
 - 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认事实】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【待运行验证】的内容为需要在真实 OFT 环境中实际运行后方可确认的事项；标注【计划新增】的内容为蓝图已批准、但尚未在仓库中创建的文件或目录；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
 - 主要用途：本文档为 LinkMesh 项目的单事实真理源（Single Source of Truth），不作为人类泛读材料，专门用于指导 Aider 自动化编码、RAG 知识库精准检索以及下游模块的硬核参数对齐。凡 Aider 在执行编码、新建文件、修改具体业务代码前，必须查阅并严格对齐本文档。
@@ -19,6 +19,7 @@
 | v1.6 | 批准含第一壁 DIII-D P0 默认三区域简化方案（region_id=1/2/3）；明确无可用壁轮廓降级两区域方案（region_id=1/2）；建立轻量的按表区域传递契约（Wrapper/Writer 不写死区域数）；补充区域种子几何条件与失败原则；记录 M2 自动测试 36/36 通过但真实 region_id=0 阻塞 M2 总体验收；保留 M4 Multi Region 侦察空间 |
 | v1.7 | 优先复用 OFT 完成 M1 读取、M2 区域/网格生成和可选静态中间输出；LinkMesh 最小化为输入编排、统一对象适配、目标格式翻译和 CLI；两区域/三区域改为 OFT Multi Region 的特殊验收实例，删除 LinkMesh 固定区域编号和固定区域数量的全局表述；根据 `loadfemmesh_h5.m` 修正 TRIMEG HDF5 直接消费契约（明确 boundary_segments/boundary_markers/node_markers 非 TRIMEG 直接消费字段，/femmesh/tria 第四列含义标注为待真实样例核对）；Mesh2D 重新定义为轻量统一网格对象，boundary_segments/boundary_markers/node_markers 降级为可选内部/适配字段；增加 M2-0 OFT 可行性验证里程碑；明确不修改、不维护 OFT 分支；保留 M4 对 M3DC1 特有要求的 LinkMesh 侧适配空间 |
 | v1.8 | 固化 M2-0 OFT 环境、合成两/三区域和真实 DIII-D 通过证据（Linux x86_64 / Python 3.12.13 / OpenFUSIONToolkit 26.6 正式 Conda 环境）；新增正式 `mesher/oft_adapter.py` 模块作为 M2 正式网格生成适配层；将 Python Triangle Wrapper 降级为历史/过渡路径（不再作为 M2 正式主路径）；明确轻量 Mesh2D 核心三数组（nodes/triangles/region_ids）；明确 OFT 区域编号原样保存与元数据从 domain.region_info 获取的规则；约束 LinkMesh 不复制 OFT 通用几何算法；授权进入 M2 Adapter 实现，但不表述为 M2/M3/M4 已通过 |
+| v1.9 | 明确单区域 plasma-only 是合法计算域选择及其物理适用边界；明确不存在 LinkMesh/OFT 网格层面“至少两个区域”的全局要求；明确两/三区域只是 OFT Multi Region 代表性验收样例，不是 Adapter 能力边界；建立 OFT Adapter 三层接口（`mesh_from_oft_domain()` 通用 N 区域核心、`build_oft_domain_from_gfile()` 当前 GFile 默认策略层、`generate_mesh()` CLI 便利入口）；`mesh_from_oft_domain()` 对任意正区域数量 N 通用（含 N=1），只按 `domain.region_info` 校验区域集合，不写死区域数量/名称/类型/整数 ID；补充单区域、N>3 及区域缺失/多余/非法编号失败的测试规划；明确 TRIMEG/M3DC1 单区域支持仍为待更多直接证据/待源码确认事项，不得由两/三区域实例外推最小区域数量；保持 CLI 默认 GFile 策略、Mesh2D 核心三数组、M3/M4 字段契约不变；不新增 CLI 参数；旧 Triangle 路径继续历史/过渡状态 |
 
 ---
 
@@ -34,7 +35,9 @@ LinkMesh 是一个**独立命令行程序（CLI）**，专注于打通从**等�
 
 **关于历史实验代码**：当前 LinkMesh 自有 Triangle/几何代码（`triangle_wrapper.py` 中的 `BoundaryConfig`、`_build_boundary_config()` 等）视为历史实验或过渡候选，不再作为必须保留的正式架构核心。在 M2-0 OFT 可行性验证通过后，将由 OFT `gs_Domain` 路线（`mesher/oft_adapter.py`）替代。
 
-**正式目标数据流（v1.8）**：
+**【v1.9 通用性原则】** 两区域和三区域只是 OFT Multi Region 的代表性验收样例，**不是 `oft_adapter.py` 的能力边界**。正式 Adapter 必须对任意正区域数量 N 通用，包括 N=1。LinkMesh 不重新设计一套任意 N 区域配置系统；OFT `gs_Domain` 本身即作为 N 区域定义接口。当前 CLI 仍可使用 GFile 默认区域模型，本轮不新增任意区域配置 CLI 参数。
+
+**正式目标数据流（v1.8，v1.9 保持）**：
 
 ```text
 GFile/EQDSK
@@ -48,13 +51,13 @@ GFile/EQDSK
   → TRIMEG HDF5（M3）/ M3DC1 .smb（M4）
 ```
 
-**M2 正式核心数据流（v1.8）**：
+**M2 正式核心数据流（v1.8，v1.9 保持）**：
 
 ```text
 GFileData → oft_adapter → OFT gs_Domain/Mesh/build_mesh → pts/lc/reg → 轻量 Mesh2D
 ```
 
-**完整项目数据流（v1.8）**：
+**完整项目数据流（v1.8，v1.9 保持）**：
 
 ```text
 GFile/EQDSK → OFT GEQDSKEquilibrium → GFileData → OFT Adapter → Mesh2D → TRIMEG HDF5 / M3DC1 .smb
@@ -134,7 +137,8 @@ LinkMesh/
 │       ├── mesher/
 │       │   ├── __init__.py
 │       │   ├── oft_adapter.py         # 【计划新增，M2 正式主路径】OFT gs_Domain 网格生成适配层：
-│       │   │                          # 接收 GFileData + 网格尺度参数，调用 OFT gs_Domain/build_mesh，
+│       │   │                          # 三层接口 mesh_from_oft_domain / build_oft_domain_from_gfile / generate_mesh；
+│       │   │                          # mesh_from_oft_domain 对任意正区域数量 N 通用（含 N=1）；
 │       │   │                          # 将 pts/lc/reg 规范化为轻量 Mesh2D；不复制 OFT 通用几何算法
 │       │   └── triangle_wrapper.py    # 【历史/过渡实现，非 M2 正式主路径】Python triangle 包底座封装；
 │       │                              # 已被 oft_adapter.py 替代为正式路线；
@@ -155,7 +159,8 @@ LinkMesh/
 │   │                                  # 作为历史证据保留；不能作为 OFT Adapter 正式验收的替代；
 │   │                                  # 当前保持文件不动，暂不删除、不扩展
 │   ├── test_oft_adapter.py            # 【计划新增，M2 正式验收测试】OFT Adapter 专用测试；
-│   │                                  # 验证 pts/lc/reg → Mesh2D 规范化、shape/dtype/索引范围/区域编号契约
+│   │                                  # 覆盖单区域/两区域/三区域/N>3；区域缺失/多余/非法编号失败；
+│   │                                  # 分别验证 mesh_from_oft_domain / build_oft_domain_from_gfile / generate_mesh 三层
 │   └── test_hdf5_writer.py            # 【计划新增】M3 验收测试
 │
 └── examples/                          # 【计划新增】示例文件目录
@@ -176,9 +181,9 @@ LinkMesh/
 | 模块文件 | 核心职责 | 输入 | 输出 | 禁止事项 |
 |---|---|---|---|---|
 | `src/linkmesh/__main__.py` | `python -m linkmesh` 入口：仅调用 `linkmesh.cli.main()`，不承载任何参数解析或业务逻辑 | `sys.argv`（透传） | 无（副作用：调用 `cli.main`） | 不得包含任何业务逻辑；不得直接操作文件；不得重复定义参数解析 |
-| `src/linkmesh/cli.py` | 解析命令行参数；调用 reader → `mesher/oft_adapter.py`（M2 正式路径）→ writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑；不得直接操作文件；**不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换**；不得复制 OFT 通用几何逻辑 |
+| `src/linkmesh/cli.py` | 解析命令行参数；调用 reader → `mesher/oft_adapter.py`（M2 正式路径，经 `generate_mesh()` 便利入口）→ writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑；不得直接操作文件；**不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换**；不得复制 OFT 通用几何逻辑；本轮不新增任意区域配置 CLI 参数 |
 | `src/linkmesh/readers/gfile_reader.py` | **薄 Adapter（接线员）**：调用 OFT `GEQDSKEquilibrium` 读取 GFile，从返回对象属性中提取 LCFS 边界坐标、磁轴坐标、第一壁点集等，封装为 `GFileData` 对象 | GFile 文件路径（`str`） | `GFileData` dataclass | **绝对禁止**在 LinkMesh 侧手动执行任何原始 GFile 文本 I/O 与字符串切分；不得调用 Triangle；不得写文件 |
-| `src/linkmesh/mesher/oft_adapter.py` | **【M2 正式网格生成适配层】** 接收 `GFileData` 和必要网格尺度参数；使用正式安装的 OFT `gs_Domain`，调用 `define_region()`/`add_polygon()`/`add_annulus()`/`add_rectangle()`/必要时 `add_enclosed()`/`build_mesh()`；由 OFT 完成区域组织、边界处理、点合并、边界重采样、区域种子、Triangle 输入构造和三角网格生成；将 `pts`/`lc`/`reg` 规范化为轻量 `Mesh2D`；检查 shape、dtype、有限值、索引范围、区域属性长度、非正区域编号和退化三角形 | `GFileData` 对象，网格尺度参数 | `Mesh2D` 对象 | **不得复制 OFT 通用几何、区域拓扑、种子搜索、重采样或 Triangle 调用算法**；不得修改 OFT 源码；不得读取或改写 OFT 安装目录；不得维护 OFT fork；不得依赖仓库 `TOKAMAKER/` 快照作为运行时包；不得写死区域数量；不得根据整数编号推断区域物理语义；不得对合法 0-based 连接表无依据地再次偏置 |
+| `src/linkmesh/mesher/oft_adapter.py` | **【M2 正式网格生成适配层，三层接口】** `mesh_from_oft_domain(domain)` 通用 N 区域核心：调用已构造 `gs_Domain` 的 `build_mesh()`，将 `pts/lc/reg` 规范化为 `Mesh2D`，只按 `domain.region_info` 校验区域集合，对任意正区域数量 N 通用（含 N=1）；`build_oft_domain_from_gfile(gfile_data, ...)` 当前 GFile 默认策略层：按批准策略构造 `gs_Domain`，不调用 `build_mesh()`；`generate_mesh(gfile_data, ...)` CLI 便利入口：组合前两者 | `GFileData` 对象 / 已构造 `gs_Domain` / 网格尺度参数 | `Mesh2D` 对象（`mesh_from_oft_domain`、`generate_mesh`）；`gs_Domain` 对象（`build_oft_domain_from_gfile`） | **不得复制 OFT 通用几何、区域拓扑、种子搜索、重采样或 Triangle 调用算法**；不得修改 OFT 源码/安装目录/fork；不得依赖 `TOKAMAKER/` 快照作为运行时包；**不得写死区域数量/名称/类型/最终整数 ID**；不得根据整数编号推断区域物理语义；不得对合法 0-based 连接表无依据地再次偏置；`mesh_from_oft_domain` 不得理解或推断 plasma/vacuum/outer 语义；`build_oft_domain_from_gfile` 不得调用 `build_mesh()` 或转换 `pts/lc/reg`；`generate_mesh` 不得包含第二套网格验证或区域算法 |
 | `src/linkmesh/mesher/triangle_wrapper.py` | 【历史/过渡实现，非 M2 正式主路径】原 Python triangle 包底座封装；已被 `oft_adapter.py` 替代 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎；**不得写死区域数量**；不得推断区域物理含义；**禁止为保存旧实现继续扩展其区域拓扑与通用几何能力** |
 | `src/linkmesh/writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；**不得重编号、偏置、压缩或排序 `region_ids`**；不得推断区域物理含义；不得根据整数编号猜测区域语义 |
 | `src/linkmesh/writers/smb_writer.py` | **第二战役占位模块**：在 M3 完整验收及 SCOREC/PUMI/M3DC1 只读侦察完成后，按主管确认的实现路线将 `Mesh2D` 转换为 M3DC1 可消费的 `.smb`；当前不得锁定具体序列化方式；保持 `NotImplementedError` 占位 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用，M4 实现后） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；M3 验收前不得实现任何字节流逻辑 |
@@ -249,9 +254,9 @@ class GFileData:
                                      # DIII-D 样例实测值约 4.93e5 A（约 0.49 MA）
 ```
 
-### 2.2 `Mesh2D`：LinkMesh 轻量统一网格对象（v1.8 明确核心三数组）
+### 2.2 `Mesh2D`：LinkMesh 轻量统一网格对象（v1.8 明确核心三数组，v1.9 保持）
 
-【v1.8 明确】`Mesh2D` 是 LinkMesh 目标格式之间的**轻量统一网格表示**，而不是 Python Triangle 专属对象。其 M2 正式核心数据收缩为三个数组，全部来自 OFT `build_mesh()` 返回值：
+【v1.8 明确，v1.9 保持】`Mesh2D` 是 LinkMesh 目标格式之间的**轻量统一网格表示**，而不是 Python Triangle 专属对象。其 M2 正式核心数据收缩为三个数组，全部来自 OFT `build_mesh()` 返回值：
 
 | 字段 | 来源 | 期望 shape | 期望 dtype |
 |---|---|---|---|
@@ -261,7 +266,7 @@ class GFileData:
 
 **索引基准原则（v1.8）**：内部节点索引基准以 M2-0 实际证据为准。当前 OFT 26.6 已确认返回合法 **0-based** 连接表；Adapter 应验证 `0 <= lc < N`，**无需无依据地再次偏置**。任何后续偏置（如写入 TRIMEG HDF5 时的 `+1`）由目标 Writer 按其格式契约在写出阶段执行，不在 `Mesh2D` 阶段处理。
 
-**区域编号原则（v1.8）**：`region_ids` **原样保存 OFT 返回的三角形区域编号**，不重编号、不压缩、不排序、不执行 `+1`。LinkMesh、`Mesh2D`、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义。区域语义应从 OFT `domain.region_info` 的区域名称、类型和最终 ID 获得。区域数量由 OFT 当前区域模型决定，不在 `Mesh2D` 中写死。
+**区域编号原则（v1.8，v1.9 保持）**：`region_ids` **原样保存 OFT 返回的三角形区域编号**，不重编号、不压缩、不排序、不执行 `+1`。LinkMesh、`Mesh2D`、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义。区域语义应从 OFT `domain.region_info` 的区域名称、类型和最终 ID 获得。区域数量由 OFT 当前区域模型决定，不在 `Mesh2D` 中写死；**合法的单区域（N=1）网格同样满足该契约**。
 
 ```python
 from dataclasses import dataclass, field
@@ -270,7 +275,7 @@ import numpy as np
 
 @dataclass
 class Mesh2D:
-    """LinkMesh 轻量统一网格对象（v1.8 明确核心三数组）。
+    """LinkMesh 轻量统一网格对象（v1.8 明确核心三数组，v1.9 保持）。
 
     该对象是 OFT build_mesh() 返回结果经 LinkMesh 最小适配后的统一表示，
     同时也是 writers/hdf5_writer.py 和 writers/smb_writer.py 的共同输入。
@@ -285,11 +290,11 @@ class Mesh2D:
         Adapter 应验证 0 <= lc < N，无需无依据地再次偏置。
         任何针对目标格式的偏置（如 TRIMEG HDF5 的 +1）由目标 Writer 在写出阶段执行。
 
-    区域编号约定（v1.8）：
+    区域编号约定（v1.8，v1.9 保持）：
         region_ids 原样保存 OFT 返回的三角形区域编号，不重编号、不压缩、不排序、不执行 +1。
         LinkMesh、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义。
         区域语义应从 OFT domain.region_info 的区域名称、类型和最终 ID 获得。
-        区域数量由 OFT 当前区域模型决定，不在 Mesh2D 中写死。
+        区域数量由 OFT 当前区域模型决定，不在 Mesh2D 中写死；单区域（N=1）网格同样合法。
         非正区域编号表示未认领或非法区域，不是"无物理方程"的合法标签。
     """
     # ------------------------------------------------------------------ #
@@ -367,7 +372,7 @@ class Mesh2D:
 
 ## 3. 数据流转架构（OFT 优先，LinkMesh 最小适配）
 
-### 3.1 正式目标数据管道（v1.8）
+### 3.1 正式目标数据管道（v1.8，v1.9 保持）
 
 LinkMesh 的数据流以 OFT 为核心网格生成后端，LinkMesh 只负责最小输入编排、统一对象适配、目标格式翻译和 CLI 编排。
 
@@ -384,17 +389,22 @@ src/linkmesh/readers/gfile_reader.py
 GFileData
   │
   ↓ [M2 正式网格生成适配层：src/linkmesh/mesher/oft_adapter.py]
-  │  [接收 GFileData + 网格尺度参数]
-  │  [极薄接口规范化：坐标转 (N,2) float64、删首尾重复闭合点、验证最低点数、构造 outer 包围范围]
-  │  [调用 OFT gs_Domain.define_region() / add_polygon() / add_annulus() / add_rectangle() / add_enclosed()]
-  │  [调用 OFT gs_Domain.build_mesh() 完成区域组织、边界处理、点合并、重采样、种子和网格生成]
-  │  [OFT 内部通过 liboft_triangle 完成 Triangle 调用，LinkMesh 不直接维护]
-  │  [区域编号由 OFT 区域模型决定，LinkMesh 原样接收]
+  │  [便利入口 generate_mesh(gfile_data, ...)：先 build_oft_domain_from_gfile 再 mesh_from_oft_domain]
+  │  │
+  │  ├─ build_oft_domain_from_gfile(gfile_data, ...)：当前 GFile 默认策略层
+  │  │    [极薄接口规范化：坐标转 (N,2) float64、删首尾重复闭合点、验证最低点数、构造 outer 包围范围]
+  │  │    [按当前批准策略调用 gs_Domain.define_region() / add_polygon() / add_annulus() / add_rectangle() / add_enclosed()]
+  │  │    [返回已构造 gs_Domain；不调用 build_mesh()，不转换 pts/lc/reg]
+  │  │
+  │  └─ mesh_from_oft_domain(domain)：通用 N 区域核心（含 N=1）
+  │       [调用 gs_Domain.build_mesh() 完成区域组织、边界处理、点合并、重采样、种子和网格生成]
+  │       [OFT 内部通过 liboft_triangle 完成 Triangle 调用，LinkMesh 不直接维护]
+  │       [只按 domain.region_info 校验区域集合；区域编号由 OFT 区域模型决定，LinkMesh 原样接收]
   │
   ↓ [OFT build_mesh() 返回 (pts[np,2], lc[nc,3], reg[nc])，lc 为 0-based]
   │  [可选：OFT save_gs_mesh() 写出静态中间网格（OFT 自有格式，非 TRIMEG HDF5）]
   │
-  ↓ [oft_adapter.py 最小适配：规范化并检查 shape/dtype/有限值/索引范围/区域编号/退化三角形]
+  ↓ [mesh_from_oft_domain 最小适配：规范化并检查 shape/dtype/有限值/索引范围/区域编号/退化三角形]
   │  [封装为轻量 Mesh2D 统一对象；原样保存 OFT 返回的区域编号，不重编号]
 Mesh2D  (轻量统一网格对象，v1.8 核心三数组 nodes/triangles/region_ids)
   │
@@ -453,13 +463,15 @@ linkmesh [选项]
   -h, --help            显示帮助信息
 ```
 
-**【v1.8 编排约束】** `cli.py` 只负责参数解析和调用 `mesher/oft_adapter.py`，不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换。这些逻辑由 OFT `gs_Domain` 内部处理。
+**【v1.8 编排约束，v1.9 保持】** `cli.py` 只负责参数解析和调用 `mesher/oft_adapter.py`（经 `generate_mesh()` 便利入口），不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换。这些逻辑由 OFT `gs_Domain` 内部处理。
+
+**【v1.9 CLI 约束】** 本轮不新增任意区域配置 CLI 参数，当前 CLI 继续使用 GFile 默认区域模型（见第 7.2.2 节）。若未来需要从 CLI 选择计算域范围（例如显式选择 plasma-only），必须另行更新蓝图并定义参数（见第 5.1.2 节与第 7.2.3 节）。
 
 ---
 
 ## 4. 数据格式对齐规范（两阶段战役核心方法论）
 
-本节是 LinkMesh 两大 Writer 模块的核心实现方法论，Aider 在编写 `src/linkmesh/writers/` 下任何代码前必须完整阅读本节。**本轮 v1.8 不修改 M3 HDF5 字段契约，本节内容保持 v1.7 不变。**
+本节是 LinkMesh 两大 Writer 模块的核心实现方法论，Aider 在编写 `src/linkmesh/writers/` 下任何代码前必须完整阅读本节。**本轮 v1.9 不修改 M3 HDF5 字段契约，本节内容保持 v1.7 不变。**
 
 ### 4.1 第一战役：TRIMEG HDF5 格式映射
 
@@ -491,6 +503,8 @@ linkmesh [选项]
 | `/femmesh/Zbc` | `h5read(h5file,'/femmesh/Zbc')` | 边界节点 Z 坐标 |
 
 **【重要澄清】** `loadfemmesh_h5.m` 中**没有**读取以下数据集：`boundary_segments`、`boundary_markers`、`node_markers`。这些字段是 LinkMesh 内部字段，不是 TRIMEG MATLAB 直接消费的数据集，不得将其写入 TRIMEG HDF5 文件并声称为 TRIMEG 消费字段。
+
+**【v1.9 单区域事实边界】** `loadfemmesh_h5.m` 当前直接证据**没有**显示 TRIMEG HDF5 加载器要求至少两个二维区域。单区域网格原则上仍可提供节点、三角形、内部/边界节点索引和可选边界坐标。但"文件能被 MATLAB 加载"不等于"TRIMEG 所有物理算例都接受 plasma-only"；TRIMEG 求解层是否需要真空区仍待更多直接证据（见第 5.1.3 节）。
 
 #### 4.1.2 转置规律（核心机制，必须理解）
 
@@ -600,6 +614,7 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
    - 索引约定（0-based vs 1-based）
    - MeshFile 与 ModelFile 的配对关系（见第 4.2.1 节）
    - M3DC1 特有的区域数量、几何分类、连续性要求（如 C1 连续性、高阶单元等）
+   - **M3DC1 是否支持单区域、是否至少需要真空区（见第 5.1.3 节，v1.9 保留为待源码确认事项）**
 3. **实现路线**：由侦察结果和主管确认决定，可能包括但不限于：
    - Python 二进制写出；
    - 调用 SCOREC/PUMI 官方 API；
@@ -617,7 +632,7 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
 - 导体和线圈的完整含时物理功能可能有限；
 - M3DC1 可能有 C1 连续性要求或高阶单元需求，但这不是当前阻止 OFT 网格后端的事实，需要 M4 源码侦察确认。
 
-M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile、MeshFile 和 M3DC1/SCOREC/PUMI 源码进行只读侦察，确认区域数量、D1B、几何分类、索引、文件配对和 `.smb` 契约；不得据此提前实现 `.smb`。P0 默认三区域方案不得被外推为 M3DC1 永久固定三区域。
+M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile、MeshFile 和 M3DC1/SCOREC/PUMI 源码进行只读侦察，确认区域数量、D1B、几何分类、索引、文件配对和 `.smb` 契约；不得据此提前实现 `.smb`。P0 默认三区域方案不得被外推为 M3DC1 永久固定三区域，单区域/两区域实例也不得被外推为 M3DC1 的最小区域数量要求。
 
 **【待源码确认】当前推断的 `.smb` 格式关键事实**：
 
@@ -633,15 +648,16 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 | 高阶节点 | 是否需要边中点（C1 单元需求） | 【待源码确认，见缺口 G1】 |
 | 序列化方式 | Python 二进制写出或其他 | 【待侦察后由主管确认】 |
 | MeshFile/ModelFile 配对 | 区域数量和 ModelFile 格式 | 【待源码确认，见 M4 侦察线索】 |
-| M3DC1 区域数量 | 不固定，依装置和算例而变化 | 【待源码确认，不得由 P0 两/三区域样例固定】 |
+| M3DC1 区域数量 | 不固定，依装置和算例而变化 | 【待源码确认，不得由 P0 单/两/三区域样例固定】 |
+| M3DC1 单区域支持 | 是否支持单区域、是否至少需要真空区 | 【待源码确认，见第 5.1.3 节】 |
 
 ---
 
 ## 5. 区域标记与边界标记约定
 
-### 5.1 区域编号总体原则（v1.8）
+### 5.1 区域编号总体原则（v1.8，v1.9 补充单区域与通用 N 区域）
 
-【v1.8 原则】LinkMesh 不维护全局固定的区域编号映射（如 `1=plasma、2=vacuum、3=wall`）。
+【v1.8 原则，v1.9 保持】LinkMesh 不维护全局固定的区域编号映射（如 `1=plasma、2=vacuum、3=wall`）。
 
 **正式原则**：
 
@@ -650,13 +666,64 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 3. **LinkMesh、`Mesh2D`、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义**；
 4. **区域语义应从 OFT `domain.region_info` 的区域名称、类型和最终 ID 获得**，不得从整数值推断；
 5. **区域数量由 OFT 当前区域模型决定**，不在 LinkMesh 中写死；
-6. **当前两区域 PLASMA/OUTER 与三区域 PLASMA/VACUUM/OUTER 只作为验收样例**，不是 LinkMesh 的全局固定架构；
-7. **M3DC1 Multi Region 的区域数不得由这两个样例固定**；
+6. **当前两区域 PLASMA/OUTER 与三区域 PLASMA/VACUUM/OUTER 只作为代表性验收样例**，不是 LinkMesh 的全局固定架构，也不是 `oft_adapter.py` 的能力边界；
+7. **M3DC1 Multi Region 的区域数不得由这两个样例固定**；单/两/三区域实例也不得被外推为 TRIMEG/M3DC1 的最小区域数量要求（见第 5.1.3 节）；
 8. **若某个物理区域不属于目标计算域，正确做法是构造不包含该区域的 OFT 区域模型，使其不生成三角形**；不得保留区域空间后将其编号设为 0。OFT 中非正区域编号表示未认领或非法区域，不是"无物理方程"的合法标签。
 
-### 5.2 P0 验收样例（非全局固定架构）
+#### 5.1.1 通用 N 区域能力（v1.9）
 
-以下两个样例仅用于 P0 阶段验证，不代表 LinkMesh 的全局固定区域编号约定。OFT 最终编号由 `build_mesh()` 决定。
+【v1.9 原则】`oft_adapter.py` 正式 Adapter 必须对**任意正区域数量 N 通用，包括 N=1**：
+
+- LinkMesh 不重新设计一套任意 N 区域配置系统；OFT `gs_Domain` 本身即作为 N 区域定义接口；
+- 通用 N 区域核心由 `mesh_from_oft_domain(domain)` 承担（见第 7.1 节），它只根据 `domain.region_info` 验证区域集合，不写死区域数量、名称、类型或最终整数 ID；
+- 两区域、三区域只是代表性验收样例；N=1 与 N>3 都必须被 `mesh_from_oft_domain()` 正确接受（合法输入时通过，非法输入时失败，见第 5.2 节校验规则）。
+
+#### 5.1.2 单区域 plasma-only 物理定位（v1.9）
+
+【v1.9 物理定位】单区域 plasma-only 是**合法的计算域选择**：
+
+- **计算域仅为 LCFS 内部**：LCFS 是最外层计算边界，LCFS 外不生成三角形；
+- **适用场景**：只计算等离子体内部、LCFS 边界条件由外部给定、不自洽计算真空场、壁响应或线圈耦合的场景；
+- **不可替代性**：它**不能替代**需要自由边界、真空场、导体、第一壁或线圈响应的多区域模型；
+- **网格层面无最小区域数要求**：**不存在** LinkMesh/OFT 网格层面"至少必须两个区域"的全局要求；
+- **区域裁剪原则**：若某个区域不属于计算域，应**不在 OFT Domain 中创建它**，使其生成 0 个三角形；不得保留区域空间后用 `region_id=0` 表示"不求解"。
+
+**CLI 与默认策略关系（v1.9）**：单区域 plasma-only 暂时作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（见第 14.1 节）。本轮**不新增 CLI 参数**选择 plasma-only，**不修改当前默认 GFile 策略**（见第 7.2.2 节）。若未来需要从 CLI 选择计算域范围，必须另行更新蓝图并定义参数。
+
+#### 5.1.3 TRIMEG / M3DC1 单区域消费者事实边界（v1.9）
+
+【v1.9 事实边界，禁止外推】以下为消费者侧单区域支持的当前事实边界，不得由两/三区域实例外推最小区域数量要求：
+
+| 消费者 | 单区域支持事实边界 | 状态 |
+|---|---|---|
+| TRIMEG HDF5 加载器（`loadfemmesh_h5.m`） | 当前直接证据**没有**显示要求至少两个二维区域；单区域网格原则上仍可提供节点、三角形、内部/边界节点索引和可选边界坐标 | 已确认（仅限加载器层面） |
+| TRIMEG 物理求解层 | "文件能被 MATLAB 加载"不等于"TRIMEG 所有物理算例都接受 plasma-only"；求解层是否需要真空区仍待更多直接证据 | 【待更多直接证据】 |
+| M3DC1 | 是否支持单区域、是否至少需要真空区、是否要求 C1 连续性或高阶单元，全部保留为 M4 待源码确认事项 | 【待源码确认，M4】 |
+
+**结论**：不得把当前两区域或三区域实例外推为 TRIMEG/M3DC1 的最小区域数量要求。网格层面（LinkMesh/OFT）不存在最少两区域要求；消费者层面的区域需求由各自求解器的直接证据决定。
+
+### 5.2 区域校验规则（v1.9，通用 N 区域）
+
+【v1.9 校验规则】`mesh_from_oft_domain()` **不得**要求固定区域数量或固定集合 `{1,2}`、`{1,2,3}`。应检查以下各项：
+
+1. `domain.region_info` 至少包含**一个**已经创建的区域；
+2. OFT 输出 `reg` 全部为**有限正整数**；
+3. `reg` 长度等于三角形数（`len(reg) == T`）；
+4. 实际输出区域 ID 集合与 `domain.region_info` 的最终 ID 集合**一致**（既不缺失也不多余）；
+5. **每个 Domain 区域至少对应一个三角形**（不允许某个已创建区域生成 0 个三角形；若某区域不应存在，应在构造 Domain 时就不创建它，见第 5.1.2 节区域裁剪原则）；
+6. **合法单区域（N=1）输出必须通过**；
+7. **不重编号、不压缩、不排序、不执行 `+1`**。
+
+**失败条件（应抛错或验收失败）**：
+- 输出缺失某个 Domain 区域（区域 ID 集合缺项）；
+- 输出出现额外区域（`reg` 中出现 `domain.region_info` 之外的 ID）；
+- 出现 `0`、负数或非整数区域编号；
+- `reg` 长度与三角形数不一致；
+- `domain.region_info` 为空（无任何已创建区域）。
+
+### 5.3 P0 验收样例（代表性样例，非全局固定架构，非能力边界）
+
+以下样例仅用于 P0 阶段验证，**不代表 LinkMesh 的全局固定区域编号约定，也不代表 `oft_adapter.py` 的能力边界**。OFT 最终编号由 `build_mesh()` 决定。
 
 #### 样例 A：三区域验收样例（当前真实 DIII-D 样例）
 
@@ -674,7 +741,11 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 
 两区域合成样例定义 `PLASMA` + `OUTER`。M2-0 合成两区域运行中区域统计为 `{1:83, 2:401}`（详见第 13 节 M2-0 证据）。
 
-### 5.3 边界标记约定（历史/过渡代码，非 OFT 正式约定）
+#### 样例 C：单区域 plasma-only 样例（v1.9，自动测试场景）
+
+单区域 plasma-only 样例仅定义一个 plasma 区域，计算域为 LCFS 内部，LCFS 外不生成三角形（见第 5.1.2 节）。本轮作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（mock 单区域 OFT Domain，输出一个正区域 ID，必须通过），不新增 CLI 参数（见第 14.1 节测试规划）。
+
+### 5.4 边界标记约定（历史/过渡代码，非 OFT 正式约定）
 
 【历史/过渡】以下为历史过渡代码（Python triangle 路线）中使用的边界标记约定，仅供参考，不作为 OFT 路线的正式约定：
 
@@ -820,21 +891,58 @@ def read_gfile(filepath: str) -> GFileData:
 
 ---
 
-## 7. OFT gs_Domain 网格生成适配规范（M2 正式路线：mesher/oft_adapter.py）
+## 7. OFT gs_Domain 网格生成适配规范（M2 正式路线：mesher/oft_adapter.py 三层接口）
 
-### 7.1 oft_adapter.py 正式职责（M2 正式主路径）
+### 7.1 oft_adapter.py 三层接口正式职责（M2 正式主路径，v1.9）
 
-【计划新增，M2 正式主路径】`src/linkmesh/mesher/oft_adapter.py` 是 M2 正式网格生成适配层。其职责严格限定为以下七点：
+【计划新增，M2 正式主路径】`src/linkmesh/mesher/oft_adapter.py` 是 M2 正式网格生成适配层。v1.9 将其正式职责拆分为**三层接口**，通用 N 区域核心与当前 GFile 默认策略解耦：
 
-1. 接收 `GFileData` 和必要网格尺度参数；
-2. 使用正式安装的 `OpenFUSIONToolkit.TokaMaker.meshing.gs_Domain`；
-3. 调用 OFT 的 `define_region()`、`add_polygon()`、`add_annulus()`、`add_rectangle()`、必要时 `add_enclosed()` 和 `build_mesh()`；
-4. 由 OFT 完成区域组织、边界处理、点合并、边界重采样、区域种子、Triangle 输入构造和三角网格生成；
-5. 将 OFT `build_mesh()` 返回的 `pts`、`lc`、`reg` 规范化为 LinkMesh 的轻量统一内存网格对象（`Mesh2D`）；
-6. 检查数组 shape、dtype、有限值、索引范围、区域属性长度、非正区域编号和退化三角形；
-7. 不复制 OFT 的通用几何、区域拓扑、种子搜索、重采样或 Triangle 调用算法。
+#### 7.1.1 `mesh_from_oft_domain(domain) -> Mesh2D`（通用 N 区域核心）
 
-**【OFT 治理铁律】** 该模块只调用 Conda 环境中正式安装的 OFT：
+**职责**：
+
+1. 接收**已经由调用方构造完成**的 OFT `gs_Domain`；
+2. 调用 `domain.build_mesh()`；
+3. 将 OFT `pts/lc/reg` 规范化为 `Mesh2D`；
+4. 只根据 `domain.region_info` 验证区域集合（校验规则见第 5.2 节）；
+5. **对任意正区域数量 N 通用，包括 N=1**；
+6. **不理解或推断 plasma、vacuum、outer 的物理语义**；
+7. **不写死区域名称、类型、数量或最终整数 ID**。
+
+**类型标注说明**：若现有蓝图未锁定精确类型标注，允许 `domain` 参数使用运行时 OFT 对象（例如直接标注为 OFT 的 `gs_Domain` 类型或宽松标注），**不引入新的 Protocol、抽象基类或插件系统**。
+
+#### 7.1.2 `build_oft_domain_from_gfile(gfile_data, ...)`（当前 GFile 默认策略层）
+
+**职责**：
+
+1. 只负责当前 GFile 默认区域策略和薄输入编排；
+2. 根据当前批准策略构造 OFT `gs_Domain`（见第 7.2.2 节默认策略）；
+3. **不调用 `build_mesh()`，不转换 `pts/lc/reg`**；
+4. **不复制 OFT 的重采样、点合并、种子搜索或 Triangle 算法**。
+
+**返回**：已构造但尚未 `build_mesh()` 的 OFT `gs_Domain` 对象。
+
+**允许的极薄输入规范化**（见第 7.3 节）：坐标转 `(N,2)` float64、删首尾重复闭合点、验证最低点数、构造 outer 包围范围、传递网格尺度参数。
+
+#### 7.1.3 `generate_mesh(gfile_data, ...) -> Mesh2D`（CLI 便利入口）
+
+**职责**：
+
+1. 作为 CLI 便利入口；
+2. **只组合前两个函数**：先调用 `build_oft_domain_from_gfile()` 构造默认 OFT Domain，再调用 `mesh_from_oft_domain()` 生成 `Mesh2D`；
+3. **不包含第二套网格验证或区域算法**（验证由 `mesh_from_oft_domain()` 唯一承担）。
+
+**三层接口关系示意**：
+
+```text
+generate_mesh(gfile_data, ...)                    # CLI 便利入口
+  │
+  ├─ domain = build_oft_domain_from_gfile(gfile_data, ...)   # 默认策略层：构造 gs_Domain，不 build_mesh
+  │
+  └─ return mesh_from_oft_domain(domain)          # 通用 N 区域核心：build_mesh + 规范化 + 校验
+```
+
+**【OFT 治理铁律】** 三层接口均只调用 Conda 环境中正式安装的 OFT：
 - 不修改 OFT 源码；
 - 不读取或改写 OFT 安装目录；
 - 不维护 OFT fork；
@@ -842,26 +950,26 @@ def read_gfile(filepath: str) -> GFileData:
 
 ### 7.2 OFT gs_Domain 调用方式（M2 正式路线，M2-0 已验证）
 
-【已确认事实，来自只读侦察 `meshing.py` 与 M2-0 运行验证】OFT `gs_Domain` 提供完整的区域定义、边界组织、区域种子和网格生成能力。M2 正式路线通过 `oft_adapter.py` 调用 OFT `gs_Domain`，不复制 OFT 已实现的通用几何逻辑。
+【已确认事实，来自只读侦察 `meshing.py` 与 M2-0 运行验证】OFT `gs_Domain` 提供完整的区域定义、边界组织、区域种子和网格生成能力。M2 正式路线通过 `oft_adapter.py` 三层接口调用 OFT `gs_Domain`，不复制 OFT 已实现的通用几何逻辑。
 
-**OFT `gs_Domain` 调用流程（示意；具体参数由 oft_adapter.py 实现时按 M2-0 验证结果确定）**：
+#### 7.2.1 通用调用流程（示意）
 
 ```python
 from OpenFUSIONToolkit.TokaMaker.meshing import gs_Domain
 
-# Step 1：创建 gs_Domain 对象
+# Step 1：创建 gs_Domain 对象（build_oft_domain_from_gfile 内部）
 domain = gs_Domain(...)
 
 # Step 2：定义命名区域（区域类型、分辨率等）
+# 区域数量 N 由当前策略决定，可为 1、2、3 或更多（N 区域通用）
 domain.define_region('PLASMA', dx=..., reg_type='plasma')
-domain.define_region('VACUUM', dx=..., reg_type='vacuum')
-domain.define_region('OUTER', dx=..., reg_type='boundary')
+# 视策略追加 VACUUM / OUTER 等区域（见第 7.2.2 节）
 
 # Step 3：添加几何边界（LCFS、第一壁、人工 outer boundary 等）
 # 使用 add_polygon() / add_annulus() / add_rectangle() 添加区域边界
 # 必要时使用 add_enclosed() 添加区域内部种子点
 
-# Step 4：调用 build_mesh() 生成网格
+# Step 4：调用 build_mesh() 生成网格（mesh_from_oft_domain 内部）
 pts, lc, reg = domain.build_mesh()
 # pts: shape=(np, 2)，节点坐标，float64
 # lc:  shape=(nc, 3)，三角形连接表，int32，0-based（M2-0 确认）
@@ -879,27 +987,44 @@ pts, lc, reg = domain.build_mesh()
 - `add_polygon()` / `add_annulus()` / `add_rectangle()` / `add_enclosed()` 的具体调用组合；
 - `gs_Domain(...)` 构造参数（如 padding）。
 
-### 7.3 最小输入规范化（oft_adapter.py 允许的极薄预处理）
+#### 7.2.2 当前 GFile 默认策略（`build_oft_domain_from_gfile` 采用，v1.9 保持）
 
-允许 `oft_adapter.py` 在调用 OFT 前做**极薄的接口规范化**：
+【v1.9 保持】保留当前已验证的默认策略，由 `build_oft_domain_from_gfile()` 承担：
+
+| 输入条件 | 默认区域模型 | 区域数量 N |
+|---|---|---|
+| 有有效第一壁（GFile 提供有效、闭合、满足嵌套关系的 limiter/第一壁轮廓） | PLASMA + VACUUM + OUTER | 3 |
+| 无第一壁（GFile 未提供可用壁轮廓） | PLASMA + OUTER | 2 |
+
+**明确**：这是**当前 CLI/GFile 便利策略**，**不是 Adapter 全局能力限制**。`mesh_from_oft_domain()` 的通用 N 区域能力（含 N=1、N>3）与该默认策略解耦（见第 5.1.1 节与第 7.1.1 节）。
+
+#### 7.2.3 未来 CLI 计算域选择（v1.9，待另行更新蓝图）
+
+【v1.9 待裁决】单区域 plasma-only 暂时作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（见第 5.3 样例 C 与第 14.1 节）。本轮**不新增 CLI 参数**选择 plasma-only，**不修改当前默认 GFile 策略**。
+
+如果未来需要从 CLI 选择计算域范围（例如显式选择 plasma-only 或其他区域模型），**必须另行更新蓝图并定义参数**，不得在本轮或下一轮 M2 实现中擅自新增。
+
+### 7.3 最小输入规范化（`build_oft_domain_from_gfile` 允许的极薄预处理）
+
+允许 `build_oft_domain_from_gfile()` 在构造 OFT Domain 前做**极薄的接口规范化**：
 
 1. 将 LCFS 和第一壁坐标转换为 shape `(N, 2)` 的有限 `float64` 数组；
 2. 删除首尾近似重复的闭合点，避免 OFT 产生零长度闭合小段；
 3. 验证点数满足 OFT 调用的最低要求；
-4. 构造人工 outer boundary 所需的简单包围范围；
+4. 构造人工 outer boundary 所需的简单包围范围（仅在采用含 OUTER 的策略时）；
 5. 把网格尺度参数传给 OFT。
 
 **【严禁】** 不允许在 LinkMesh 中复制 OFT 的尖角处理、Sliver 处理、Small feature 处理、重采样、自交通用框架、共享边界拆分或区域种子搜索。第一壁尖角和短线段优先交给 OFT 处理；只有实际 OFT 运行失败且有直接证据时，才提出新的最小预处理建议。
 
 【M2-0 证据】DIII-D 真实样例中，第一壁尖角和短线段触发 OFT `Repeated points`、`Sliver`、`Small feature` 警告，但最终网格质量通过（最小内角 `20.222°`，退化三角形 0）。这证明尖角和短线段交给 OFT 处理是可行的，无需 LinkMesh 侧额外预处理。
 
-### 7.4 LinkMesh 最小适配层（OFT 输出 → Mesh2D）
+### 7.4 LinkMesh 最小适配层（OFT 输出 → Mesh2D，`mesh_from_oft_domain` 承担）
 
-OFT `build_mesh()` 返回 `(pts, lc, reg)` 后，`oft_adapter.py` 进行最小适配，规范化为 `Mesh2D` 轻量统一对象，并执行以下检查：
+OFT `build_mesh()` 返回 `(pts, lc, reg)` 后，`mesh_from_oft_domain()` 进行最小适配，规范化为 `Mesh2D` 轻量统一对象，并执行第 5.2 节的区域校验以及以下检查：
 
 - `nodes`：`pts` 转为 `(N, 2)` float64；检查有限值；
 - `triangles`：`lc` 转为 `(T, 3)` 整数；检查 `0 <= lc < N`（0-based，M2-0 确认，无需再次偏置）；
-- `region_ids`：`reg` 转为 `(T,)` 整数；原样保存，不重编号；检查非正区域编号（正常应全部为正）；
+- `region_ids`：`reg` 转为 `(T,)` 整数；原样保存，不重编号；按第 5.2 节校验区域集合（含 N=1 合法、非正编号失败、区域集合与 `domain.region_info` 一致、每区域至少一个三角形）；
 - 退化三角形检查：重复顶点三角形数、非正/近零有向面积三角形数应为 0；
 - 区域属性长度检查：`len(reg) == T`。
 
@@ -907,7 +1032,7 @@ OFT `build_mesh()` 返回 `(pts, lc, reg)` 后，`oft_adapter.py` 进行最小�
 
 ### 7.5 历史/过渡代码（Python triangle 包路线，非 M2 正式主路径）
 
-【v1.8 状态】以下历史/过渡代码不再作为 M2 正式主路径，已被 `oft_adapter.py` 替代：
+【v1.8 状态，v1.9 保持】以下历史/过渡代码不再作为 M2 正式主路径，已被 `oft_adapter.py` 替代：
 
 - `src/linkmesh/mesher/triangle_wrapper.py`：Python `triangle` 包底座封装；
 - `src/linkmesh/cli.py` 中的 `_build_boundary_config()`：历史过渡胶水代码；
@@ -925,32 +1050,33 @@ OFT `build_mesh()` 返回 `(pts, lc, reg)` 后，`oft_adapter.py` 进行最小�
 
 1. 解析命令行参数；
 2. 调用 `read_gfile()` 获取 `GFileData`；
-3. 将 `GFileData` 和网格尺度参数传给 `mesher/oft_adapter.py`（最小输入编排）；
-4. 由 `oft_adapter.py` 调用 OFT `gs_Domain.build_mesh()` 并返回 `Mesh2D`；
+3. 将 `GFileData` 和网格尺度参数传给 `mesher/oft_adapter.py` 的 `generate_mesh()` 便利入口（最小输入编排）；
+4. 由 `generate_mesh()` 内部组合 `build_oft_domain_from_gfile()` 与 `mesh_from_oft_domain()` 返回 `Mesh2D`；
 5. 调用 `write_hdf5()` 或 `write_smb()` 写出目标格式；
 6. 调用 `plot_mesh()` 生成可视化自检图。
 
-**【禁止】** 不得在 `cli.py` 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换。不得复制 OFT 通用几何逻辑（边界重采样、点合并、区域种子搜索等）。这些逻辑由 OFT `gs_Domain` 内部处理，或由 `oft_adapter.py` 编排。
+**【禁止】** 不得在 `cli.py` 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换。不得复制 OFT 通用几何逻辑（边界重采样、点合并、区域种子搜索等）。这些逻辑由 OFT `gs_Domain` 内部处理，或由 `oft_adapter.py` 三层接口编排。
 
 ### 8.2 M2 OFT 编排（下一轮实现）
 
-【下一轮 M2 实现范围】`cli.py` 的 M2 正式路径应最小修改为调用 `mesher/oft_adapter.py`。具体编排入口的函数命名与签名由下一轮源码任务实现时确定，本轮不锁定实现细节。约束为：
+【下一轮 M2 实现范围】`cli.py` 的 M2 正式路径应最小修改为调用 `mesher/oft_adapter.py` 的 `generate_mesh()` 便利入口。具体编排入口的调用点由下一轮源码任务实现时确定，本轮不锁定实现细节。约束为：
 
 - `cli.py` 只传递 `GFileData` 和网格尺度参数；
 - 不在 `cli.py` 中实现任何几何/区域/种子/Triangle 算法；
-- 区域编号原样从 `oft_adapter.py` 返回的 `Mesh2D` 获取，不在 `cli.py` 中重编号。
+- 区域编号原样从 `generate_mesh()` 返回的 `Mesh2D` 获取，不在 `cli.py` 中重编号；
+- 本轮不新增任意区域配置 CLI 参数（见第 3.2 节与第 7.2.3 节）。
 
 ### 8.3 历史/过渡代码（`_build_boundary_config`）
 
-【v1.8 状态】`cli.py` 中现有的 `_build_boundary_config()` 函数是历史/过渡胶水代码，不再作为 M2 正式架构的核心实现。M2 正式路径由调用 `oft_adapter.py` 替代。
+【v1.8 状态，v1.9 保持】`cli.py` 中现有的 `_build_boundary_config()` 函数是历史/过渡胶水代码，不再作为 M2 正式架构的核心实现。M2 正式路径由调用 `oft_adapter.py` 三层接口替代。
 
-当前保留 `_build_boundary_config()` 以维持与现有过渡代码的兼容性，但不得继续扩展其功能。下一轮 M2 任务对 `cli.py` 只做最小修改以接入 `oft_adapter.py`，不扩展 `_build_boundary_config()`。
+当前保留 `_build_boundary_config()` 以维持与现有过渡代码的兼容性，但不得继续扩展其功能。下一轮 M2 任务对 `cli.py` 只做最小修改以接入 `generate_mesh()`，不扩展 `_build_boundary_config()`。
 
 ---
 
 ## 9. src/linkmesh/writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
 
-**【本轮 v1.8 不修改 M3 HDF5 字段契约，本节内容保持 v1.7 不变。】**
+**【本轮 v1.9 不修改 M3 HDF5 字段契约，本节内容保持 v1.7 不变。】**
 
 ### 9.1 实现依据与黄金标尺
 
@@ -1001,7 +1127,7 @@ mesh.h5
 
 【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 中的 `write_hdf5(mesh, filepath, verbose=True)` 函数已**完整实现**（非占位），按第 4.1.6 节映射契约逐一写出全部 11 个数据集。
 
-**M3 前置条件**：M3 真实验收必须基于已经通过 M2 的 OFT 网格结果（`oft_adapter.py` 输出的 `Mesh2D`）。在 M2 通过验收之前，不得进入 M3 验收。
+**M3 前置条件**：M3 真实验收必须基于已经通过 M2 的 OFT 网格结果（`mesh_from_oft_domain()` / `generate_mesh()` 输出的 `Mesh2D`）。在 M2 通过验收之前，不得进入 M3 验收。
 
 ---
 
@@ -1018,7 +1144,7 @@ mesh.h5
 
 ### 10.2 `write_smb()` 函数接口（占位，待 M4 里程碑实现）
 
-【已确认事实】当前 `write_smb()` 保持 `raise NotImplementedError` 占位实现。实现路线（包括但不限于 Python 二进制写出、调用官方 API 或其他方式）必须由侦察结果和主管确认决定，不得提前锁定。若 M3DC1 有额外区域、边界实体、几何分类或连续性要求，只在 LinkMesh 适配层中增加必要翻译，不得修改 OFT。
+【已确认事实】当前 `write_smb()` 保持 `raise NotImplementedError` 占位实现。实现路线（包括但不限于 Python 二进制写出、调用官方 API 或其他方式）必须由侦察结果和主管确认决定，不得提前锁定。若 M3DC1 有额外区域、边界实体、几何分类或连续性要求，只在 LinkMesh 适配层中增加必要翻译，不得修改 OFT。**M3DC1 是否支持单区域、是否至少需要真空区，保留为 M4 待源码确认事项（见第 5.1.3 节）。**
 
 ### 10.3 配套 model .txt 文件规范（占位）
 
@@ -1055,7 +1181,7 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 
 绘制 LCFS 边界与生成三角网格的叠加图。功能：
 - 使用 `matplotlib.tri.Triangulation` 绘制三角网格线
-- 若 `show_region_ids=True`，按区域 ID 着色填充（颜色方案不依赖固定区域编号语义，按实际区域 ID 集合动态分配颜色）
+- 若 `show_region_ids=True`，按区域 ID 着色填充（颜色方案不依赖固定区域编号语义，按实际区域 ID 集合动态分配颜色；单区域时按单一区域着色）
 - 叠加绘制 LCFS 边界曲线（红色实线）
 - 若有第一壁数据，叠加绘制（蓝色虚线）
 - 标注磁轴位置（红色叉号）
@@ -1221,14 +1347,18 @@ pytest>=7.0.0
 
 **当前状态**：【M2-0 已通过，授权进入 M2 Adapter 实现；M2 总体尚未正式 PASSED】
 
-**目标**：新建 `src/linkmesh/mesher/oft_adapter.py` 正式网格生成适配层，并最小修改 `cli.py` 接入该适配层，使 OFT 网格结果能够进入 LinkMesh 轻量统一对象（`Mesh2D`）并完成真实样例和 PNG/统计验收。
+**目标**：新建 `src/linkmesh/mesher/oft_adapter.py` 正式网格生成适配层（三层接口，见第 7.1 节），并最小修改 `cli.py` 接入 `generate_mesh()` 便利入口，使 OFT 网格结果能够进入 LinkMesh 轻量统一对象（`Mesh2D`）并完成真实样例和 PNG/统计验收。
 
 **实现原则**：
 - 不得复制 OFT 通用几何逻辑（边界重采样、点合并、区域种子搜索等）；
 - 区域编号原样保存 OFT 返回值，不重编号；
 - `Mesh2D` 作为轻量统一对象，核心三数组（`nodes`/`triangles`/`region_ids`）首要数据来自 OFT 返回值；
-- OFT 返回 0-based `lc`，Adapter 验证 `0 <= lc < N`，不再无依据偏置；
-- OFT Adapter 首次实现不得为了填充 `boundary_segments`/`boundary_markers`/`node_markers` 旧字段而重新建设边界恢复算法。
+- OFT 返回 0-based `lc`，`mesh_from_oft_domain()` 验证 `0 <= lc < N`，不再无依据偏置；
+- `mesh_from_oft_domain()` 对任意正区域数量 N 通用（含 N=1），只按 `domain.region_info` 校验区域集合（第 5.2 节），不写死区域数量/名称/类型/整数 ID；
+- `build_oft_domain_from_gfile()` 承担当前 GFile 默认策略（有壁三区域 / 无壁两区域，第 7.2.2 节），不调用 `build_mesh()`；
+- `generate_mesh()` 只组合前两者，不含第二套验证或区域算法；
+- OFT Adapter 首次实现不得为了填充 `boundary_segments`/`boundary_markers`/`node_markers` 旧字段而重新建设边界恢复算法；
+- 本轮不新增 CLI 参数（含 plasma-only 选择），单区域仅作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景。
 
 **M2 验收标准**：
 1. `python -m linkmesh --gfile <真实 DIII-D 样例> --no-smb --no-hdf5 --plot mesh_check.png` 能够运行；
@@ -1237,10 +1367,10 @@ pytest>=7.0.0
 4. `Mesh2D` 对象的核心字段（`nodes`、`triangles`、`region_ids`）均已正确填充，shape/dtype 符合第 2.2 节契约；
 5. 网格质量验收（`0 <= lc < N` 合法索引、无退化单元、最小内角满足约束）；
 6. `Mesh2D.region_ids` 集合与 OFT `domain.region_info` 区域模型一致，不含非正值；
-7. `tests/test_oft_adapter.py`（新建）中的 M2 正式验收测试全部通过；
+7. `tests/test_oft_adapter.py`（新建）中的 M2 正式验收测试全部通过，覆盖单区域/两区域/三区域/N>3 及区域缺失/多余/非法编号失败场景（见第 14.1 节）；
 8. 只有上述全部通过并由 User 确认后，M2 才能改为 `PASSED` 并进入 M3。
 
-**涉及模块**：`src/linkmesh/mesher/oft_adapter.py`（新建），`src/linkmesh/cli.py`（最小修改接入 Adapter），`src/linkmesh/utils/plotter.py`（`plot_mesh` 最小修改，闭合 LCFS 显示曲线），`tests/test_oft_adapter.py`（新建）
+**涉及模块**：`src/linkmesh/mesher/oft_adapter.py`（新建，三层接口），`src/linkmesh/cli.py`（最小修改接入 `generate_mesh()`），`src/linkmesh/utils/plotter.py`（`plot_mesh` 最小修改，闭合 LCFS 显示曲线），`tests/test_oft_adapter.py`（新建）
 
 ---
 
@@ -1248,7 +1378,7 @@ pytest>=7.0.0
 
 **当前状态**：【占位，待 M2 完整验收通过后开始；M3 真实验收必须基于通过 M2 的 OFT 网格结果】
 
-**目标**：将 OFT 生成的三角网格（经 `oft_adapter.py` 最小适配后的 `Mesh2D`）写出为 TRIMEG 可消费的 HDF5 文件，并通过 `loadfemmesh_h5.m` 读取验证，确认网格几何物理质量完全合格。
+**目标**：将 OFT 生成的三角网格（经 `mesh_from_oft_domain()` / `generate_mesh()` 最小适配后的 `Mesh2D`）写出为 TRIMEG 可消费的 HDF5 文件，并通过 `loadfemmesh_h5.m` 读取验证，确认网格几何物理质量完全合格。
 
 **M3 边界**：
 - Writer 不推断区域物理含义；
@@ -1277,7 +1407,7 @@ pytest>=7.0.0
 
 **目标**：在 M3 完全验收通过、网格质量确认合格后，完成 SCOREC/PUMI/M3DC1 只读侦察，由主管确认实现路线，将同一 `Mesh2D` 对象写出为 M3DC1 可消费的 `.smb` 静态网格文件。
 
-**M4 侦察范围**：M4 必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile、MeshFile 和 M3DC1/SCOREC/PUMI 源码进行只读侦察，确认区域数量、D1B、几何分类、索引、文件配对和 `.smb` 契约。P0 默认三区域方案不得被外推为 M3DC1 永久固定三区域；M3DC1 实际区域数量和 ModelFile 格式待侦察确认。
+**M4 侦察范围**：M4 必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile、MeshFile 和 M3DC1/SCOREC/PUMI 源码进行只读侦察，确认区域数量、D1B、几何分类、索引、文件配对、`.smb` 契约，以及 **M3DC1 是否支持单区域、是否至少需要真空区**（见第 5.1.3 节）。P0 默认三区域方案不得被外推为 M3DC1 永久固定三区域；单/两/三区域实例也不得被外推为 M3DC1 的最小区域数量要求；M3DC1 实际区域数量和 ModelFile 格式待侦察确认。
 
 **M4 适配原则**：若 M3DC1 有额外区域、边界实体、几何分类或连续性要求（如 C1 连续性、高阶单元等），只在 LinkMesh 适配层中增加必要翻译，不得修改 OFT。
 
@@ -1328,9 +1458,34 @@ linkmesh \
 | 测试文件 | 服务里程碑 | 状态 | 核心验收内容 |
 |---|---|---|---|
 | `tests/test_gfile_reader.py` | M1 | 已通过（19 passed，git: f52a75f） | 验证 `read_gfile()` 能正确读取 EQDSK 文件；`GFileData` 所有字段类型与形状正确；LCFS 首尾闭合；LCFS 方向为逆时针；`current` 单位为 A（不缩放）；`gfile_reader.py` 中无手动文本解析逻辑 |
-| `tests/test_oft_adapter.py` | M2（正式） | 【计划新增】 | 验证 `oft_adapter.py` 将 OFT `pts/lc/reg` 规范化为 `Mesh2D`；`nodes` shape=`(N,2)` float64；`triangles` shape=`(T,3)` 整数、`0 <= lc < N`；`region_ids` shape=`(T,)` 整数、原样保存无重编号、无非正值；退化三角形检查；区域编号集合与 OFT `domain.region_info` 一致 |
+| `tests/test_oft_adapter.py` | M2（正式） | 【计划新增】 | 见下方 v1.9 三层接口测试规划 |
 | `tests/test_triangle_wrapper.py` | M2（历史/过渡） | 历史证据保留（自动测试 36/36 通过；不能作为 OFT Adapter 正式验收替代） | 历史过渡测试，验证 Python triangle 包路线；当前保持文件不动，暂不删除、不扩展 |
 | `tests/test_hdf5_writer.py` | M3 | 【计划新增】 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部必须数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引满足 `1 <= index <= N`；`region_id` 列无偏置；`nvert`/`ntria` 标量值正确 |
+
+#### `tests/test_oft_adapter.py` 测试规划（v1.9，三层接口 + 通用 N 区域）
+
+【v1.9 测试规划】`tests/test_oft_adapter.py` 的职责为：
+
+**`mesh_from_oft_domain()` 转换与校验测试（通用 N 区域核心）**：
+- mock 单区域 OFT Domain：输出一个正区域 ID，**必须通过**（N=1 合法）；
+- mock 两区域和三区域：作为代表性样例**通过**；
+- mock N>3 区域：证明 Adapter **不写死区域数量**，正确通过；
+- 失败场景（**必须失败**）：输出缺失某个 Domain 区域、出现额外区域、出现 `0`/负数或非整数区域编号、`reg` 长度与三角形数不一致、`domain.region_info` 为空；
+- 验证 `Mesh2D` 核心三数组 shape/dtype：`nodes` shape=`(N,2)` float64；`triangles` shape=`(T,3)` 整数、`0 <= lc < N`；`region_ids` shape=`(T,)` 整数、原样保存无重编号；
+- 退化三角形检查；
+- 只验证 OFT Domain 到 `Mesh2D` 的转换（不验证 GFile 默认策略）。
+
+**`build_oft_domain_from_gfile()` 默认策略测试**：
+- 验证当前有壁默认策略构造 PLASMA + VACUUM + OUTER 区域模型；
+- 验证当前无壁默认策略构造 PLASMA + OUTER 区域模型；
+- 验证该函数**不调用** `build_mesh()`、**不转换** `pts/lc/reg`。
+
+**`generate_mesh()` 组合测试**：
+- 验证它**只组合前两个入口**（先 `build_oft_domain_from_gfile()` 再 `mesh_from_oft_domain()`），不复制转换逻辑或第二套区域算法。
+
+**测试执行方式**：
+- 测试使用 **mock**，不依赖本地 Windows 运行 OFT；
+- 最终真实测试和交付验收均在 **Linux 服务器正式 OFT 26.6 环境**执行。
 
 **关于 `tests/test_oft_adapter.py` 路径**：建议路径为 `tests/test_oft_adapter.py`，与现有测试目录 `tests/` 布局一致，无冲突。若下一轮实现时发现与 `Mesh2D` 定义位置或其他目录规则产生冲突，应在下一轮蓝图更新中明确最终位置，不得整体停机。
 
@@ -1342,7 +1497,7 @@ linkmesh \
 
 | 测试层次 | 数据来源 | 依赖范围 | 说明 |
 |---|---|---|---|
-| 单元测试 | 受控合成对象或 mock | 不依赖 `TOKAMAKER/` 源码树 | 验证 Adapter 后处理逻辑（闭合性、方向性等），不需要真实 GFile |
+| 单元测试 | 受控合成对象或 mock（含 mock OFT Domain：单区域/两区域/三区域/N>3） | 不依赖 `TOKAMAKER/` 源码树 | 验证 Adapter 转换与校验逻辑（区域集合、shape/dtype、退化检查等），不需要真实 GFile 或本地 OFT |
 | 集成测试（开发期） | 只读访问 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 或 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` | 依赖 `TOKAMAKER/` 源码树（只读） | 验证 OFT 真实读取链路；仅在开发环境中使用，不得打包进最终交付物 |
 | 交付测试 | LinkMesh 自有、来源明确、许可允许分发的样例 GFile | 不依赖 `TOKAMAKER/` 源码树 | 【计划新增，待许可确认】 |
 
@@ -1360,7 +1515,7 @@ linkmesh \
 
 **测试依赖**：
 - 测试框架：`pytest>=7.0.0`
-- M2/M3 单元测试可使用最小合成 `Mesh2D` 或合成 OFT 返回值（`pts/lc/reg`）进行，不依赖真实 GFile。
+- M2/M3 单元测试可使用最小合成 `Mesh2D`、合成 OFT 返回值（`pts/lc/reg`）或 mock OFT Domain 进行，不依赖真实 GFile，不依赖本地运行 OFT。
 
 ---
 
@@ -1449,15 +1604,17 @@ if __name__ == "__main__":
 
 ## 16. 下一轮源码任务允许范围（M2 Adapter 实现，本轮不实施）
 
-本轮 v1.8 仅更新蓝图，不实施任何源码。以下为下一轮允许的源码实施范围（授权来源：M2-0 已通过）：
+本轮 v1.9 仅更新蓝图，不实施任何源码。以下为下一轮允许的源码实施范围（授权来源：M2-0 已通过）：
 
-1. **新建 `src/linkmesh/mesher/oft_adapter.py`**（M2 正式网格生成适配层，职责见第 7.1 节）；
-2. **最小修改 `src/linkmesh/cli.py`**，使正式 M2 路径调用 OFT Adapter（见第 8.2 节）；
+1. **新建 `src/linkmesh/mesher/oft_adapter.py`**（M2 正式网格生成适配层，三层接口 `mesh_from_oft_domain` / `build_oft_domain_from_gfile` / `generate_mesh`，职责见第 7.1 节；通用 N 区域含 N=1，校验规则见第 5.2 节）；
+2. **最小修改 `src/linkmesh/cli.py`**，使正式 M2 路径调用 `generate_mesh()` 便利入口（见第 8.2 节）；本轮不新增任意区域配置 CLI 参数；
 3. **必要时最小调整 `Mesh2D` 的定义位置或构造方式**，但不得建设通用网格框架（见第 14.1 节）；
 4. **最小修改 `src/linkmesh/utils/plotter.py`**，使其基于 `nodes/triangles/region_ids` 绘图并闭合显示 LCFS（见第 11.2 节）；
-5. **新增 OFT Adapter 专用测试文件**，建议路径 `tests/test_oft_adapter.py`（见第 14.1 节）；
+5. **新增 OFT Adapter 专用测试文件**，建议路径 `tests/test_oft_adapter.py`，覆盖单区域/两区域/三区域/N>3 及区域缺失/多余/非法编号失败场景，分别测试三层接口（见第 14.1 节）；
 6. **不在后续 M2 任务中修改 HDF5 Writer、SMB Writer 或 M3/M4 测试**；
-7. **旧 `triangle_wrapper.py` 和 `tests/test_triangle_wrapper.py` 暂不删除、不扩展**。
+7. **旧 `triangle_wrapper.py` 和 `tests/test_triangle_wrapper.py` 暂不删除、不扩展**；
+8. **不新增通用区域配置文件、插件系统、后端抽象、Protocol/抽象基类或第二网格引擎**；
+9. **不引入 CLI 计算域选择参数**（未来如需，另行更新蓝图，见第 7.2.3 节）。
 
 若新增测试路径或 `Mesh2D` 定义位置与当前蓝图目录规则冲突，应在后续蓝图更新中明确最终位置；若无法确认，跳过该具体位置并在报告中列为待 User 裁决，不得整体停机。
 
@@ -1472,7 +1629,7 @@ if __name__ == "__main__":
 3. 修改区域标记或边界标记的整数约定；
 4. 修改 HDF5 文件结构或数据集路径名；
 5. 确认 `.smb` 格式的任何细节（将【待源码确认】转为【已确认事实】）或确认实现路线；
-6. 新增任何 CLI 参数；
+6. 新增任何 CLI 参数（包括未来的计算域选择参数）；
 7. 调整任何里程碑的验收标准；
 8. **修改 OFT API 的调用方式（如从 `GEQDSKEquilibrium` 切换到 `read_geqdsk` 或反之，或新增/移除 OFT 依赖）**；
 9. **修改 `openfusiontoolkit` 版本约束**（需同步更新 `pyproject.toml` 和 `requirements.txt`）；
@@ -1482,8 +1639,11 @@ if __name__ == "__main__":
 13. **修改区域种子几何条件或失败原则**；
 14. **将任何【待运行验证】事项更新为【已确认事实】**（必须有直接运行证据和 User 确认）；
 15. **修改 OFT 网格生成路线（如从历史/过渡代码切换到 OFT gs_Domain 路线，或决定废弃历史/过渡代码）**；
-16. **修改 `mesher/oft_adapter.py` 的职责边界或最小适配契约**；
-17. **迁移 `Mesh2D` 定义位置或修改其核心三数组契约**。
+16. **修改 `mesher/oft_adapter.py` 的三层接口职责边界或最小适配契约**；
+17. **迁移 `Mesh2D` 定义位置或修改其核心三数组契约**；
+18. **修改通用 N 区域校验规则或单区域 plasma-only 合法性定位**；
+19. **修改当前 GFile 默认区域策略（有壁三区域 / 无壁两区域）**；
+20. **将 TRIMEG/M3DC1 单区域支持从待证据/待源码确认转为已确认事实**（必须有直接证据）。
 
 **蓝图更新流程**：
 1. Aider 在对话中向主管提出蓝图迭代修改建议；
