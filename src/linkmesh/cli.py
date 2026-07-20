@@ -3,17 +3,17 @@ cli.py —— LinkMesh 命令行入口。
 
 职责：
     - 解析命令行参数（argparse）
-    - 按顺序调用 reader → mesher → writer
+    - 按顺序调用 reader → mesher（OFT Adapter）→ writer
     - 捕获异常并打印友好错误信息
 
 禁止事项：
-    - 不得包含任何业务逻辑（除 _build_boundary_config 的边界构造胶水代码外）
+    - 不得包含任何业务逻辑（除历史过渡函数 _build_boundary_config 外）
     - 不得直接操作文件
+    - 不得在 CLI 中构造 OFT Domain、区域、边界、种子或转换数组
 
-数据流：
+数据流（v1.9 M2 正式路径）：
     GFile → read_gfile() → GFileData
-         → _build_boundary_config() → BoundaryConfig
-         → generate_mesh() → Mesh2D
+         → oft_adapter.generate_mesh() → Mesh2D
          → write_hdf5()（除非 --no-hdf5）
          → write_smb()（除非 --no-smb）
          → plot_mesh() / plot_lcfs_only()（若指定 --plot）
@@ -69,20 +69,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="可视化自检图输出路径（默认：不生成）",
     )
 
-    # Triangle 质量控制参数
+    # Triangle 质量控制参数（历史 Python Triangle 参数，OFT 正式路径暂不支持）
     parser.add_argument(
         "--min-angle",
         type=float,
         default=20.0,
         metavar="FLOAT",
-        help="Triangle 最小内角约束（度，默认：20.0）",
+        help="[历史参数] Triangle 最小内角约束（度，默认：20.0）；OFT 正式路径暂不支持",
     )
     parser.add_argument(
         "--max-area",
         type=float,
         default=None,
         metavar="FLOAT",
-        help="Triangle 最大三角形面积约束（m²，默认：不限制）",
+        help="[历史参数] Triangle 最大三角形面积约束（m²，默认：不限制）；OFT 正式路径暂不支持",
     )
 
     # 跳过开关
@@ -110,21 +110,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     """LinkMesh CLI 主入口函数。
 
-    执行顺序：
+    执行顺序（v1.9 M2 正式路径）：
         1. 解析命令行参数
         2. 调用 readers.gfile_reader.read_gfile() → GFileData（OFT Adapter）
-        3. 构造 BoundaryConfig（从 GFileData 提取 LCFS 边界点集与区域配置）
-        4. 调用 mesher.triangle_wrapper.generate_mesh() → Mesh2D
-        5. 调用 writers.hdf5_writer.write_hdf5()（除非 --no-hdf5）
-        6. 调用 writers.smb_writer.write_smb()（除非 --no-smb）
-        7. 调用 utils.plotter.plot_mesh() 或 plot_lcfs_only()（若指定 --plot）
+        3. 调用 mesher.oft_adapter.generate_mesh() → Mesh2D（OFT gs_Domain 路线）
+        4. 调用 writers.hdf5_writer.write_hdf5()（除非 --no-hdf5）
+        5. 调用 writers.smb_writer.write_smb()（除非 --no-smb）
+        6. 调用 utils.plotter.plot_mesh()（若指定 --plot）
 
-    里程碑说明：
-        M1：Step 1-2 + plot_lcfs_only() 可用
-        M2：Step 1-4 + plot_mesh() 可用（_build_boundary_config 已实现）
-        M3：Step 1-5 可用（第一战役闭环）
-        M4：Step 1-6 可用（第二战役闭环）
-        M5：完整端到端链路
+    历史参数约束：
+        --min-angle 与 --max-area 属于旧 Python Triangle 参数，OFT 正式路径暂不支持。
+        若用户给出非默认值，CLI 抛出清晰错误，不静默忽略。默认值不传给 OFT Adapter。
     """
     parser = build_parser()
     args = parser.parse_args()
@@ -145,11 +141,36 @@ def main() -> None:
         raise
 
 
+def _check_unsupported_legacy_params(args: argparse.Namespace) -> None:
+    """检查历史 Triangle 参数：若用户给出非默认值则抛清晰错误。
+
+    OFT 正式路径不支持 --min-angle / --max-area 这两个旧 Python Triangle 参数。
+    不得将它们静默忽略，也不得映射为 OFT dx。默认值不传给 OFT Adapter。
+    """
+    if args.min_angle != 20.0:
+        raise ValueError(
+            "OFT 正式网格生成路径（M2）暂不支持历史参数 --min-angle。"
+            "该参数属于旧 Python Triangle 路线；OFT 网格尺度由 Adapter 默认值控制。"
+            "请去除 --min-angle 后重试。"
+        )
+    if args.max_area is not None:
+        raise ValueError(
+            "OFT 正式网格生成路径（M2）暂不支持历史参数 --max-area。"
+            "该参数属于旧 Python Triangle 路线；OFT 网格尺度由 Adapter 默认值控制。"
+            "请去除 --max-area 后重试。"
+        )
+
+
 def _run(args: argparse.Namespace) -> None:
     """LinkMesh 主执行逻辑（由 main() 调用，异常由 main() 统一捕获）。"""
 
     # ------------------------------------------------------------------ #
-    # Step 1：读取 GFile（M1 里程碑）                                      #
+    # Step 0：历史 Triangle 参数拦截                                        #
+    # ------------------------------------------------------------------ #
+    _check_unsupported_legacy_params(args)
+
+    # ------------------------------------------------------------------ #
+    # Step 1：读取 GFile（M1 里程碑，保持不变）                             #
     # ------------------------------------------------------------------ #
     from linkmesh.readers.gfile_reader import read_gfile
 
@@ -167,46 +188,24 @@ def _run(args: argparse.Namespace) -> None:
             print("  第一壁: 无（GFile 不含 limiter 数据）")
 
     # ------------------------------------------------------------------ #
-    # Step 2：若仅需 LCFS 可视化（M1 里程碑），在网格生成前先出图           #
+    # Step 2：生成网格（M2 正式路径：OFT Adapter）                          #
     # ------------------------------------------------------------------ #
-    # 若 --no-hdf5 且 --no-smb 且指定了 --plot，则仅绘制 LCFS 图
-    mesh_needed = not (args.no_hdf5 and args.no_smb)
-
-    if args.plot and not mesh_needed:
-        from linkmesh.utils.plotter import plot_lcfs_only
-        plot_lcfs_only(gfile_data, args.plot)
-        return
-
-    # ------------------------------------------------------------------ #
-    # Step 3：构造 BoundaryConfig（M2 里程碑）                             #
-    # ------------------------------------------------------------------ #
-    from linkmesh.mesher.triangle_wrapper import generate_mesh
+    from linkmesh.mesher.oft_adapter import generate_mesh
 
     if args.verbose:
-        print("[LinkMesh] 构造 Triangle 输入边界配置...")
+        print("[LinkMesh] 调用 OFT gs_Domain 生成二维三角网格...")
 
-    config = _build_boundary_config(gfile_data, args)
-
-    if args.verbose:
-        print(f"  边界顶点数: {len(config.vertices)}")
-        print(f"  边界线段数: {len(config.segments)}")
-        print(f"  区域标记点数: {len(config.regions)}")
-
-    # ------------------------------------------------------------------ #
-    # Step 4：生成网格（M2 里程碑）                                         #
-    # ------------------------------------------------------------------ #
-    if args.verbose:
-        print("[LinkMesh] 调用 Triangle 生成二维三角网格...")
-
-    mesh = generate_mesh(config)
+    # 使用 OFT Adapter 已验证默认尺度（不传入历史 Triangle 参数）
+    mesh = generate_mesh(gfile_data)
 
     if args.verbose:
         print(f"  节点数: {mesh.n_nodes}")
         print(f"  三角形数: {mesh.n_triangles}")
-        print(f"  边界线段数: {mesh.n_boundary_segments}")
+    else:
+        print(f"节点数: {mesh.n_nodes}，三角形数: {mesh.n_triangles}")
 
     # ------------------------------------------------------------------ #
-    # Step 5：写出 HDF5（M3 里程碑）                                        #
+    # Step 3：写出 HDF5（M3 里程碑）                                        #
     # ------------------------------------------------------------------ #
     if not args.no_hdf5:
         from linkmesh.writers.hdf5_writer import write_hdf5
@@ -215,7 +214,7 @@ def _run(args: argparse.Namespace) -> None:
         write_hdf5(mesh, args.output, verbose=args.verbose)
 
     # ------------------------------------------------------------------ #
-    # Step 6：写出 .smb（M4 里程碑）                                        #
+    # Step 4：写出 .smb（M4 里程碑）                                        #
     # ------------------------------------------------------------------ #
     if not args.no_smb:
         from linkmesh.writers.smb_writer import write_smb
@@ -224,7 +223,7 @@ def _run(args: argparse.Namespace) -> None:
         write_smb(mesh, args.smb)
 
     # ------------------------------------------------------------------ #
-    # Step 7：可视化自检（M2 里程碑）                                        #
+    # Step 5：可视化自检（M2 完整版）                                        #
     # ------------------------------------------------------------------ #
     if args.plot:
         from linkmesh.utils.plotter import plot_mesh
@@ -237,27 +236,17 @@ def _build_boundary_config(
     gfile_data: "object",
     args: argparse.Namespace,
 ) -> "object":
-    """从 GFileData 构造 BoundaryConfig，作为 Triangle 唯一底座的输入。
+    """[历史/过渡函数，非 M2 正式路径] 从 GFileData 构造旧 Python Triangle BoundaryConfig。
 
-    本函数是 M2 里程碑的核心胶水代码，负责将 GFileData 中的 LCFS 边界坐标
-    转换为 Triangle 所需的分段线性复合体（PLC）描述格式，即 TokaMaker 风格的
-    alpha 字典所需的各字段。
+    本函数是历史 Python Triangle 路线的胶水代码，已被 mesher/oft_adapter.py
+    的 OFT gs_Domain 路线替代，不再由 CLI 正式调用。当前保留其定义以维持与
+    历史过渡代码的兼容性，本轮不删除、不扩展。
 
-    实现策略：
-        1. 对 LCFS 点集重采样至合适密度（避免 Triangle 输入点过多或过少）
-        2. 构造 LCFS 闭合线段连接表（segments），标记为 boundary_marker=1
-        3. 若有第一壁数据，构造第一壁线段连接表，标记为 boundary_marker=2
-        4. 构造外边界矩形（计算域边界），标记为 boundary_marker=3
-        5. 设置区域标记点（regions）：
-               plasma 区：磁轴坐标（rmaxis, zmaxis），region_id=1
-               vacuum 区：LCFS 与外边界之间的一点，region_id=2
-        6. 封装为 BoundaryConfig 对象
-
-    区域标记约定（来自 LinkMesh_Architecture_Plan.md 第 5 节）：
+    区域标记约定（历史 Python Triangle 路线）：
         region_id=1：等离子体区（plasma，LCFS 内部）
         region_id=2：真空区（vacuum，LCFS 与外边界之间）
 
-    边界标记约定（来自 LinkMesh_Architecture_Plan.md 第 5 节）：
+    边界标记约定（历史 Python Triangle 路线）：
         boundary_marker=1：LCFS（最后闭合磁面）
         boundary_marker=2：第一壁内表面（若有）
         boundary_marker=3：外边界（计算域矩形边界）
@@ -267,7 +256,7 @@ def _build_boundary_config(
         args:       CLI 参数（含 min_angle, max_area）
 
     返回：
-        BoundaryConfig 对象，可直接传入 generate_mesh()
+        BoundaryConfig 对象
     """
     from linkmesh.mesher.triangle_wrapper import BoundaryConfig
 
@@ -435,6 +424,8 @@ def _resample_closed_curve(
     n_target: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     """将闭合曲线重采样为 n_target 个等弧长间距的点（含末尾重复点）。
+
+    [历史/过渡辅助函数] 仅供 _build_boundary_config 使用。
 
     使用线性插值（不引入额外依赖），适用于 LCFS 和第一壁的重采样。
     输入曲线应已闭合（首尾点相同或相近）。
