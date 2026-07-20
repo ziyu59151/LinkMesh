@@ -15,6 +15,12 @@ oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口）。
     GFileData → build_oft_domain_from_gfile → OFT gs_Domain
              → mesh_from_oft_domain/build_mesh → pts/lc/reg → Mesh2D
 
+区域 ID 时序（重要）：
+    OFT gs_Domain.build_mesh() 会根据区域类型和定义顺序重新排列区域 ID，
+    并原地更新 domain.region_info[name]["id"]。因此 Adapter 必须在 build_mesh()
+    成功返回之后再读取 domain.region_info，得到 OFT 最终区域 ID 集合，
+    并以该最终集合校验输出 reg。绝不能在 build_mesh() 之前提取区域 ID 集合。
+
 禁止事项：
     - 不复制 OFT 的区域拓扑、点合并、重采样、区域种子或 Triangle 调用逻辑；
     - 不修改 OFT 源码/安装目录/fork；
@@ -65,14 +71,14 @@ def _load_gs_domain_class() -> Any:
 
     异常：
         ImportError: OFT 未安装、不在 PYTHONPATH 中，或共享库加载失败。
-                     保留原始异常链。
+                     保留原始异常链（__cause__）。
     """
     try:
         from OpenFUSIONToolkit.TokaMaker.meshing import gs_Domain
     except Exception as e:
         raise ImportError(
-            "无法导入 OFT gs_Domain。请确认在 Linux Conda 环境（linkmesh）中"
-            "已通过 pip 安装 openfusiontoolkit==26.6，且 liboft_triangle.so 可加载。"
+            "无法导入 OFT gs_Domain。正式运行环境为 Linux Conda 环境（linkmesh），"
+            "需通过 pip 安装正式的 openfusiontoolkit==26.6，且 liboft_triangle.so 可加载。"
             "绝不要将 TOKAMAKER/OpenFUSIONToolkit/src/python 加入 PYTHONPATH。"
             f"\n原始错误：{e}"
         ) from e
@@ -112,15 +118,22 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
     """通用 N 区域核心：将已构造 OFT gs_Domain 转换为轻量 Mesh2D。
 
     仅负责：
-        1. 验证 domain 提供可调用的 build_mesh() 和可读取的 region_info；
+        1. 在调用前验证 domain 提供可调用的 build_mesh() 和可读取的 region_info 属性；
         2. 调用一次 domain.build_mesh()；
         3. 接收 pts, lc, reg；
-        4. 规范化并验证输出；
-        5. 构造 Mesh2D。
+        4. build_mesh() 成功后重新读取 domain.region_info，
+           提取 OFT 最终区域 ID 集合（build_mesh 会原地重排区域 ID）；
+        5. 规范化并验证输出，用最终区域 ID 集合校验 reg；
+        6. 构造 Mesh2D。
 
     对任意正区域数量 N 通用，包括 N=1、N=2、N=3、N>3，无特殊分支。
     不判断 LCFS/第一壁/plasma/vacuum/outer，不写死区域名称/类型/数量/整数 ID。
     不重编号、不排序、不压缩、不执行 +1。
+
+    区域 ID 时序（关键）：
+        OFT build_mesh() 会根据区域类型和定义顺序重排区域 ID，并原地更新
+        domain.region_info[name]["id"]。因此最终区域 ID 集合必须在 build_mesh()
+        成功返回之后从 domain.region_info 读取，绝不能在 build_mesh() 之前提取。
 
     参数：
         domain: 已由调用方构造完成的 OFT gs_Domain 对象
@@ -129,24 +142,21 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         Mesh2D 对象（核心三数组 nodes/triangles/region_ids，兼容空边界数组）
 
     异常：
-        ValueError: 输出不满足契约（形状、dtype、索引范围、退化、区域集合等）
+        ValueError: 输出不满足契约（形状、dtype、索引范围、退化、区域集合等），
+                    或 build_mesh() 后 region_info 为空/非法/含重复或非正 ID
         TypeError:  domain 缺少 build_mesh() 或 region_info
     """
-    # --- Step 1：验证 domain 接口 ---
+    # --- Step 1：调用前只验证 domain 接口存在（不在此处提取最终区域 ID）---
     build_mesh = getattr(domain, "build_mesh", None)
     if not callable(build_mesh):
         raise TypeError("domain 必须提供可调用的 build_mesh() 方法")
 
-    region_info = getattr(domain, "region_info", None)
-    if region_info is None:
-        raise TypeError("domain 必须提供可读取的 region_info")
+    # 仅验证 region_info 属性存在且可读取；不在 build_mesh() 前提取最终 ID，
+    # 因为 build_mesh() 会原地重排区域 ID。
+    if not hasattr(domain, "region_info"):
+        raise TypeError("domain 必须提供可读取的 region_info 属性")
 
-    # 从 region_info 读取最终区域 ID 集合（不推断物理语义，仅取整数 ID）
-    expected_ids = _extract_region_ids(region_info)
-    if len(expected_ids) == 0:
-        raise ValueError("domain.region_info 为空，未定义任何区域")
-
-    # --- Step 2：调用一次 build_mesh() ---
+    # --- Step 2：调用且只调用一次 build_mesh() ---
     result = build_mesh()
     try:
         pts, lc, reg = result
@@ -155,7 +165,19 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
             f"build_mesh() 应返回 (pts, lc, reg) 三元组，实际无法解包：{e}"
         ) from e
 
-    # --- Step 3 & 4：规范化并验证 nodes ---
+    # --- Step 4：build_mesh() 成功后重新读取 region_info，提取 OFT 最终区域 ID 集合 ---
+    region_info = getattr(domain, "region_info", None)
+    if region_info is None:
+        raise TypeError("build_mesh() 后 domain.region_info 为 None，无法读取最终区域 ID")
+
+    # 从生成后的 region_info 读取最终区域 ID 集合（不推断物理语义，仅取整数 ID）
+    expected_ids = _extract_region_ids(region_info)
+    if len(expected_ids) == 0:
+        raise ValueError(
+            "build_mesh() 后 domain.region_info 为空，未定义任何区域"
+        )
+
+    # --- Step 5：规范化并验证 nodes ---
     nodes = _as_finite_float_2d(pts, "pts")
     if nodes.shape[0] == 0:
         raise ValueError("build_mesh() 返回节点数为 0")
@@ -215,15 +237,15 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
             "非正区域编号表示未认领或非法区域，不是合法标签"
         )
 
-    # --- 区域集合一致性校验（与 domain.region_info 完全一致）---
+    # --- 区域集合一致性校验（与 build_mesh 后的 OFT 最终区域 ID 集合完全一致）---
     actual_ids = set(int(x) for x in region_ids.tolist())
     if actual_ids != expected_ids:
         missing = expected_ids - actual_ids
         extra = actual_ids - expected_ids
         raise ValueError(
-            "输出区域 ID 集合与 domain.region_info 不一致："
+            "输出区域 ID 集合与 build_mesh 后的 OFT 最终 region_info 不一致："
             f"缺失={sorted(missing)}，多余={sorted(extra)}；"
-            f"期望={sorted(expected_ids)}，实际={sorted(actual_ids)}"
+            f"期望（最终）={sorted(expected_ids)}，实际={sorted(actual_ids)}"
         )
 
     # 每个已定义区域至少对应一个三角形（actual_ids == expected_ids 已隐含，
@@ -232,7 +254,7 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         if rid not in actual_ids:
             raise ValueError(f"区域 ID {rid} 未对应任何三角形")
 
-    # --- Step 5：构造 Mesh2D（兼容旧六字段构造签名）---
+    # --- Step 6：构造 Mesh2D（兼容旧六字段构造签名）---
     mesh = Mesh2D(
         nodes=nodes,
         triangles=triangles,
@@ -247,12 +269,13 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
 def _extract_region_ids(region_info: Any) -> set:
     """从 domain.region_info 提取最终区域整数 ID 集合。
 
-    只读取整数 ID，不推断物理语义。region_info 结构由 OFT 决定；
+    注意：本函数应在 build_mesh() 成功返回之后调用，读取的是 OFT 重排后的
+    最终区域 ID。只读取整数 ID，不推断物理语义。region_info 结构由 OFT 决定；
     这里做宽松适配：支持形如 {name: {'id': int, ...}} 或 {name: id} 的映射，
     以及提供 .id 属性的区域对象。
 
     参数：
-        region_info: OFT domain.region_info
+        region_info: OFT domain.region_info（build_mesh 后的最终状态）
 
     返回：
         区域 ID 的 set（int）
@@ -380,6 +403,8 @@ def build_oft_domain_from_gfile(
 
     first_wall = None
     if has_wall_r:
+        # 第一壁 R/Z 长度不一致、点数不足或含非有限值时，
+        # _prepare_contour 在 _load_gs_domain_class() 之前抛出 ValueError。
         first_wall = _prepare_contour(wall_r, wall_z, name="第一壁")
 
     # --- 计算人工 outer 矩形（LCFS 与可用第一壁的联合包围范围）---
@@ -452,7 +477,7 @@ def _prepare_contour(r: Any, z: Any, *, name: str) -> np.ndarray:
         (N,2) float64 轮廓数组
 
     异常：
-        ValueError: R/Z 缺失、长度不一致、点数不足或含非有限值
+        ValueError: R/Z 缺失、长度不一致、有效点少于 3、或含非有限值（NaN/Inf）
     """
     if r is None or z is None:
         raise ValueError(f"{name} 的 R/Z 坐标必须同时提供")

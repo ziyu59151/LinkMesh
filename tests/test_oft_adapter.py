@@ -14,8 +14,10 @@ Windows 本地可收集但不保证运行通过。
 
 覆盖三组：
     A. mesh_from_oft_domain()：通用 N 区域核心转换与校验
+       （含 build_mesh 后 OFT 最终区域 ID 时序回归测试）
     B. build_oft_domain_from_gfile()：默认 GFile 区域策略
     C. generate_mesh()：便利入口只组合两层
+    另含 _load_gs_domain_class() 导入失败异常链测试。
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import numpy as np
 import pytest
 
 from linkmesh.mesher.oft_adapter import (
+    _load_gs_domain_class,
     build_oft_domain_from_gfile,
     generate_mesh,
     mesh_from_oft_domain,
@@ -52,6 +55,32 @@ class FakeDomain:
 
     def build_mesh(self):
         self.build_mesh_call_count += 1
+        return self._pts, self._lc, self._reg
+
+
+class RelabelDomain:
+    """受控假 OFT gs_Domain：模拟 build_mesh() 原地重排最终区域 ID。
+
+    调用 build_mesh() 前，region_info 使用临时 ID（例如 {10,20}）；
+    调用 build_mesh() 时，把 region_info 原地更新为最终 ID（例如 {1,2}），
+    并返回与最终 ID 对应的 (pts, lc, reg)。
+
+    该假对象证明 Adapter 必须在 build_mesh() 之后读取最终区域 ID。
+    """
+
+    def __init__(self, pts, lc, reg, initial_region_info, final_region_info):
+        self._pts = pts
+        self._lc = lc
+        self._reg = reg
+        # 调用前使用临时 ID
+        self.region_info = dict(initial_region_info)
+        self._final_region_info = dict(final_region_info)
+        self.build_mesh_call_count = 0
+
+    def build_mesh(self):
+        self.build_mesh_call_count += 1
+        # 原地更新为 OFT 最终 ID
+        self.region_info = dict(self._final_region_info)
         return self._pts, self._lc, self._reg
 
 
@@ -175,6 +204,43 @@ class TestMeshFromOftDomainValid:
         assert mesh.boundary_segments.shape == (0, 2)
         assert mesh.boundary_markers.shape == (0,)
         assert mesh.node_markers.shape == (0,)
+
+
+class TestMeshFromOftDomainFinalRegionIdTiming:
+    """区域 ID 时序回归测试：校验使用 build_mesh 后的 OFT 最终区域 ID。"""
+
+    def test_relabel_final_ids_accepted(self):
+        # 调用前临时 ID {10,20}；build_mesh 后最终 ID {1,2}；输出 reg=[1,2]。
+        # 旧实现（build_mesh 前提取 {10,20}）会错误拒绝；修复后必须通过。
+        pts, lc = _square_two_triangles()
+        reg = np.array([1, 2], dtype=np.int32)
+        domain = RelabelDomain(
+            pts, lc, reg,
+            initial_region_info=_region_info([10, 20]),
+            final_region_info=_region_info([1, 2]),
+        )
+        mesh = mesh_from_oft_domain(domain)
+        # 断言结果区域 ID 原样为 [1,2]（不重编号、不 +1）
+        np.testing.assert_array_equal(
+            mesh.region_ids, np.array([1, 2], dtype=np.int32)
+        )
+        # build_mesh 只调用一次
+        assert domain.build_mesh_call_count == 1
+
+    def test_output_matching_stale_ids_rejected(self):
+        # 调用前临时 ID {10,20}；build_mesh 后最终 ID {1,2}；
+        # 但输出 reg 仍为旧 {10,20}（含未配置 ID）。
+        # Adapter 必须依据最终集合 {1,2} 拒绝。
+        pts, lc = _square_two_triangles()
+        reg = np.array([10, 20], dtype=np.int32)
+        domain = RelabelDomain(
+            pts, lc, reg,
+            initial_region_info=_region_info([10, 20]),
+            final_region_info=_region_info([1, 2]),
+        )
+        with pytest.raises(ValueError):
+            mesh_from_oft_domain(domain)
+        assert domain.build_mesh_call_count == 1
 
 
 class TestMeshFromOftDomainNodeTriangleFailures:
@@ -317,7 +383,7 @@ class TestMeshFromOftDomainRegionFailures:
 
 
 class TestMeshFromOftDomainRegionInfoFailures:
-    """domain.region_info 结构性失败。"""
+    """domain.region_info 结构性失败（build_mesh 后读取最终 region_info）。"""
 
     def test_empty_region_info_fails(self):
         pts, lc = _square_two_triangles()
@@ -355,6 +421,54 @@ class TestMeshFromOftDomainRegionInfoFailures:
                 return None
         with pytest.raises(TypeError):
             mesh_from_oft_domain(NoInfo())
+
+    def test_region_info_none_after_build_mesh_raises_typeerror(self):
+        # build_mesh 后 region_info 变为 None，应抛 TypeError
+        class NoneAfterBuild:
+            def __init__(self):
+                self.region_info = {"a": {"id": 1}}
+
+            def build_mesh(self):
+                self.region_info = None
+                pts, lc = _square_two_triangles()
+                reg = np.array([1, 1], dtype=np.int32)
+                return pts, lc, reg
+
+        with pytest.raises(TypeError):
+            mesh_from_oft_domain(NoneAfterBuild())
+
+
+# ==========================================================================
+# _load_gs_domain_class()：OFT 导入失败异常链
+# ==========================================================================
+
+class TestLoadGsDomainClassImportFailure:
+    """OFT 导入失败时抛 ImportError 并保留原始异常链（__cause__）。"""
+
+    def test_import_failure_raises_importerror_with_cause(self):
+        # 通过 patch 内建 __import__ 制造导入失败，模拟 Windows 下
+        # OFT 平台检查 / 共享库加载异常。不使用 create=True，不真实导入 OFT。
+        import builtins
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name.startswith("OpenFUSIONToolkit"):
+                raise OSError("模拟：liboft_triangle.so 无法在当前平台加载")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            with pytest.raises(ImportError) as excinfo:
+                _load_gs_domain_class()
+
+        # 保留原始异常链
+        assert excinfo.value.__cause__ is not None
+        assert isinstance(excinfo.value.__cause__, OSError)
+        # 消息指出正式运行环境是 Linux Conda linkmesh 与正式安装的 OFT
+        msg = str(excinfo.value)
+        assert "Linux" in msg
+        assert "linkmesh" in msg
+        assert "openfusiontoolkit" in msg
 
 
 # ==========================================================================
@@ -492,6 +606,42 @@ class TestBuildOftDomainInputFailures:
         lcfs_r, lcfs_z = _square_contour()
         wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
         gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_length_mismatch_fails(self):
+        # 第一壁 R/Z 同时存在但长度不一致，应在 _load_gs_domain_class 前失败
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5], dtype=np.float64)  # 长度 3 != 4
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_nan_fails(self):
+        # 第一壁含 NaN，应在 _load_gs_domain_class 前失败
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, np.nan], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_inf_fails(self):
+        # 第一壁含 Inf，应在 _load_gs_domain_class 前失败
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, np.inf], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_too_few_points_fails(self):
+        # 第一壁有效点少于 3，应在 _load_gs_domain_class 前失败
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
         with pytest.raises(ValueError):
             build_oft_domain_from_gfile(gfile)
 
