@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 v1.10（M2 OFT Adapter 正式验收通过：固化真实 DIII-D 972 节点 / 1872 三角形 / 3 区域网格及数值质量证据；固化区域着色 PNG 人工验收；将 OFT `Repeated points`/`Sliver`/`Small feature` 几何警告记录为当前非阻塞项；明确下一步进入 M3 TRIMEG HDF5 契约核对；记录旧 Python Triangle 路径的暂留原因与后续减量顺序；保持三层接口、通用 N 区域、Mesh2D 核心三数组、M3/M4 边界不变）
+- 文档状态：正式版 v1.11（依据 TRIMEG MATLAB 消费函数 `loadfemmesh_h5.m` 与两个真实 HDF5 样例 femmesh_65402_t1_nr16core.h5 / femmesh_65402_t1_nr16nout4edge.h5 修订 M3 TRIMEG HDF5 正式契约：撤销旧转置/第四列/11 数据集全必需表述；固化 8 个核心数据集磁盘 shape/dtype/1-based 索引与拓扑外边界节点分类规则，明确 3 个可选边界数据集事实边界；新增独立轻量网格模型模块 `src/linkmesh/mesh.py` 计划并规定先完成 Mesh2D 解耦、再实施 HDF5 Writer 的两阶段顺序；M3 仍未通过、M4 仍禁止开始；不改动 M1/M2 已验收行为与 M4 未确认 .smb 契约）
 - 最高依据：本文档自身即为 LinkMesh 项目的最高技术依据；开发纪律与协作规范见 CONTEXT.md
 - 事实边界：本文档是 LinkMesh 项目唯一的技术蓝图单事实源（Single Source of Truth）。凡涉及目录职责、模块接口、数据结构、第三方库调用规范、输出文件格式（HDF5 / PUMI .smb）以及 MVP 阶段验收标准，均以本文档为最终裁决依据。本文档中标注【已确认事实】的内容为当前可执行的工程事实；标注【待源码确认】的内容为基于白皮书推断、需后续只读侦察验证的事项；标注【待运行验证】的内容为需要在真实 OFT 环境中实际运行后方可确认的事项；标注【计划新增】的内容为蓝图已批准、但尚未在仓库中创建的文件或目录；标注【P0 禁止】的内容为当前 MVP 阶段严格禁止引入的功能。
 - 主要用途：本文档为 LinkMesh 项目的单事实真理源（Single Source of Truth），不作为人类泛读材料，专门用于指导 Aider 自动化编码、RAG 知识库精准检索以及下游模块的硬核参数对齐。凡 Aider 在执行编码、新建文件、修改具体业务代码前，必须查阅并严格对齐本文档。
@@ -21,6 +21,7 @@
 | v1.8 | 固化 M2-0 OFT 环境、合成两/三区域和真实 DIII-D 通过证据（Linux x86_64 / Python 3.12.13 / OpenFUSIONToolkit 26.6 正式 Conda 环境）；新增正式 `mesher/oft_adapter.py` 模块作为 M2 正式网格生成适配层；将 Python Triangle Wrapper 降级为历史/过渡路径（不再作为 M2 正式主路径）；明确轻量 Mesh2D 核心三数组（nodes/triangles/region_ids）；明确 OFT 区域编号原样保存与元数据从 domain.region_info 获取的规则；约束 LinkMesh 不复制 OFT 通用几何算法；授权进入 M2 Adapter 实现，但不表述为 M2/M3/M4 已通过 |
 | v1.9 | 明确单区域 plasma-only 是合法计算域选择及其物理适用边界；明确不存在 LinkMesh/OFT 网格层面“至少两个区域”的全局要求；明确两/三区域只是 OFT Multi Region 代表性验收样例，不是 Adapter 能力边界；建立 OFT Adapter 三层接口（`mesh_from_oft_domain()` 通用 N 区域核心、`build_oft_domain_from_gfile()` 当前 GFile 默认策略层、`generate_mesh()` CLI 便利入口）；`mesh_from_oft_domain()` 对任意正区域数量 N 通用（含 N=1），只按 `domain.region_info` 校验区域集合，不写死区域数量/名称/类型/整数 ID；补充单区域、N>3 及区域缺失/多余/非法编号失败的测试规划；明确 TRIMEG/M3DC1 单区域支持仍为待更多直接证据/待源码确认事项，不得由两/三区域实例外推最小区域数量；保持 CLI 默认 GFile 策略、Mesh2D 核心三数组、M3/M4 字段契约不变；不新增 CLI 参数；旧 Triangle 路径继续历史/过渡状态 |
 | v1.10 | M2 OFT Adapter 正式验收通过（M2 总体 PASSED）：固化真实 DIII-D 972 节点 / 1872 三角形 / 3 区域网格与数值质量证据（0-based 索引 0..971、区域统计 {1:633,2:678,3:561}、区域元数据 PLASMA/OUTER/VACUUM、最小内角 20.222°、退化三角形 0）；固化 mock 测试 `tests/test_oft_adapter.py` 退出码 0（未记录测试总数与耗时）；固化区域着色 PNG 人工几何与区域位置检查通过；将 OFT `Repeated points`/`Sliver`/`Small feature` 几何警告记录为当前非阻塞项（未修复、不新增几何修补算法）；明确下一步进入 M3 TRIMEG HDF5 契约核对（M3 尚未开始正式验收）；新增旧 Python Triangle 路径暂留原因与后续减量顺序（本轮不删除源码）；未修改 M3 HDF5 字段契约与 M4 边界 |
+| v1.11 | 依据 TRIMEG MATLAB 消费函数 `loadfemmesh_h5.m` 与两个真实 HDF5 样例（femmesh_65402_t1_nr16core.h5 / femmesh_65402_t1_nr16nout4edge.h5，User 在 Linux 服务器以 h5py+NumPy+拓扑检查脚本只读回读、退出码 0）修正 M3 TRIMEG HDF5 正式契约：**撤销**旧 `vert=(2,N)`、`tria=(4,T)`、Python Writer 对 vert/tria 转置、tria 第四列写 region_id、11 数据集全必需等被真实样例否定的表述；固化磁盘契约 `vert=(N,2) float64`、`tria=(T,3) float64` 且为 1-based、无第四列、不写 region_ids；将 4 个计数标量固化为 shape `(1,1) float64`；`idxivert/idxevert` 固化为 shape `(1,nvert_in)/(1,nvert_ex)` float64、1-based；`idxevert` 定义为**拓扑外边界节点**（无向边只出现一次）的升序 1-based 集合，`idxivert` 为其在 `{1..N}` 中的升序补集，不再由 LCFS/第一壁/OFT region/文件名/node_markers 推断；将数据集重新组织为 8 核心 + 3 可选，明确 `nbcRZ/Rbc/Zbc` 事实边界（不得规定 nbcRZ==nvert_ex、不得规定 Rbc/Zbc 覆盖全部 idxevert、不得规定相邻点为拓扑边、不得声称仅凭 Mesh2D 可唯一重建历史 Rbc/Zbc），M3 第一阶段 Writer 默认不写这 3 项；新增独立轻量网格模型模块 `src/linkmesh/mesh.py` 计划，将 `Mesh2D` 从历史 `triangle_wrapper.py` 迁出并规定唯一定义与重导出兼容；规定实施顺序铁律：先完成 Mesh2D 解耦并通过 M2 回归，再实施 HDF5 Writer；M3 仍未通过、M4 仍禁止开始；不改动 M1/M2 已验收行为与 M4 未确认 .smb 契约 |
 
 ---
 
@@ -38,7 +39,7 @@ LinkMesh 是一个**独立命令行程序（CLI）**，专注于打通从**等�
 
 **【v1.9 通用性原则】** 两区域和三区域只是 OFT Multi Region 的代表性验收样例，**不是 `oft_adapter.py` 的能力边界**。正式 Adapter 必须对任意正区域数量 N 通用，包括 N=1。LinkMesh 不重新设计一套任意 N 区域配置系统；OFT `gs_Domain` 本身即作为 N 区域定义接口。当前 CLI 仍可使用 GFile 默认区域模型，本轮不新增任意区域配置 CLI 参数。
 
-**正式目标数据流（v1.8，v1.10 保持）**：
+**正式目标数据流（v1.8，v1.11 保持）**：
 
 ```text
 GFile/EQDSK
@@ -48,17 +49,17 @@ GFile/EQDSK
       → OFT gs_Domain / define_region / add_polygon / add_annulus / add_rectangle / add_enclosed / build_mesh
       → OFT Mesh / liboft_triangle
   → OFT 网格结果（pts, lc, reg）
-  → LinkMesh 最小适配（轻量 Mesh2D 统一对象）
+  → LinkMesh 最小适配（轻量 Mesh2D 统一对象，正式定义位于 src/linkmesh/mesh.py，计划新增）
   → TRIMEG HDF5（M3）/ M3DC1 .smb（M4）
 ```
 
-**M2 正式核心数据流（v1.8，v1.10 保持）**：
+**M2 正式核心数据流（v1.8，v1.11 保持）**：
 
 ```text
 GFileData → oft_adapter → OFT gs_Domain/Mesh/build_mesh → pts/lc/reg → 轻量 Mesh2D
 ```
 
-**完整项目数据流（v1.8，v1.10 保持）**：
+**完整项目数据流（v1.8，v1.11 保持）**：
 
 ```text
 GFile/EQDSK → OFT GEQDSKEquilibrium → GFileData → OFT Adapter → Mesh2D → TRIMEG HDF5 / M3DC1 .smb
@@ -130,6 +131,10 @@ LinkMesh/
 │       ├── __init__.py
 │       ├── __main__.py                # 已新建（git: 1fc04f8）：python -m linkmesh 入口（仅调用 cli.main）
 │       ├── cli.py                     # CLI 参数解析与主流程控制（已接入 OFT Adapter generate_mesh）
+│       ├── mesh.py                    # 【计划新增，v1.11 批准】独立轻量统一内存网格模型模块：
+│       │                              # 只定义 Mesh2D（与网格后端无关）；
+│       │                              # 不依赖 OFT / Python Triangle / HDF5 / PUMI / CLI / Plotter；
+│       │                              # Mesh2D 迁出后此处为唯一正式定义（见第 2.2 节与第 16.1 节）
 │       │
 │       ├── readers/
 │       │   ├── __init__.py
@@ -140,20 +145,28 @@ LinkMesh/
 │       │   ├── oft_adapter.py         # 【已实现，M2 正式主路径，M2 PASSED】OFT gs_Domain 网格生成适配层：
 │       │   │                          # 三层接口 mesh_from_oft_domain / build_oft_domain_from_gfile / generate_mesh；
 │       │   │                          # mesh_from_oft_domain 对任意正区域数量 N 通用（含 N=1）；
-│       │   │                          # 将 pts/lc/reg 规范化为轻量 Mesh2D；不复制 OFT 通用几何算法
+│       │   │                          # 将 pts/lc/reg 规范化为轻量 Mesh2D；不复制 OFT 通用几何算法；
+│       │   │                          # 解耦后从 linkmesh.mesh 导入 Mesh2D（见第 16.1 节）
 │       │   └── triangle_wrapper.py    # 【历史/过渡实现，非 M2 正式主路径】Python triangle 包底座封装；
 │       │                              # 已被 oft_adapter.py 替代为正式路线；
-│       │                              # 当前仍承载 Mesh2D / BoundaryConfig 定义，暂不删除（见第 16.1 节）；
+│       │                              # 解耦后不再定义第二份 Mesh2D，而从 linkmesh.mesh 重导出同一类；
+│       │                              # 仍承载 BoundaryConfig 定义，暂不删除（见第 16.1 节）；
 │       │                              # 禁止继续扩展其区域拓扑与通用几何能力
 │       │
 │       ├── writers/
 │       │   ├── __init__.py
-│       │   ├── hdf5_writer.py         # 第一战役：TRIMEG HDF5 静态网格写出器
+│       │   ├── hdf5_writer.py         # 第一战役：TRIMEG HDF5 静态网格写出器（v1.11 契约见第 4.1 与第 9 节）
 │       │   └── smb_writer.py          # 第二战役占位：M3 验收后按侦察结果实现
 │       │
 │       └── utils/
 │           ├── __init__.py
 │           └── plotter.py             # matplotlib 可视化自检工具（已支持区域着色与 LCFS 闭合显示）
+│
+├── docs/
+│   └── trimeg/
+│       ├── loadfemmesh_h5.m                       # TRIMEG MATLAB 消费函数（只读黄金标尺）
+│       ├── femmesh_65402_t1_nr16core.h5           # 真实 TRIMEG HDF5 样例 A（core，只读证据）
+│       └── femmesh_65402_t1_nr16nout4edge.h5      # 真实 TRIMEG HDF5 样例 B（edge，只读证据）
 │
 ├── tests/                             # 单元测试目录（M1～M3 验收测试）
 │   ├── test_gfile_reader.py           # M1 验收测试（已通过，git: f52a75f）
@@ -163,7 +176,7 @@ LinkMesh/
 │   ├── test_oft_adapter.py            # 【已实现，M2 正式验收测试，mock 退出码 0】OFT Adapter 专用测试；
 │   │                                  # 覆盖单区域/两区域/三区域/N>3；区域缺失/多余/非法编号失败；
 │   │                                  # 分别验证 mesh_from_oft_domain / build_oft_domain_from_gfile / generate_mesh 三层
-│   └── test_hdf5_writer.py            # 【计划新增】M3 验收测试
+│   └── test_hdf5_writer.py            # 【计划重写，M3】按 v1.11 新契约验收（8 核心 + 3 可选默认不写）
 │
 └── examples/                          # 【计划新增】示例文件目录
     ├── sample.geqdsk                  # 【计划新增，待许可确认】示例 GFile 平衡文件
@@ -173,10 +186,12 @@ LinkMesh/
 **注意**：
 - `examples/` 目录当前尚不存在，其中的 `sample.geqdsk` 来源和许可证待确认（见第 14.2 节）。
 - `pyproject.toml` 当前尚不存在，待主管批准后创建（见第 15.1 节）。
+- `src/linkmesh/mesh.py` 为 v1.11 批准的计划新增文件，尚未创建；创建与迁移属于下一轮独立解耦任务（见第 16.1 节）。
 - `mesher/oft_adapter.py` 已实现并通过 M2 正式验收（见第 7 节与第 13 节 M2）。
 - `tests/test_oft_adapter.py` 已实现，mock 契约测试退出码 0（见第 13 节 M2 与第 14.1 节）。
 - 本轮不新增 `tests/test_smb_writer.py`，M4 开始前不创建该文件。
-- `mesher/triangle_wrapper.py` 与 `tests/test_triangle_wrapper.py` 保留为历史/过渡实现，暂不删除、不扩展；`Mesh2D` 与 `BoundaryConfig` 定义当前仍位于 `triangle_wrapper.py`，删除前置条件与减量顺序见第 16.1 节。
+- `mesher/triangle_wrapper.py` 与 `tests/test_triangle_wrapper.py` 保留为历史/过渡实现，暂不删除、不扩展；`BoundaryConfig` 定义当前仍位于 `triangle_wrapper.py`；`Mesh2D` 迁出后 `triangle_wrapper.py` 从 `linkmesh.mesh` 重导出，删除前置条件与减量顺序见第 16.1 节。
+- `docs/trimeg/` 下的 `.m` 与两个 `.h5` 为 M3 契约的直接只读证据，严禁修改。
 
 ### 1.2 模块职责矩阵
 
@@ -184,12 +199,13 @@ LinkMesh/
 |---|---|---|---|---|
 | `src/linkmesh/__main__.py` | `python -m linkmesh` 入口：仅调用 `linkmesh.cli.main()`，不承载任何参数解析或业务逻辑 | `sys.argv`（透传） | 无（副作用：调用 `cli.main`） | 不得包含任何业务逻辑；不得直接操作文件；不得重复定义参数解析 |
 | `src/linkmesh/cli.py` | 解析命令行参数；调用 reader → `mesher/oft_adapter.py`（M2 正式路径，经 `generate_mesh()` 便利入口）→ writer；捕获异常并打印友好错误信息 | `sys.argv` | 无（副作用：调用各模块） | 不得包含任何业务逻辑（除历史过渡 `_build_boundary_config`）；不得直接操作文件；**不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换**；不得复制 OFT 通用几何逻辑；本轮不新增任意区域配置 CLI 参数 |
+| `src/linkmesh/mesh.py` | **【计划新增，v1.11】** 独立轻量统一内存网格模型模块：只定义 `Mesh2D`（与网格后端无关）；提供只读统计属性（`n_nodes`/`n_triangles`/`n_boundary_segments`）；非核心兼容字段使用 `dataclasses.field(default_factory=...)` 提供安全空数组默认值 | 无（纯数据结构模块） | `Mesh2D` 类定义 | **不得依赖 OFT / Python Triangle / HDF5 / PUMI / CLI / Plotter**；不得加入网格生成、边界恢复、HDF5 翻译或通用后端抽象；不得共享可变 NumPy 默认数组 |
 | `src/linkmesh/readers/gfile_reader.py` | **薄 Adapter（接线员）**：调用 OFT `GEQDSKEquilibrium` 读取 GFile，从返回对象属性中提取 LCFS 边界坐标、磁轴坐标、第一壁点集等，封装为 `GFileData` 对象 | GFile 文件路径（`str`） | `GFileData` dataclass | **绝对禁止**在 LinkMesh 侧手动执行任何原始 GFile 文本 I/O 与字符串切分；不得调用 Triangle；不得写文件 |
-| `src/linkmesh/mesher/oft_adapter.py` | **【M2 正式网格生成适配层，三层接口，M2 PASSED】** `mesh_from_oft_domain(domain)` 通用 N 区域核心：调用已构造 `gs_Domain` 的 `build_mesh()`，将 `pts/lc/reg` 规范化为 `Mesh2D`，只按 `domain.region_info` 校验区域集合，对任意正区域数量 N 通用（含 N=1）；`build_oft_domain_from_gfile(gfile_data, ...)` 当前 GFile 默认策略层：按批准策略构造 `gs_Domain`，不调用 `build_mesh()`；`generate_mesh(gfile_data, ...)` CLI 便利入口：组合前两者 | `GFileData` 对象 / 已构造 `gs_Domain` / 网格尺度参数 | `Mesh2D` 对象（`mesh_from_oft_domain`、`generate_mesh`）；`gs_Domain` 对象（`build_oft_domain_from_gfile`） | **不得复制 OFT 通用几何、区域拓扑、种子搜索、重采样或 Triangle 调用算法**；不得修改 OFT 源码/安装目录/fork；不得依赖 `TOKAMAKER/` 快照作为运行时包；**不得写死区域数量/名称/类型/最终整数 ID**；不得根据整数编号推断区域物理语义；不得对合法 0-based 连接表无依据地再次偏置；`mesh_from_oft_domain` 不得理解或推断 plasma/vacuum/outer 语义；`build_oft_domain_from_gfile` 不得调用 `build_mesh()` 或转换 `pts/lc/reg`；`generate_mesh` 不得包含第二套网格验证或区域算法 |
-| `src/linkmesh/mesher/triangle_wrapper.py` | 【历史/过渡实现，非 M2 正式主路径】原 Python triangle 包底座封装；已被 `oft_adapter.py` 替代；当前仍承载 `Mesh2D` / `BoundaryConfig` 定义 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎；**不得写死区域数量**；不得推断区域物理含义；**禁止为保存旧实现继续扩展其区域拓扑与通用几何能力** |
-| `src/linkmesh/writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 黄金标尺，按 TRIMEG HDF5 规范写出 `.h5` 文件 | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；**不得重编号、偏置、压缩或排序 `region_ids`**；不得推断区域物理含义；不得根据整数编号猜测区域语义 |
-| `src/linkmesh/writers/smb_writer.py` | **第二战役占位模块**：在 M3 完整验收及 SCOREC/PUMI/M3DC1 只读侦察完成后，按主管确认的实现路线将 `Mesh2D` 转换为 M3DC1 可消费的 `.smb`；当前不得锁定具体序列化方式；保持 `NotImplementedError` 占位 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用，M4 实现后） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；M3 验收前不得实现任何字节流逻辑 |
-| `src/linkmesh/utils/plotter.py` | 绘制 LCFS 边界与生成三角网格的叠加图；输出 `.png` 自检图；提供 `plot_lcfs_only()`（M1 最小可用版）和 `plot_mesh()`（M2 完整版，支持区域着色与 LCFS 闭合显示）两个函数 | `GFileData`，`Mesh2D`，输出路径 | `.png` 文件（副作用） | 不得修改任何数据对象 |
+| `src/linkmesh/mesher/oft_adapter.py` | **【M2 正式网格生成适配层，三层接口，M2 PASSED】** `mesh_from_oft_domain(domain)` 通用 N 区域核心：调用已构造 `gs_Domain` 的 `build_mesh()`，将 `pts/lc/reg` 规范化为 `Mesh2D`，只按 `domain.region_info` 校验区域集合，对任意正区域数量 N 通用（含 N=1）；`build_oft_domain_from_gfile(gfile_data, ...)` 当前 GFile 默认策略层：按批准策略构造 `gs_Domain`，不调用 `build_mesh()`；`generate_mesh(gfile_data, ...)` CLI 便利入口：组合前两者 | `GFileData` 对象 / 已构造 `gs_Domain` / 网格尺度参数 | `Mesh2D` 对象（`mesh_from_oft_domain`、`generate_mesh`）；`gs_Domain` 对象（`build_oft_domain_from_gfile`） | **不得复制 OFT 通用几何、区域拓扑、种子搜索、重采样或 Triangle 调用算法**；不得修改 OFT 源码/安装目录/fork；不得依赖 `TOKAMAKER/` 快照作为运行时包；**不得写死区域数量/名称/类型/最终整数 ID**；不得根据整数编号推断区域物理语义；不得对合法 0-based 连接表无依据地再次偏置；`mesh_from_oft_domain` 不得理解或推断 plasma/vacuum/outer 语义；`build_oft_domain_from_gfile` 不得调用 `build_mesh()` 或转换 `pts/lc/reg`；`generate_mesh` 不得包含第二套网格验证或区域算法；**解耦后从 `linkmesh.mesh` 导入 `Mesh2D`，不得从 `triangle_wrapper.py` 获取** |
+| `src/linkmesh/mesher/triangle_wrapper.py` | 【历史/过渡实现，非 M2 正式主路径】原 Python triangle 包底座封装；已被 `oft_adapter.py` 替代；仍承载 `BoundaryConfig` 定义；解耦后从 `linkmesh.mesh` 重导出 `Mesh2D`（`from linkmesh.mesh import Mesh2D`），不再定义第二份同名类 | `BoundaryConfig` 对象 | `Mesh2D` 对象 | 不得读取 GFile；不得写文件；不得引入三维网格逻辑；不得引入第二种生成引擎；**不得写死区域数量**；不得推断区域物理含义；**禁止为保存旧实现继续扩展其区域拓扑与通用几何能力**；**禁止在此重新定义第二份 `Mesh2D`** |
+| `src/linkmesh/writers/hdf5_writer.py` | **第一战役**：接收 `Mesh2D` 对象；严格对照 `docs/trimeg/loadfemmesh_h5.m` 与两个真实样例，按 v1.11 TRIMEG HDF5 契约写出 `.h5` 文件（8 核心数据集；默认不写 3 可选） | `Mesh2D` 对象，输出路径 | `.h5` 文件（副作用） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；**不得写 `region_ids` 到 HDF5**；**不得对 vert/tria 转置**；**不得写 tria 第四列**；不得推断区域物理含义；不得访问旧 `boundary_segments`/`boundary_markers`/`node_markers`；解耦后从 `linkmesh.mesh` 导入 `Mesh2D`（仅运行时类型需要，否则 `TYPE_CHECKING`） |
+| `src/linkmesh/writers/smb_writer.py` | **第二战役占位模块**：在 M3 完整验收及 SCOREC/PUMI/M3DC1 只读侦察完成后，按主管确认的实现路线将 `Mesh2D` 转换为 M3DC1 可消费的 `.smb`；当前不得锁定具体序列化方式；保持 `NotImplementedError` 占位 | `Mesh2D` 对象，输出路径 | `.smb` 文件（副作用，M4 实现后） | 不得修改 `Mesh2D` 对象；不得包含网格生成逻辑；M3 验收前不得实现任何字节流逻辑；解耦后从 `linkmesh.mesh` 导入 `Mesh2D` |
+| `src/linkmesh/utils/plotter.py` | 绘制 LCFS 边界与生成三角网格的叠加图；输出 `.png` 自检图；提供 `plot_lcfs_only()`（M1 最小可用版）和 `plot_mesh()`（M2 完整版，支持区域着色与 LCFS 闭合显示）两个函数 | `GFileData`，`Mesh2D`，输出路径 | `.png` 文件（副作用） | 不得修改任何数据对象；解耦后从 `linkmesh.mesh` 导入 `Mesh2D` |
 
 ---
 
@@ -256,37 +272,78 @@ class GFileData:
                                      # DIII-D 样例实测值约 4.93e5 A（约 0.49 MA）
 ```
 
-### 2.2 `Mesh2D`：LinkMesh 轻量统一网格对象（v1.8 明确核心三数组，v1.10 保持）
+### 2.2 `Mesh2D`：LinkMesh 轻量统一网格对象（v1.11 迁入独立模块 src/linkmesh/mesh.py）
 
-【v1.8 明确，v1.10 保持】`Mesh2D` 是 LinkMesh 目标格式之间的**轻量统一网格表示**，而不是 Python Triangle 专属对象。其 M2 正式核心数据收缩为三个数组，全部来自 OFT `build_mesh()` 返回值：
+【v1.8 明确，v1.11 保持并迁移归属】`Mesh2D` 是 LinkMesh 目标格式之间的**轻量统一网格表示**，而不是 Python Triangle 专属对象。其 M2 正式核心数据收缩为三个数组，全部来自 OFT `build_mesh()` 返回值：
 
 | 字段 | 来源 | 期望 shape | 期望 dtype |
 |---|---|---|---|
 | `nodes` | OFT `pts` | `(N, 2)` | `float64` |
-| `triangles` | OFT `lc` | `(T, 3)` | 整数 dtype（M2-0 / M2 实测 `int32`） |
-| `region_ids` | OFT `reg` | `(T,)` | 整数 dtype（M2-0 / M2 实测 `int32`） |
+| `triangles` | OFT `lc` | `(T, 3)` | 整数 dtype（M2-0 / M2 实测 `int32`），**内部 0-based** |
+| `region_ids` | OFT `reg` | `(T,)` | 整数 dtype（M2-0 / M2 实测 `int32`），OFT 最终区域编号原样保留 |
 
 **索引基准原则（v1.8）**：内部节点索引基准以 M2-0 / M2 实际证据为准。当前 OFT 26.6 已确认返回合法 **0-based** 连接表；Adapter 应验证 `0 <= lc < N`，**无需无依据地再次偏置**。任何后续偏置（如写入 TRIMEG HDF5 时的 `+1`）由目标 Writer 按其格式契约在写出阶段执行，不在 `Mesh2D` 阶段处理。
 
-**区域编号原则（v1.8，v1.10 保持）**：`region_ids` **原样保存 OFT 返回的三角形区域编号**，不重编号、不压缩、不排序、不执行 `+1`。LinkMesh、`Mesh2D`、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义。区域语义应从 OFT `domain.region_info` 的区域名称、类型和最终 ID 获得。区域数量由 OFT 当前区域模型决定，不在 `Mesh2D` 中写死；**合法的单区域（N=1）网格同样满足该契约**。
+**区域编号原则（v1.8，v1.11 保持）**：`region_ids` **原样保存 OFT 返回的三角形区域编号**，不重编号、不压缩、不排序、不执行 `+1`。LinkMesh、`Mesh2D`、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义。区域语义应从 OFT `domain.region_info` 的区域名称、类型和最终 ID 获得。区域数量由 OFT 当前区域模型决定，不在 `Mesh2D` 中写死；**合法的单区域（N=1）网格同样满足该契约**。
 
-**定义位置说明（v1.10）**：当前 `Mesh2D` 定义仍位于 `src/linkmesh/mesher/triangle_wrapper.py`，`oft_adapter.py` 从该模块导入 `Mesh2D`。这是本轮暂不删除历史 Triangle Wrapper 的直接原因之一（见第 16.1 节）。是否将 `Mesh2D` 迁出 `triangle_wrapper.py` 由后续减量任务裁决，本轮不迁移。
+**【v1.11 归属修正】** `Mesh2D` 的正式定义位置从历史 `src/linkmesh/mesher/triangle_wrapper.py` **迁出**到独立模块 `src/linkmesh/mesh.py`（计划新增）。迁移属于下一轮独立窄范围解耦任务（见第 16.1 节），本轮蓝图不执行源码迁移，仅固化实施计划。
+
+**当前正式 Mesh2D 生成链路（v1.11 记录，M2 已通过）**：
+
+```text
+GFileData
+  → oft_adapter.build_oft_domain_from_gfile()   # 构造 OFT gs_Domain（不 build_mesh）
+  → OFT gs_Domain
+  → domain.build_mesh()                          # 由正式安装的 OFT 生成 pts/lc/reg
+  → pts / lc / reg
+  → oft_adapter.mesh_from_oft_domain()           # 规范化 + 区域校验
+  → Mesh2D
+```
+
+【已确认事实，v1.11】关于该链路的关键判断：
+- 网格节点、三角形和区域编号**全部由正式安装的 OFT 生成**；
+- 正式路径**没有**调用 `triangle_wrapper.generate_mesh()`；
+- 正式路径**没有**调用 Python `triangle.triangulate()`；
+- 当前 `oft_adapter.py` **仅从 `triangle_wrapper.py` 导入 `Mesh2D` 数据类**，不使用其网格算法；
+- 因此**当前不存在网格算法仍依赖旧 Wrapper 的问题**，但存在**核心数据类型归属错误**和**正式路径结构耦合**（正式模块从历史模块导入核心类型）；
+- M2 已通过，**解耦不得改变** OFT 调用、区域模型、网格数量、数组内容或 M2 行为。
+
+**唯一定义与重导出兼容（v1.11 规定，下一轮实施）**：迁移后 `triangle_wrapper.py` 不再定义第二份 `Mesh2D`，而应 `from linkmesh.mesh import Mesh2D` 重新导出同一个类，以兼容旧导入。必须保证：
+
+```text
+linkmesh.mesh.Mesh2D is linkmesh.mesher.triangle_wrapper.Mesh2D  # 同一个类对象
+```
+
+不得在两个模块中保留两个独立的同名数据类。
+
+**Mesh2D 数据类正式定义（迁入 src/linkmesh/mesh.py，下一轮实施）**：
 
 ```python
+# src/linkmesh/mesh.py（计划新增，v1.11 批准）
 from dataclasses import dataclass, field
 from typing import Optional
 import numpy as np
 
+
+def _empty_segments() -> np.ndarray:
+    return np.empty((0, 2), dtype=np.int32)
+
+
+def _empty_markers() -> np.ndarray:
+    return np.empty((0,), dtype=np.int32)
+
+
 @dataclass
 class Mesh2D:
-    """LinkMesh 轻量统一网格对象（v1.8 明确核心三数组，v1.10 保持）。
+    """LinkMesh 轻量统一内存网格对象（v1.11 迁入独立模块）。
 
-    该对象是 OFT build_mesh() 返回结果经 LinkMesh 最小适配后的统一表示，
-    同时也是 writers/hdf5_writer.py 和 writers/smb_writer.py 的共同输入。
+    与网格后端无关的统一表示。该对象是 OFT build_mesh() 返回结果经 LinkMesh
+    最小适配后的统一表示，同时也是 writers/hdf5_writer.py 和 writers/smb_writer.py
+    的共同输入。本模块不依赖 OFT / Python Triangle / HDF5 / PUMI / CLI / Plotter。
 
     M2 正式核心字段来源（OFT build_mesh() 返回值）：
         nodes      ← pts[np, 2]，OFT 返回的节点坐标，期望 dtype float64
-        triangles  ← lc[nc, 3]，OFT 返回的三角形连接表，期望整数 dtype，0-based
+        triangles  ← lc[nc, 3]，OFT 返回的三角形连接表，期望整数 dtype，内部 0-based
         region_ids ← reg[nc]，OFT 返回的三角形区域编号，期望整数 dtype
 
     索引约定（M2-0 / M2 已确认）：
@@ -294,53 +351,26 @@ class Mesh2D:
         Adapter 应验证 0 <= lc < N，无需无依据地再次偏置。
         任何针对目标格式的偏置（如 TRIMEG HDF5 的 +1）由目标 Writer 在写出阶段执行。
 
-    区域编号约定（v1.8，v1.10 保持）：
+    区域编号约定（v1.8，v1.11 保持）：
         region_ids 原样保存 OFT 返回的三角形区域编号，不重编号、不压缩、不排序、不执行 +1。
         LinkMesh、HDF5 Writer 和未来 SMB Writer 不得根据整数编号猜测区域物理语义。
-        区域语义应从 OFT domain.region_info 的区域名称、类型和最终 ID 获得。
-        区域数量由 OFT 当前区域模型决定，不在 Mesh2D 中写死；单区域（N=1）网格同样合法。
-        非正区域编号表示未认领或非法区域，不是"无物理方程"的合法标签。
+        region_ids 不写入 TRIMEG HDF5（见第 4.1 与第 9 节），继续保留在内存对象中供
+        Plotter 与 M4 使用。
     """
-    # ------------------------------------------------------------------ #
-    # M2 正式核心字段（来自 OFT build_mesh() 返回值）                       #
-    # ------------------------------------------------------------------ #
 
-    # 节点坐标（来自 OFT pts）
+    # M2 正式核心字段（来自 OFT build_mesh() 返回值）
     nodes: np.ndarray                # shape=(N, 2)，节点 [R, Z] 坐标 [m]，dtype=float64
+    triangles: np.ndarray            # shape=(T, 3)，三角形三顶点节点索引，整数 dtype，内部 0-based
+    region_ids: np.ndarray           # shape=(T,)，每个三角形的区域 ID，整数 dtype，原样保留
 
-    # 三角形连接表（来自 OFT lc），0-based（M2-0 / M2 确认）
-    triangles: np.ndarray            # shape=(T, 3)，三角形三顶点节点索引，整数 dtype
-
-    # 三角形区域编号（来自 OFT reg）
-    # 原样保存 OFT 返回值，不重编号、不压缩、不排序、不执行 +1
-    # 不得根据整数值推断区域物理语义
-    region_ids: np.ndarray           # shape=(T,)，每个三角形的区域 ID，整数 dtype
-
-    # ------------------------------------------------------------------ #
-    # 非核心、可选、兼容字段（v1.8 保持降级状态）                            #
-    # 这些字段不是 TRIMEG HDF5 loadfemmesh_h5.m 的直接消费数据集，          #
-    # 也不是 M2 正式核心三数组。是否需要由目标格式直接证据和 M4 侦察          #
-    # 结果决定。当前保留字段定义以维持与现有过渡代码的兼容性，               #
-    # 但不得将其描述为 TRIMEG 核心消费字段或无条件必填字段。                 #
-    #                                                                     #
-    # 本轮不为了删除这些字段而扩大重构；后续 OFT Adapter 首次实现            #
-    # 也不得为了填充这些旧字段而重新建设边界恢复算法。若现有构造函数         #
-    # 强制要求它们，应在后续源码任务中采用最小兼容处理并报告，               #
-    # 不得伪造物理语义。                                                    #
-    # ------------------------------------------------------------------ #
-
-    # 边界线段连接表（可选兼容字段）
-    boundary_segments: Optional[np.ndarray] = None  # shape=(S, 2)，dtype=int32
-
-    # 边界线段标记（可选兼容字段）
-    boundary_markers: Optional[np.ndarray] = None   # shape=(S,)，dtype=int32
-
-    # 节点边界标记（可选兼容/适配字段）
-    # 用于区分内部节点（0）和边界节点（非零），供 TRIMEG HDF5 idxivert/idxevert 计算使用
-    # 【待运行验证】OFT build_mesh() 是否直接提供等价信息，待 M3 适配阶段确认
-    # 若 OFT 不直接提供，LinkMesh 需要在 HDF5 Writer 适配层中从网格拓扑推导
-    node_markers: Optional[np.ndarray] = None       # shape=(N,)，dtype=int32
-                                                    # 0=内部节点，非零=边界节点
+    # 非核心、可选、兼容字段（v1.8 降级；v1.11 提供安全空数组默认值）
+    # 这些字段不是 TRIMEG HDF5 loadfemmesh_h5.m 的直接消费数据集，
+    # 也不是 M2 正式核心三数组，且不参与 v1.11 M3 HDF5 契约。
+    # HDF5 Writer 不得访问这些字段（见第 9 节）。
+    # 使用 default_factory 避免共享可变 NumPy 默认数组。
+    boundary_segments: np.ndarray = field(default_factory=_empty_segments)  # shape=(0,2) int32
+    boundary_markers: np.ndarray = field(default_factory=_empty_markers)    # shape=(0,) int32
+    node_markers: np.ndarray = field(default_factory=_empty_markers)        # shape=(0,) int32
 
     @property
     def n_nodes(self) -> int:
@@ -354,29 +384,25 @@ class Mesh2D:
 
     @property
     def n_boundary_segments(self) -> int:
-        """边界线段总数（若 boundary_segments 为 None 则返回 0）。"""
-        if self.boundary_segments is None:
-            return 0
+        """边界线段总数。"""
         return self.boundary_segments.shape[0]
 ```
 
-**关于 `node_markers` 与 TRIMEG HDF5 的关系**：
+**【v1.11 重要澄清：`node_markers` 不再用于 idxivert/idxevert 生成】**
 
-`loadfemmesh_h5.m` 读取 `/femmesh/idxivert`（内部节点全局索引）和 `/femmesh/idxevert`（边界节点全局索引）。这两个数据集需要区分内部节点和边界节点。`node_markers` 是 LinkMesh 内部用于计算这两个索引集合的辅助字段。
-
-【待运行验证】OFT `build_mesh()` 是否直接提供等价的内外节点区分信息，需要在 M3 适配阶段验证。若 OFT 不直接提供，LinkMesh 需要在 HDF5 Writer 适配层中从网格拓扑（边界边）推导节点边界标记。**本轮及 M2 Adapter 实现均未为了填充该字段而重新建设边界恢复算法。**
+旧蓝图曾设想用 `node_markers` 区分内部/边界节点以生成 `/femmesh/idxivert`、`/femmesh/idxevert`。两个真实样例的拓扑检查已确认：`idxevert` 是**拓扑外边界节点**（网格无向边只出现一次的边所含节点）的集合，与 LCFS、第一壁、OFT region ID、`node_markers` 或文件名无关（详见第 4.1.4 节）。因此 HDF5 Writer **不使用** `node_markers` 生成 `idxivert/idxevert`，而是直接从 `triangles` 拓扑推导。`node_markers` 保留为空兼容字段，不参与 M3 契约。
 
 ### 2.3 `BoundaryConfig`（历史/过渡候选，非 M2 正式主路径）
 
-【v1.8 状态，v1.10 保持】`BoundaryConfig` 是历史/过渡候选数据结构，原用于向 Python `triangle` 包传递输入。M2 正式主路径已由 `mesher/oft_adapter.py` 的 OFT `gs_Domain` 调用替代。
+【v1.8 状态，v1.11 保持】`BoundaryConfig` 是历史/过渡候选数据结构，原用于向 Python `triangle` 包传递输入。M2 正式主路径已由 `mesher/oft_adapter.py` 的 OFT `gs_Domain` 调用替代。
 
-当前保留其定义（位于 `triangle_wrapper.py`）以维持与现有过渡代码（`triangle_wrapper.py`、`cli.py` 中 `_build_boundary_config()`）的兼容性，但不得将其作为 M2 正式架构的核心数据结构进行扩展。删除前置条件见第 16.1 节。
+当前保留其定义（位于 `triangle_wrapper.py`）以维持与现有过渡代码（`triangle_wrapper.py`、`cli.py` 中 `_build_boundary_config()`）的兼容性，但不得将其作为 M2 正式架构的核心数据结构进行扩展。`Mesh2D` 迁出后，`BoundaryConfig` 仍暂留于 `triangle_wrapper.py`。删除前置条件见第 16.1 节。
 
 ---
 
 ## 3. 数据流转架构（OFT 优先，LinkMesh 最小适配）
 
-### 3.1 正式目标数据管道（v1.8，v1.10 保持）
+### 3.1 正式目标数据管道（v1.8，v1.11 保持）
 
 LinkMesh 的数据流以 OFT 为核心网格生成后端，LinkMesh 只负责最小输入编排、统一对象适配、目标格式翻译和 CLI 编排。
 
@@ -409,15 +435,14 @@ GFileData
   │  [可选：OFT save_gs_mesh() 写出静态中间网格（OFT 自有格式，非 TRIMEG HDF5）]
   │
   ↓ [mesh_from_oft_domain 最小适配：规范化并检查 shape/dtype/有限值/索引范围/区域编号/退化三角形]
-  │  [封装为轻量 Mesh2D 统一对象；原样保存 OFT 返回的区域编号，不重编号]
+  │  [封装为轻量 Mesh2D 统一对象（正式定义位于 src/linkmesh/mesh.py，计划新增）；原样保存 OFT 区域编号]
 Mesh2D  (轻量统一网格对象，v1.8 核心三数组 nodes/triangles/region_ids)
   │
-  ├──→ [第一阶段战役：HDF5 映射对齐]
+  ├──→ [第一阶段战役：HDF5 映射对齐（v1.11 契约）]
   │      src/linkmesh/writers/hdf5_writer.py
-  │      (严格对照 docs/trimeg/loadfemmesh_h5.m 黄金标尺)
-  │      (Writer 不重编号、偏置、压缩或排序 region_ids)
-  │      (节点索引 0-based → 1-based 偏置由 Writer 在写出阶段执行)
-  │      (不根据整数编号猜测区域物理语义)
+  │      (严格对照 docs/trimeg/loadfemmesh_h5.m 与两个真实样例)
+  │      (磁盘 vert=(N,2)、tria=(T,3)、8 核心 float64 数据集；不转置、不写第四列、不写 region_ids)
+  │      (idxevert/idxivert 从 triangles 拓扑推导，写 1-based；默认不写 nbcRZ/Rbc/Zbc)
   │        │
   │        ↓
   │      TRIMEG 求解器消费的 HDF5 静态网格
@@ -469,145 +494,187 @@ linkmesh [选项]
 
 **【历史参数拦截】** `--min-angle` 与 `--max-area` 属于旧 Python Triangle 参数，OFT 正式路径暂不支持。若用户给出非默认值，CLI 抛出清晰错误，不静默忽略，默认值不传给 OFT Adapter（见 `cli.py` 中 `_check_unsupported_legacy_params`）。
 
-**【v1.8 编排约束，v1.10 保持】** `cli.py` 只负责参数解析和调用 `mesher/oft_adapter.py`（经 `generate_mesh()` 便利入口），不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换。这些逻辑由 OFT `gs_Domain` 内部处理。
+**【v1.8 编排约束，v1.11 保持】** `cli.py` 只负责参数解析和调用 `mesher/oft_adapter.py`（经 `generate_mesh()` 便利入口），不得在 CLI 中实现区域算法、点在多边形算法、区域种子搜索或 Triangle 数据转换。这些逻辑由 OFT `gs_Domain` 内部处理。
 
-**【v1.9 CLI 约束，v1.10 保持】** 本轮不新增任意区域配置 CLI 参数，当前 CLI 继续使用 GFile 默认区域模型（见第 7.2.2 节）。若未来需要从 CLI 选择计算域范围（例如显式选择 plasma-only），必须另行更新蓝图并定义参数（见第 5.1.2 节与第 7.2.3 节）。
+**【v1.9 CLI 约束，v1.11 保持】** 本轮不新增任意区域配置 CLI 参数，当前 CLI 继续使用 GFile 默认区域模型（见第 7.2.2 节）。若未来需要从 CLI 选择计算域范围（例如显式选择 plasma-only），必须另行更新蓝图并定义参数（见第 5.1.2 节与第 7.2.3 节）。
 
 ---
 
 ## 4. 数据格式对齐规范（两阶段战役核心方法论）
 
-本节是 LinkMesh 两大 Writer 模块的核心实现方法论，Aider 在编写 `src/linkmesh/writers/` 下任何代码前必须完整阅读本节。**本轮 v1.10 不修改 M3 HDF5 字段契约，本节内容保持 v1.7 不变。**
+本节是 LinkMesh 两大 Writer 模块的核心实现方法论，Aider 在编写 `src/linkmesh/writers/` 下任何代码前必须完整阅读本节。**v1.11 依据 `loadfemmesh_h5.m` 与两个真实 HDF5 样例重写了 4.1 全节的 TRIMEG HDF5 契约，撤销了此前被真实样例否定的旧规则。**
 
-### 4.1 第一战役：TRIMEG HDF5 格式映射
+### 4.1 第一战役：TRIMEG HDF5 格式映射（v1.11 真实样例契约）
 
-**【已确认事实】战役定性**：HDF5 是通用开放格式，TRIMEG 侧已有现成的 MATLAB 读取脚本 `docs/trimeg/loadfemmesh_h5.m` 作为黄金对照标尺，格式完全透明可读。以下所有规范均直接从该脚本逐行逆向提取，无任何推断成分。
+**【已确认事实】战役定性**：HDF5 是通用开放格式，TRIMEG 侧已有现成的 MATLAB 读取脚本 `docs/trimeg/loadfemmesh_h5.m` 作为黄金对照标尺，且已获得两个真实 TRIMEG HDF5 样例作为磁盘布局直接证据。以下所有规范均直接从该脚本与两个真实样例逐一核对提取。
 
-#### 4.1.1 `loadfemmesh_h5.m` 直接消费的数据集（已确认事实）
+**证据基础（v1.11）**：
+- `docs/trimeg/loadfemmesh_h5.m`（TRIMEG MATLAB 消费函数）；
+- `docs/trimeg/femmesh_65402_t1_nr16core.h5`（样例 A，称 core）；
+- `docs/trimeg/femmesh_65402_t1_nr16nout4edge.h5`（样例 B，称 edge）；
+- User 在 Linux 服务器使用 h5py、NumPy 与三角形拓扑检查脚本获得的完整输出，脚本只读 HDF5，退出码 0。
 
-【已确认事实】以下数据集路径和读取方式直接来自 `docs/trimeg/loadfemmesh_h5.m` 逐行解析：
+**文件名事实边界**：文件名中的 `core` 和 `edge` 可能描述不同计算范围，但**没有作者说明或生成端源码确认其严格物理意义**，不得仅凭文件名做物理裁决，也不得据 core/edge 外推区域物理语义。
 
-**必须写出的数据集（MATLAB 无条件读取）**：
+#### 4.1.1 MATLAB 消费端事实：8 核心 + 3 可选
 
-| HDF5 路径 | MATLAB 读取方式 | 说明 |
-|---|---|---|
-| `/femmesh/nvert` | `h5read(h5file,'/femmesh/nvert')` | 节点总数，标量 |
-| `/femmesh/ntria` | `h5read(h5file,'/femmesh/ntria')` | 三角形总数，标量 |
-| `/femmesh/nvert_in` | `h5read(h5file,'/femmesh/nvert_in')` | 内部节点数，标量 |
-| `/femmesh/nvert_ex` | `h5read(h5file,'/femmesh/nvert_ex')` | 边界节点数，标量 |
-| `/femmesh/vert` | `h5read(h5file,'/femmesh/vert').'` | 节点坐标，末尾有 `.'`（转置） |
-| `/femmesh/idxivert` | `h5read(h5file,'/femmesh/idxivert')` | 内部节点全局索引 |
-| `/femmesh/idxevert` | `h5read(h5file,'/femmesh/idxevert')` | 边界节点全局索引 |
-| `/femmesh/tria` | `h5read(h5file,'/femmesh/tria').'` | 三角形数据，末尾有 `.'`（转置） |
+【已确认事实】`loadfemmesh_h5.m` **无条件读取** 8 个核心数据集：
 
-**可选数据集（MATLAB 在 try...catch 块中读取，失败时仅打印 warning）**：
+| 序号 | HDF5 路径 |
+|---|---|
+| 1 | `/femmesh/nvert` |
+| 2 | `/femmesh/ntria` |
+| 3 | `/femmesh/nvert_in` |
+| 4 | `/femmesh/nvert_ex` |
+| 5 | `/femmesh/vert` |
+| 6 | `/femmesh/idxivert` |
+| 7 | `/femmesh/idxevert` |
+| 8 | `/femmesh/tria` |
 
-| HDF5 路径 | MATLAB 读取方式 | 说明 |
-|---|---|---|
-| `/femmesh/nbcRZ` | `h5read(h5file,'/femmesh/nbcRZ')` | 边界节点坐标点数，标量 |
-| `/femmesh/Rbc` | `h5read(h5file,'/femmesh/Rbc')` | 边界节点 R 坐标 |
-| `/femmesh/Zbc` | `h5read(h5file,'/femmesh/Zbc')` | 边界节点 Z 坐标 |
+【已确认事实】`loadfemmesh_h5.m` 在 `try/catch` 中读取 3 个**可选**数据集：
 
-**【重要澄清】** `loadfemmesh_h5.m` 中**没有**读取以下数据集：`boundary_segments`、`boundary_markers`、`node_markers`。这些字段是 LinkMesh 内部字段，不是 TRIMEG MATLAB 直接消费的数据集，不得将其写入 TRIMEG HDF5 文件并声称为 TRIMEG 消费字段。
+| HDF5 路径 | 说明 |
+|---|---|
+| `/femmesh/nbcRZ` | 边界节点坐标点数 |
+| `/femmesh/Rbc` | 边界节点 R 坐标 |
+| `/femmesh/Zbc` | 边界节点 Z 坐标 |
 
-**【v1.9 单区域事实边界，v1.10 保持】** `loadfemmesh_h5.m` 当前直接证据**没有**显示 TRIMEG HDF5 加载器要求至少两个二维区域。单区域网格原则上仍可提供节点、三角形、内部/边界节点索引和可选边界坐标。但"文件能被 MATLAB 加载"不等于"TRIMEG 所有物理算例都接受 plasma-only"；TRIMEG 求解层是否需要真空区仍待更多直接证据（见第 5.1.3 节）。
+缺失可选数据集只产生 warning，不阻止核心网格加载。MATLAB 绘图只使用 `femmesh.tria(:,1:3)`，并直接将其中数值作为 MATLAB 节点索引（因此磁盘 `tria` 必须为 1-based）。
 
-#### 4.1.2 转置规律（核心机制，必须理解）
+**【重要澄清，v1.11 保持】** `loadfemmesh_h5.m` 中**没有**读取 `boundary_segments`、`boundary_markers`、`node_markers`。这些是 LinkMesh 内部字段，不是 TRIMEG 直接消费数据集，不得写入 TRIMEG HDF5 并声称为 TRIMEG 消费字段。
 
-【已确认事实】`loadfemmesh_h5.m` 中凡是末尾带 `.'`（非共轭转置运算符）的 `h5read` 调用，均说明该数组在 HDF5 文件中以 **Fortran 列优先（column-major）顺序**存储。
+#### 4.1.2 8 个核心数据集磁盘契约（以 h5py 看到的实际磁盘布局为准）
 
-- MATLAB `h5read` 读取 HDF5 时，会将 C 行优先的存储顺序自动解释为 Fortran 列优先，因此读出的矩阵维度与 HDF5 中存储的维度**行列互换**。
-- Python `h5py` 写入时，若要让 MATLAB 读取后得到 `(nvert, 2)` 的矩阵，必须在 HDF5 中存储 `(2, nvert)` 的数组。
-- **实现公式**：`h5file.create_dataset(key, data=array.T)` —— 即写入前先转置。
+【已确认事实，两个真实样例直接确认】以下为 Python h5py 读取到的**实际磁盘 shape 与 dtype**：
 
-涉及转置的字段：`/femmesh/vert`（需转置）、`/femmesh/tria`（需转置）。
-不涉及转置的字段：所有标量、所有一维数组（`idxivert`、`idxevert`、`Rbc`、`Zbc` 等）。
+| HDF5 路径 | 磁盘 shape | 磁盘 dtype | 说明 |
+|---|---|---|---|
+| `/femmesh/nvert` | `(1,1)` | `float64` | 节点总数 N（整数语义，float64 存储） |
+| `/femmesh/ntria` | `(1,1)` | `float64` | 三角形总数 T（整数语义，float64 存储） |
+| `/femmesh/nvert_in` | `(1,1)` | `float64` | 内部节点数 nvert_in（整数语义，float64 存储） |
+| `/femmesh/nvert_ex` | `(1,1)` | `float64` | 外边界节点数 nvert_ex（整数语义，float64 存储） |
+| `/femmesh/vert` | `(N,2)` | `float64` | 节点坐标，**每行 `[R,Z]`**，不转置 |
+| `/femmesh/tria` | `(T,3)` | `float64` | 三角形连接表，**1-based**，无第四列 |
+| `/femmesh/idxivert` | `(1,nvert_in)` | `float64` | 内部节点全局索引，**1-based**，升序 |
+| `/femmesh/idxevert` | `(1,nvert_ex)` | `float64` | 外边界节点全局索引，**1-based**，升序 |
 
-#### 4.1.3 索引偏置规律（核心机制，必须理解）
+**【dtype 铁律】** 计数、连接表和索引虽具有整数语义，两个真实样例**均以 `float64` 存储**。Writer 必须复现该磁盘 dtype（全部核心数据集写 `float64`）。
 
-【已确认事实】MATLAB 使用 1-based 索引。
+#### 4.1.3 撤销旧转置与第四列规则（v1.11 明确否定）
 
-凡是写入 HDF5 的**节点索引**字段，必须执行 `+1` 偏置转换（前提：LinkMesh 内部使用 0-based 索引；M2-0 / M2 已确认 OFT 返回 0-based 连接表）：
+**以下旧表述在 v1.11 全篇撤销，标记为已被两个真实样例否定，禁止再据其编码**：
 
-- `mesh.triangles`（0-based）→ 写入 `/femmesh/tria` 前三列时 `+1` → 1-based
-- 内部节点的全局位置索引 → 写入 `/femmesh/idxivert` 时 `+1` → 1-based
-- 边界节点的全局位置索引 → 写入 `/femmesh/idxevert` 时 `+1` → 1-based
+| 被否定的旧表述 | 真实样例直接反证 |
+|---|---|
+| Python/h5py 写 `vert=(2,N)` | 真实磁盘 `vert=(N,2)`（core `(981,2)`、edge `(1476,2)`） |
+| Python/h5py 写 `tria=(4,T)` | 真实磁盘 `tria=(T,3)`（core `(1847,3)`、edge `(2775,3)`），无第四列 |
+| Writer 对 `vert/tria` 执行转置 | 真实磁盘即为 `(N,2)`/`(T,3)`，无需转置 |
+| `tria` 第四列写 `region_id` | 真实 `tria` 只有 3 列，无 region_id 列 |
+| 11 个数据集全部必需 | 实为 8 核心 + 3 可选（可选缺失只 warning） |
+| 用 `node_markers`/旧边界字段生成 `idxivert/idxevert` | `idxevert` 由三角形无向边拓扑推导（见 4.1.4） |
+| `idxevert` 表示 LCFS 外全部二维区域节点 | `idxevert` 为拓扑外边界节点（无向边只出现一次） |
+| `Mesh2D` 正式归属于 `triangle_wrapper.py` | `Mesh2D` 正式归属迁至 `src/linkmesh/mesh.py`（见第 2.2 与 16.1 节） |
 
-`region_id`（若写入 `/femmesh/tria` 第4列）**不需要** `+1`，它是物理标记值而非节点索引。
+**关于 MATLAB `.'` 的正确解释（v1.11）**：`loadfemmesh_h5.m` 中 `h5read(...).'` 是 **MATLAB/HDF5 维度解释**问题（MATLAB h5read 会将磁盘维度按列优先解释导致行列互换），**不能反向推导 Python Writer 必须转置**。蓝图分别记录两个 shape：
+- **h5py 磁盘 shape**：`vert=(N,2)`、`tria=(T,3)`（Writer 直接按此写）；
+- **MATLAB 消费 shape**：MATLAB 经 `.'` 后在 MATLAB 内存中得到的形状（属于 MATLAB 侧解释，Writer 不据其转置）。
 
-【已确认事实，M2-0 / M2】OFT `build_mesh()` 返回的 `lc` 数组为 **0-based**。因此写入 HDF5 时需要 `+1` 偏置。该偏置由 HDF5 Writer 在写出阶段执行，不在 `Mesh2D` 或 `oft_adapter.py` 阶段处理。
+#### 4.1.4 `idxevert` 拓扑定义（外边界节点）
 
-#### 4.1.4 关于 `idxivert` 和 `idxevert` 的含义
+【已确认事实，两个真实样例拓扑检查确认】将每个三角形的三条边视为**无向节点对**；`(a,b)` 与 `(b,a)` 是同一条边：
 
-【已确认事实】`loadfemmesh_h5.m` 读取 `idxivert`（内部节点全局索引）和 `idxevert`（边界节点全局索引）。根据 User 对真实样例的核对：`nvert_in + nvert_ex == nvert`，两组索引分别表示内、外节点集合，不重叠。
+- 某无向边**出现两次**：内部共享边；
+- 某无向边**出现一次**：拓扑外边界边；
+- 某无向边**出现超过两次**：非流形边，Writer **必须拒绝**。
 
-【待运行验证】如何从 OFT `build_mesh()` 返回结果中区分内部节点和边界节点，需要在 M3 适配阶段验证。可能的方式包括：
-1. OFT 直接提供节点边界标记信息；
-2. 从 OFT 返回的边界线段信息推导；
-3. 从网格拓扑（边界边）推导。
+两个样例均确认拓扑外边界边所含节点集合与 `idxevert` 完全一致：
 
-#### 4.1.5 关于 `/femmesh/tria` 第四列的含义
+| 样例 | 拓扑外边界边数 | 外边界节点数 | 与磁盘 idxevert 一致 |
+|---|---|---|---|
+| core | 113 | 113 | 是 |
+| edge | 175 | 175 | 是 |
 
-【待确认】`loadfemmesh_h5.m` 读取 `femmesh.tria` 后 shape 为 `(T, 4)`（转置后），但脚本本身没有显式说明第四列的含义。
+**正式规定（v1.11）**：
+- `idxevert` 是**拓扑外边界节点**的**升序 1-based** 编号；
+- **不得**根据 LCFS、第一壁、OFT region ID 或文件名推断；
+- plasma-only 网格的拓扑外边界**可能恰为 LCFS**；
+- 多区域网格的拓扑外边界**通常是完整计算域最外边界**。
 
-现有 `hdf5_writer.py` 将 `region_ids` 写入第四列。这一做法需要与实际 TRIMEG 样例和 TRIMEG 完整源码联合核对后方可确认。
+#### 4.1.5 `idxivert` 定义（补集）
 
-**当前处理原则**：
-- 保留现有 `hdf5_writer.py` 中将 `region_ids` 写入第四列的实现；
-- 在 M3 验收时，必须通过真实 TRIMEG 样例核对第四列的实际含义和期望值；
-- 在获得直接证据前，不得将"第四列为 region_id"声称为已确认事实。
+**正式规定（v1.11）**：
+- `idxivert` 是 `{1,...,N}` 排除 `idxevert` 后的**升序补集**；
+- `len(idxivert) = nvert_in`；
+- `len(idxevert) = nvert_ex`；
+- `nvert_in + nvert_ex = nvert`；
+- 两集合无重复、互斥且并集覆盖全部节点。
 
-#### 4.1.6 完整字段映射契约（Field Mapping Contract）
+【已确认事实】编号跳跃是**补集结构**，不是数据损坏：
+- core：`idxivert = 1..855, 969..981`，`idxevert = 856..968`；
+- edge：`idxivert = 1..1130, 1306..1476`，`idxevert = 1131..1305`。
 
-以下表格是 `src/linkmesh/writers/hdf5_writer.py` 的实现依据，每一行均标注事实状态。
+HDF5 查看器顶部从 0 开始显示的是**数组显示位置**，文件内节点编号仍为 **1-based**。
 
-| HDF5 数据集路径 | HDF5 中存储的 shape | MATLAB 读取后 shape | dtype | 数据来源（Python `Mesh2D` 字段） | 转换公式 | 状态 |
-|---|---|---|---|---|---|---|
-| `/femmesh/nvert` | 标量 | 标量 | int32 | `mesh.n_nodes` | 无转换 | 已确认 |
-| `/femmesh/ntria` | 标量 | 标量 | int32 | `mesh.n_triangles` | 无转换 | 已确认 |
-| `/femmesh/nvert_in` | 标量 | 标量 | int32 | 内部节点数（计算方式待 M3 适配确认） | 无转换 | 已确认（计算方式待确认） |
-| `/femmesh/nvert_ex` | 标量 | 标量 | int32 | 边界节点数（计算方式待 M3 适配确认） | 无转换 | 已确认（计算方式待确认） |
-| `/femmesh/vert` | `(2, nvert)` | `(nvert, 2)` | float64 | `mesh.nodes`，列顺序 `[R, Z]` | **转置写入**：`mesh.nodes.T` | 已确认 |
-| `/femmesh/idxivert` | `(nvert_in,)` | `(nvert_in,)` | int32 | 内部节点全局位置 | **+1 偏置**（LinkMesh 内部 0-based，M2-0 / M2 已确认） | 已确认 |
-| `/femmesh/idxevert` | `(nvert_ex,)` | `(nvert_ex,)` | int32 | 边界节点全局位置 | **+1 偏置**（LinkMesh 内部 0-based，M2-0 / M2 已确认） | 已确认 |
-| `/femmesh/tria` | `(4, ntria)` | `(ntria, 4)` | int32 | 前3列：`mesh.triangles`；第4列：`mesh.region_ids`（待确认） | **前3列 +1 偏置（0-based）+ 整体转置写入；第4列原样写出** | 前3列已确认；第4列含义待真实样例核对 |
-| `/femmesh/nbcRZ` | 标量 | 标量 | int32 | 边界节点数（与 `nvert_ex` 相同） | 无转换 | 已确认（可选字段） |
-| `/femmesh/Rbc` | `(nbcRZ,)` | `(nbcRZ,)` | float64 | 边界节点的 R 坐标 | 无转换 | 已确认（可选字段） |
-| `/femmesh/Zbc` | `(nbcRZ,)` | `(nbcRZ,)` | float64 | 边界节点的 Z 坐标 | 无转换 | 已确认（可选字段） |
+#### 4.1.6 `/femmesh/tria` 契约（v1.11）
 
-#### 4.1.7 `/femmesh/tria` 的精确构造公式（当前实现，待 M3 真实样例核对）
+【已确认事实，两个真实样例直接确认】：
+- core：`tria=(1847,3)`，索引范围 `1..981`；
+- edge：`tria=(2775,3)`，索引范围 `1..1476`；
+- 均**无第四列**。
 
-当前 `hdf5_writer.py` 中的实现：
+**正式规定（v1.11）**：
+- `Mesh2D.triangles` 内部保持 **0-based**；
+- Writer 写出 `(mesh.triangles + 1).astype(np.float64)`；
+- 文件连接表为 **1-based**；
+- **不转置**（磁盘 `(T,3)`）；
+- **不添加第四列**；
+- `Mesh2D.region_ids` **不写入** TRIMEG HDF5；
+- `region_ids` 继续保留在内存对象中供 Plotter 和 M4 使用。
 
-```python
-# Step 1：将三角形连接表从 0-based 转换为 1-based（M2-0 / M2 已确认 OFT 返回 0-based）
-tria_nodes_1based = (mesh.triangles + 1).astype(np.int32)   # shape=(T, 3)
+#### 4.1.7 3 个可选边界数据集事实边界（`nbcRZ` / `Rbc` / `Zbc`）
 
-# Step 2：将 region_ids 扩展为列向量（原样写出，不执行 +1，不根据整数值推断区域语义）
-# 【待确认】第四列是否为 region_id，需要真实 TRIMEG 样例核对
-region_col = mesh.region_ids.reshape(-1, 1).astype(np.int32)  # shape=(T, 1)
+【已确认事实，两个真实样例共同确认磁盘布局】：
+- `nbcRZ`：shape `(1,1)`、`float64`；
+- `Rbc`：shape `(nbcRZ,1)`、`float64`；
+- `Zbc`：shape `(nbcRZ,1)`、`float64`；
+- 每个 `Rbc/Zbc` 点严格匹配某个 `idxevert` 节点；
+- 不重复首点闭合。
 
-# Step 3：水平拼接，构造 (T, 4) 矩阵
-tria_4col = np.hstack([tria_nodes_1based, region_col])  # shape=(T, 4)
+**但两个样例揭示不一致，禁止过度规定**：
+- edge：`nbcRZ = nvert_ex = 175`，覆盖全部外边界节点；
+- core：`nbcRZ = 112`、`nvert_ex = 113`，缺少节点 968，闭合点对 `(856,967)` 不是拓扑边。
 
-# Step 4：转置后写入 HDF5，使 HDF5 中存储为 (4, T)
-# MATLAB h5read 后自动转置得到 (T, 4)，与 loadfemmesh_h5.m 期望一致
-h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
-```
+**因此 v1.11 明确不得规定**：
+- `nbcRZ == nvert_ex`（core 反例：112 ≠ 113）；
+- `Rbc/Zbc` 必须覆盖全部 `idxevert`（core 缺节点 968）；
+- 每对相邻 `Rbc/Zbc` 必须是拓扑边（core 反例 `(856,967)`）；
+- 仅凭 `Mesh2D` 能唯一重建历史 `Rbc/Zbc`。
 
-#### 4.1.8 可选字段处理规范
+**M3 第一阶段 Writer 处理策略（v1.11）**：**默认不写这 3 项**。MATLAB 出现缺少可选数据集的预期 warning 可以接受，但核心网格必须成功加载。
 
-【已确认事实】`loadfemmesh_h5.m` 中 `nbcRZ`、`Rbc`、`Zbc` 三个字段被包裹在 `try...catch` 块中，读取失败时仅打印 warning 而不报错。这说明这三个字段在 TRIMEG 中是**可选字段**。
+#### 4.1.8 两个真实样例结构摘要
 
-`src/linkmesh/writers/hdf5_writer.py` 的处理策略：**始终写出这三个字段**（因为边界节点坐标可以从 `mesh.nodes` 和节点边界标记中提取），不需要做条件判断。
+**样例 A（core）**：
+- `nvert = 981`、`ntria = 1847`；
+- `nvert_in = 868`、`nvert_ex = 113`；
+- `vert = (981,2)`、`tria = (1847,3)`；
+- `idxevert = 856..968`；
+- `nbcRZ = 112`。
 
-【待运行验证】`Rbc`/`Zbc` 是否为 TRIMEG 求解必需字段，需要更多直接消费证据确认。当前策略（始终写出）是保守安全的做法。
+**样例 B（edge）**：
+- `nvert = 1476`、`ntria = 2775`；
+- `nvert_in = 1301`、`nvert_ex = 175`；
+- `vert = (1476,2)`、`tria = (2775,3)`；
+- `idxevert = 1131..1305`；
+- `nbcRZ = 175`。
+
+**不得根据 core/edge 文件名外推物理语义。**
 
 ### 4.2 第二战役：M3DC1 `.smb` 格式——M3 验收后侦察确定实现路线
 
 **【已确认事实】战役定性**：`.smb` 并非商业公司私有保密格式，而是开源 `SCOREC/PUMI` 库的通用二进制网格格式。这意味着我们可以通过只读侦察项目中已引入的 `m3dc1_scorec` 和 `scorec/pumi` 开源 C++ 源码，完整逆向推导出其格式协议。
 
-**【铁律】M3 完整验收通过后，才能开始 M4 侦察与实现。在侦察完成并经主管确认前，`write_smb()` 保持 `NotImplementedError` 占位，不得锁定任何具体序列化方式。**
+**【铁律】M3 完整验收通过后，才能开始 M4 侦察与实现。在侦察完成并经主管确认前，`write_smb()` 保持 `NotImplementedError` 占位，不得锁定任何具体序列化方式。v1.11 不修改任何 M4 `.smb` 未确认契约。**
 
 **侦察目标（M3 验收后执行）**：
 
@@ -620,7 +687,7 @@ h5file.create_dataset('/femmesh/tria', data=tria_4col.T.astype(np.int32))
    - 索引约定（0-based vs 1-based）
    - MeshFile 与 ModelFile 的配对关系（见第 4.2.1 节）
    - M3DC1 特有的区域数量、几何分类、连续性要求（如 C1 连续性、高阶单元等）
-   - **M3DC1 是否支持单区域、是否至少需要真空区（见第 5.1.3 节，v1.9 保留为待源码确认事项）**
+   - **M3DC1 是否支持单区域、是否至少需要真空区（见第 5.1.3 节，保留为待源码确认事项）**
 3. **实现路线**：由侦察结果和主管确认决定，可能包括但不限于：
    - Python 二进制写出；
    - 调用 SCOREC/PUMI 官方 API；
@@ -661,9 +728,9 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 
 ## 5. 区域标记与边界标记约定
 
-### 5.1 区域编号总体原则（v1.8，v1.10 保持单区域与通用 N 区域）
+### 5.1 区域编号总体原则（v1.8，v1.11 保持单区域与通用 N 区域）
 
-【v1.8 原则，v1.10 保持】LinkMesh 不维护全局固定的区域编号映射（如 `1=plasma、2=vacuum、3=wall`）。
+【v1.8 原则，v1.11 保持】LinkMesh 不维护全局固定的区域编号映射（如 `1=plasma、2=vacuum、3=wall`）。
 
 **正式原则**：
 
@@ -675,43 +742,45 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 6. **当前两区域 PLASMA/OUTER 与三区域 PLASMA/VACUUM/OUTER 只作为代表性验收样例**，不是 LinkMesh 的全局固定架构，也不是 `oft_adapter.py` 的能力边界；
 7. **M3DC1 Multi Region 的区域数不得由这两个样例固定**；单/两/三区域实例也不得被外推为 TRIMEG/M3DC1 的最小区域数量要求（见第 5.1.3 节）；
 8. **若某个物理区域不属于目标计算域，正确做法是构造不包含该区域的 OFT 区域模型，使其不生成三角形**；不得保留区域空间后将其编号设为 0。OFT 中非正区域编号表示未认领或非法区域，不是"无物理方程"的合法标签。
+9. **【v1.11 补充】区域编号不进入 TRIMEG HDF5**：`region_ids` 不写入 `/femmesh/tria` 或任何 TRIMEG 数据集（真实样例 `tria` 无第四列）；`region_ids` 仅在内存中保留供 Plotter 与 M4 使用。
 
-#### 5.1.1 通用 N 区域能力（v1.9，v1.10 已运行验证）
+#### 5.1.1 通用 N 区域能力（v1.9，v1.11 已运行验证）
 
-【v1.9 原则，v1.10 已运行验证】`oft_adapter.py` 正式 Adapter 对**任意正区域数量 N 通用，包括 N=1**：
+【v1.9 原则，v1.11 已运行验证】`oft_adapter.py` 正式 Adapter 对**任意正区域数量 N 通用，包括 N=1**：
 
 - LinkMesh 不重新设计一套任意 N 区域配置系统；OFT `gs_Domain` 本身即作为 N 区域定义接口；
 - 通用 N 区域核心由 `mesh_from_oft_domain(domain)` 承担（见第 7.1 节），它只根据 `domain.region_info`（在 `build_mesh()` 之后读取的最终区域集合）验证区域集合，不写死区域数量、名称、类型或最终整数 ID；
 - 两区域、三区域只是代表性验收样例；N=1 与 N>3 都必须被 `mesh_from_oft_domain()` 正确接受（合法输入时通过，非法输入时失败，见第 5.2 节校验规则）；
 - 【M2 mock 证据】`tests/test_oft_adapter.py` 已覆盖单区域（N=1）、两区域、三区域、N>3，以及区域缺失/多余/非法编号失败与 `build_mesh()` 后最终区域 ID 时序场景，mock 测试退出码 0。
 
-#### 5.1.2 单区域 plasma-only 物理定位（v1.9，v1.10 保持）
+#### 5.1.2 单区域 plasma-only 物理定位（v1.9，v1.11 保持）
 
-【v1.9 物理定位，v1.10 保持】单区域 plasma-only 是**合法的计算域选择**：
+【v1.9 物理定位，v1.11 保持】单区域 plasma-only 是**合法的计算域选择**：
 
 - **计算域仅为 LCFS 内部**：LCFS 是最外层计算边界，LCFS 外不生成三角形；
 - **适用场景**：只计算等离子体内部、LCFS 边界条件由外部给定、不自洽计算真空场、壁响应或线圈耦合的场景；
 - **不可替代性**：它**不能替代**需要自由边界、真空场、导体、第一壁或线圈响应的多区域模型；
 - **网格层面无最小区域数要求**：**不存在** LinkMesh/OFT 网格层面"至少必须两个区域"的全局要求；
-- **区域裁剪原则**：若某个区域不属于计算域，应**不在 OFT Domain 中创建它**，使其生成 0 个三角形；不得保留区域空间后用 `region_id=0` 表示"不求解"。
+- **区域裁剪原则**：若某个区域不属于计算域，应**不在 OFT Domain 中创建它**，使其生成 0 个三角形；不得保留区域空间后用 `region_id=0` 表示"不求解"；
+- **【v1.11 拓扑边界补充】** plasma-only 网格的拓扑外边界（`idxevert`，见第 4.1.4 节）可能恰为 LCFS，但这仍由三角形无向边拓扑决定，不由区域语义推断。
 
-**CLI 与默认策略关系（v1.9，v1.10 保持）**：单区域 plasma-only 作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（见第 14.1 节）。本轮**不新增 CLI 参数**选择 plasma-only，**不修改当前默认 GFile 策略**（见第 7.2.2 节）。若未来需要从 CLI 选择计算域范围，必须另行更新蓝图并定义参数。
+**CLI 与默认策略关系（v1.9，v1.11 保持）**：单区域 plasma-only 作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（见第 14.1 节）。本轮**不新增 CLI 参数**选择 plasma-only，**不修改当前默认 GFile 策略**（见第 7.2.2 节）。若未来需要从 CLI 选择计算域范围，必须另行更新蓝图并定义参数。
 
-#### 5.1.3 TRIMEG / M3DC1 单区域消费者事实边界（v1.9，v1.10 保持）
+#### 5.1.3 TRIMEG / M3DC1 单区域消费者事实边界（v1.9，v1.11 保持）
 
 【v1.9 事实边界，禁止外推】以下为消费者侧单区域支持的当前事实边界，不得由两/三区域实例外推最小区域数量要求：
 
 | 消费者 | 单区域支持事实边界 | 状态 |
 |---|---|---|
-| TRIMEG HDF5 加载器（`loadfemmesh_h5.m`） | 当前直接证据**没有**显示要求至少两个二维区域；单区域网格原则上仍可提供节点、三角形、内部/边界节点索引和可选边界坐标 | 已确认（仅限加载器层面） |
+| TRIMEG HDF5 加载器（`loadfemmesh_h5.m`） | 当前直接证据**没有**显示要求至少两个二维区域；单区域网格原则上仍可提供节点、三角形、内部/外边界节点索引和可选边界坐标 | 已确认（仅限加载器层面） |
 | TRIMEG 物理求解层 | "文件能被 MATLAB 加载"不等于"TRIMEG 所有物理算例都接受 plasma-only"；求解层是否需要真空区仍待更多直接证据 | 【待更多直接证据】 |
 | M3DC1 | 是否支持单区域、是否至少需要真空区、是否要求 C1 连续性或高阶单元，全部保留为 M4 待源码确认事项 | 【待源码确认，M4】 |
 
 **结论**：不得把当前两区域或三区域实例外推为 TRIMEG/M3DC1 的最小区域数量要求。网格层面（LinkMesh/OFT）不存在最少两区域要求；消费者层面的区域需求由各自求解器的直接证据决定。
 
-### 5.2 区域校验规则（v1.9，v1.10 已运行验证）
+### 5.2 区域校验规则（v1.9，v1.11 已运行验证）
 
-【v1.9 校验规则，v1.10 已运行验证】`mesh_from_oft_domain()` **不得**要求固定区域数量或固定集合 `{1,2}`、`{1,2,3}`。应检查以下各项：
+【v1.9 校验规则，v1.11 已运行验证】`mesh_from_oft_domain()` **不得**要求固定区域数量或固定集合 `{1,2}`、`{1,2,3}`。应检查以下各项：
 
 1. `domain.region_info`（在 `build_mesh()` 成功返回之后读取，得到 OFT 最终区域 ID 集合）至少包含**一个**已经创建的区域；
 2. OFT 输出 `reg` 全部为**有限正整数**；
@@ -754,9 +823,9 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 
 单区域 plasma-only 样例仅定义一个 plasma 区域，计算域为 LCFS 内部，LCFS 外不生成三角形（见第 5.1.2 节）。作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（mock 单区域 OFT Domain，输出一个正区域 ID，必须通过），不新增 CLI 参数（见第 14.1 节测试规划）。M2 mock 测试已覆盖该场景，退出码 0。
 
-### 5.4 边界标记约定（历史/过渡代码，非 OFT 正式约定）
+### 5.4 边界标记约定（历史/过渡代码，非 OFT 正式约定，v1.11 不进入 M3 契约）
 
-【历史/过渡】以下为历史过渡代码（Python triangle 路线）中使用的边界标记约定，仅供参考，不作为 OFT 路线的正式约定：
+【历史/过渡】以下为历史过渡代码（Python triangle 路线）中使用的边界标记约定，仅供参考，不作为 OFT 路线的正式约定，**也不参与 v1.11 M3 HDF5 契约**：
 
 | boundary_marker | 历史含义 | 备注 |
 |---|---|---|
@@ -765,7 +834,7 @@ M4 仍必须在 M3 完整通过后，对 MCD7 样例、官方文档、ModelFile�
 | 3 | outer boundary | 历史过渡代码约定 |
 | 0 | 内部节点（非边界） | — |
 
-【待运行验证】OFT `gs_Domain` 在 `build_mesh()` 后是否提供边界线段标记信息，以及标记的具体整数值约定，需要在 M3 适配阶段验证（`boundary_markers`/`boundary_segments` 为 `Mesh2D` 非核心可选字段）。M2 正式路径中 OFT Adapter 对这些非核心字段传入空数组占位，未重建边界恢复算法（见第 7.4 节）。
+【v1.11 明确】M3 TRIMEG HDF5 的内部/外边界节点区分（`idxivert`/`idxevert`）**不依赖** `boundary_markers`/`boundary_segments`/`node_markers`，而由三角形无向边拓扑推导（见第 4.1.4 节）。M2 正式路径中 OFT Adapter 对这些非核心字段传入空数组占位，未重建边界恢复算法（见第 7.4 节）。
 
 ---
 
@@ -902,9 +971,9 @@ def read_gfile(filepath: str) -> GFileData:
 
 ## 7. OFT gs_Domain 网格生成适配规范（M2 正式路线：mesher/oft_adapter.py 三层接口，M2 PASSED）
 
-### 7.1 oft_adapter.py 三层接口正式职责（M2 正式主路径，v1.9，v1.10 已实现并通过）
+### 7.1 oft_adapter.py 三层接口正式职责（M2 正式主路径，v1.9，v1.11 已实现并通过）
 
-【已实现，M2 正式主路径，M2 PASSED】`src/linkmesh/mesher/oft_adapter.py` 是 M2 正式网格生成适配层。v1.9 将其正式职责拆分为**三层接口**，通用 N 区域核心与当前 GFile 默认策略解耦；v1.10 已在服务器实现并通过 mock 测试与真实 DIII-D 验收。
+【已实现，M2 正式主路径，M2 PASSED】`src/linkmesh/mesher/oft_adapter.py` 是 M2 正式网格生成适配层。v1.9 将其正式职责拆分为**三层接口**，通用 N 区域核心与当前 GFile 默认策略解耦；v1.10 已在服务器实现并通过 mock 测试与真实 DIII-D 验收；v1.11 规定其解耦后从 `linkmesh.mesh` 导入 `Mesh2D`（不改变 M2 行为）。
 
 #### 7.1.1 `mesh_from_oft_domain(domain) -> Mesh2D`（通用 N 区域核心）
 
@@ -919,6 +988,8 @@ def read_gfile(filepath: str) -> GFileData:
 7. **不写死区域名称、类型、数量或最终整数 ID**。
 
 **类型标注说明**：`domain` 参数使用运行时 OFT 对象（宽松标注 `Any`），**未引入新的 Protocol、抽象基类或插件系统**。
+
+**Mesh2D 导入（v1.11）**：解耦后 `mesh_from_oft_domain()` 构造的 `Mesh2D` 来自 `from linkmesh.mesh import Mesh2D`，不再从 `triangle_wrapper.py` 获取。解耦不改变 OFT 调用、区域模型、网格数量、数组内容或 M2 行为。
 
 #### 7.1.2 `build_oft_domain_from_gfile(gfile_data, ...)`（当前 GFile 默认策略层）
 
@@ -992,9 +1063,9 @@ pts, lc, reg = domain.build_mesh()
 - `lc` 数组为 0-based，索引范围 `0..N-1`；
 - `pts` 数组为 `(N, 2)` float64。
 
-#### 7.2.2 当前 GFile 默认策略（`build_oft_domain_from_gfile` 采用，v1.10 保持）
+#### 7.2.2 当前 GFile 默认策略（`build_oft_domain_from_gfile` 采用，v1.11 保持）
 
-【v1.10 保持】保留当前已验证的默认策略，由 `build_oft_domain_from_gfile()` 承担：
+【v1.11 保持】保留当前已验证的默认策略，由 `build_oft_domain_from_gfile()` 承担：
 
 | 输入条件 | 默认区域模型 | 区域数量 N |
 |---|---|---|
@@ -1003,9 +1074,9 @@ pts, lc, reg = domain.build_mesh()
 
 **明确**：这是**当前 CLI/GFile 便利策略**，**不是 Adapter 全局能力限制**。`mesh_from_oft_domain()` 的通用 N 区域能力（含 N=1、N>3）与该默认策略解耦（见第 5.1.1 节与第 7.1.1 节）。M2 正式验收使用有壁三区域策略（DIII-D）。
 
-#### 7.2.3 未来 CLI 计算域选择（v1.9，v1.10 保持，待另行更新蓝图）
+#### 7.2.3 未来 CLI 计算域选择（v1.9，v1.11 保持，待另行更新蓝图）
 
-【v1.9 待裁决，v1.10 保持】单区域 plasma-only 作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（见第 5.3 样例 C 与第 14.1 节）。本轮**不新增 CLI 参数**选择 plasma-only，**不修改当前默认 GFile 策略**。
+【v1.9 待裁决，v1.11 保持】单区域 plasma-only 作为 `mesh_from_oft_domain()` 的合法输入与自动测试场景（见第 5.3 样例 C 与第 14.1 节）。本轮**不新增 CLI 参数**选择 plasma-only，**不修改当前默认 GFile 策略**。
 
 如果未来需要从 CLI 选择计算域范围（例如显式选择 plasma-only 或其他区域模型），**必须另行更新蓝图并定义参数**，不得擅自新增。
 
@@ -1035,17 +1106,17 @@ OFT `build_mesh()` 返回 `(pts, lc, reg)` 后，`mesh_from_oft_domain()` 进行
 
 区域语义（名称、类型、ID）从 OFT `domain.region_info` 获得，不从整数值推断。
 
-**非核心边界字段处理**：`Mesh2D` 的 `boundary_segments`/`boundary_markers`/`node_markers` 在 M2 正式路径中由 Adapter 传入空数组占位（兼容旧构造签名），**未为填充这些旧字段而重建边界恢复算法**。是否需要真实边界字段由 M3 适配阶段的直接证据决定。
+**非核心边界字段处理**：`Mesh2D` 的 `boundary_segments`/`boundary_markers`/`node_markers` 在 M2 正式路径中由 Adapter 使用默认空数组（或显式空数组占位），**未为填充这些旧字段而重建边界恢复算法**。这些字段不参与 v1.11 M3 HDF5 契约（`idxivert/idxevert` 由三角形拓扑推导，见第 4.1.4 节）。
 
 ### 7.5 历史/过渡代码（Python triangle 包路线，非 M2 正式主路径）
 
-【v1.8 状态，v1.10 保持】以下历史/过渡代码不再作为 M2 正式主路径，已被 `oft_adapter.py` 替代：
+【v1.8 状态，v1.11 保持】以下历史/过渡代码不再作为 M2 正式主路径，已被 `oft_adapter.py` 替代：
 
-- `src/linkmesh/mesher/triangle_wrapper.py`：Python `triangle` 包底座封装（当前仍承载 `Mesh2D` / `BoundaryConfig` 定义）；
+- `src/linkmesh/mesher/triangle_wrapper.py`：Python `triangle` 包底座封装（仍承载 `BoundaryConfig` 定义；解耦后从 `linkmesh.mesh` 重导出 `Mesh2D`）；
 - `src/linkmesh/cli.py` 中的 `_build_boundary_config()` 与 `_resample_closed_curve()`：历史过渡胶水代码；
 - `tests/test_triangle_wrapper.py`：历史过渡测试（36/36 通过，作为历史证据保留）。
 
-**处置原则**：本轮保持这些文件不动，暂不删除、不扩展。**禁止为了保存旧实现继续扩展其区域拓扑和通用几何能力。** 是否以后删除旧模块和旧测试由后续减量任务裁决（减量顺序见第 16.1 节）。旧 Triangle 的 36 项测试作为历史证据保留，**但不能作为 OFT Adapter 正式验收的替代**。
+**处置原则**：本轮保持这些文件不动，暂不删除、不扩展。**禁止为了保存旧实现继续扩展其区域拓扑和通用几何能力。** 是否以后删除旧模块和旧测试由后续减量任务裁决（减量顺序见第 16.1 节）。旧 Triangle 的 36 项测试作为历史证据保留，用于证明历史路径没有被 Mesh2D 解耦过程意外破坏，**但不能作为 OFT Adapter 正式验收的替代**。
 
 ---
 
@@ -1077,66 +1148,94 @@ OFT `build_mesh()` 返回 `(pts, lc, reg)` 后，`mesh_from_oft_domain()` 进行
 
 ### 8.3 历史/过渡代码（`_build_boundary_config`）
 
-【v1.8 状态，v1.10 保持】`cli.py` 中现有的 `_build_boundary_config()` 与 `_resample_closed_curve()` 函数是历史/过渡胶水代码，不再由 CLI 正式路径调用；`_build_boundary_config()` 仍导入 `BoundaryConfig`，是本轮暂不删除历史 Triangle Wrapper 的直接原因之一（见第 16.1 节）。
+【v1.8 状态，v1.11 保持】`cli.py` 中现有的 `_build_boundary_config()` 与 `_resample_closed_curve()` 函数是历史/过渡胶水代码，不再由 CLI 正式路径调用；`_build_boundary_config()` 仍导入 `BoundaryConfig`，是本轮暂不删除历史 Triangle Wrapper 的直接原因之一（见第 16.1 节）。
 
 当前保留这些函数以维持与历史过渡代码的兼容性，但不得继续扩展其功能。后续减量任务将按第 16.1 节顺序删除。
 
 ---
 
-## 9. src/linkmesh/writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射）
+## 9. src/linkmesh/writers/hdf5_writer.py 实现规范（第一战役：TRIMEG HDF5 格式映射，v1.11 契约）
 
-**【本轮 v1.10 不修改 M3 HDF5 字段契约，本节内容保持 v1.7 不变。】**
+**【v1.11 依据 `loadfemmesh_h5.m` 与两个真实样例重写本节。旧转置/第四列/11 数据集全必需等表述已在第 4.1.3 节全篇撤销。】**
 
 ### 9.1 实现依据与黄金标尺
 
-【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 的唯一实现依据是 `docs/trimeg/loadfemmesh_h5.m`。该脚本是 TRIMEG 求解器读取网格 HDF5 文件的 MATLAB 实现，其每一行 `h5read` 调用直接揭示了 TRIMEG 对 HDF5 文件结构的期望。所有数据集路径名、存储形状、数据类型和索引约定均以该脚本为最终裁决依据，不得凭推断自行补充。
+【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 的实现依据是 `docs/trimeg/loadfemmesh_h5.m`（MATLAB 消费函数）与两个真实样例 `femmesh_65402_t1_nr16core.h5` / `femmesh_65402_t1_nr16nout4edge.h5`。所有数据集路径名、磁盘 shape、dtype 和索引约定均以第 4.1 节 v1.11 契约为最终裁决依据，不得凭推断自行补充。
 
-### 9.2 TRIMEG HDF5 物理文件结构树
+### 9.2 TRIMEG HDF5 物理文件结构树（v1.11，8 核心 + 3 可选）
 
-【已确认事实】以下结构树直接来自 `loadfemmesh_h5.m` 逐行解析（第四列含义标注为待确认）：
+【已确认事实，两个真实样例磁盘布局】：
 
 ```text
 mesh.h5
 └── /femmesh/                          # 唯一顶层组，名称固定为 "femmesh"
     │
-    ├── nvert        [标量, int32]      # 节点总数 N
-    ├── ntria        [标量, int32]      # 三角形总数 T
-    ├── nvert_in     [标量, int32]      # 内部节点数（计算方式待 M3 适配确认）
-    ├── nvert_ex     [标量, int32]      # 边界节点数（计算方式待 M3 适配确认）
+    ├── nvert        [shape=(1,1), float64]   # 节点总数 N（整数语义，float64 存储）【核心】
+    ├── ntria        [shape=(1,1), float64]   # 三角形总数 T（整数语义，float64 存储）【核心】
+    ├── nvert_in     [shape=(1,1), float64]   # 内部节点数 nvert_in【核心】
+    ├── nvert_ex     [shape=(1,1), float64]   # 外边界节点数 nvert_ex【核心】
     │
-    ├── vert         [shape=(2,N), float64]   # 节点坐标，HDF5 中存 (2,N)
-    │                                          # MATLAB h5read 后转置得 (N,2)
-    │                                          # 行顺序：第0行=R坐标，第1行=Z坐标
+    ├── vert         [shape=(N,2), float64]   # 节点坐标，每行 [R,Z]，不转置【核心】
     │
-    ├── idxivert     [shape=(nvert_in,), int32]  # 内部节点全局索引，1-based
-    ├── idxevert     [shape=(nvert_ex,), int32]  # 边界节点全局索引，1-based
-    │                                             # nvert_in + nvert_ex == nvert（已确认）
+    ├── idxivert     [shape=(1,nvert_in), float64]  # 内部节点全局索引，1-based，升序【核心】
+    ├── idxevert     [shape=(1,nvert_ex), float64]  # 外边界节点全局索引，1-based，升序【核心】
+    │                                                # nvert_in + nvert_ex == nvert
     │
-    ├── tria         [shape=(4,T), int32]     # 三角形数据，HDF5 中存 (4,T)
-    │                                          # MATLAB h5read 后转置得 (T,4)
-    │                                          # 列0-2：节点索引（1-based）
-    │                                          # 列3：【待确认】含义需真实样例核对
+    ├── tria         [shape=(T,3), float64]   # 三角形连接表，1-based，无第四列【核心】
     │
-    ├── nbcRZ        [标量, int32]      # 边界节点坐标点数（等于 nvert_ex）【可选字段】
-    ├── Rbc          [shape=(nbcRZ,), float64]  # 边界节点 R 坐标 [m]【可选字段，始终写出】
-    └── Zbc          [shape=(nbcRZ,), float64]  # 边界节点 Z 坐标 [m]【可选字段，始终写出】
+    ├── nbcRZ        [shape=(1,1), float64]   # 边界节点坐标点数【可选，M3 第一阶段默认不写】
+    ├── Rbc          [shape=(nbcRZ,1), float64]  # 边界节点 R 坐标【可选，默认不写】
+    └── Zbc          [shape=(nbcRZ,1), float64]  # 边界节点 Z 坐标【可选，默认不写】
 ```
 
-**【重要说明】** `boundary_segments`、`boundary_markers`、`node_markers` 不是 TRIMEG HDF5 的直接消费数据集，不得写入 TRIMEG HDF5 文件并声称为 TRIMEG 消费字段。
+**【重要说明】** `boundary_segments`、`boundary_markers`、`node_markers`、`region_ids` 不是 TRIMEG HDF5 的直接消费数据集，**不得写入** TRIMEG HDF5。
 
-### 9.3 精确字段映射契约（Field Mapping Contract）
+### 9.3 精确字段映射契约（Field Mapping Contract，v1.11）
 
-见第 4.1.6 节完整字段映射契约表格。
+见第 4.1.2 节 8 个核心数据集磁盘契约表格，以及第 4.1.4、4.1.5、4.1.6 节的 `idxevert/idxivert/tria` 规则。
 
-### 9.4 `/femmesh/tria` 精确构造公式
+### 9.4 `/femmesh/tria` 精确构造公式（v1.11）
 
-见第 4.1.7 节。
+```python
+# tria 磁盘契约：shape=(T,3)，float64，1-based，无第四列
+tria_1based = (mesh.triangles + 1).astype(np.float64)   # shape=(T, 3)
+h5file.create_dataset('/femmesh/tria', data=tria_1based)   # 不转置、不加第四列、不写 region_ids
+```
 
-### 9.5 `write_hdf5()` 实现状态与 M3 前置条件
+### 9.5 `idxevert` / `idxivert` 拓扑生成公式（v1.11）
 
-【已确认事实】`src/linkmesh/writers/hdf5_writer.py` 中的 `write_hdf5(mesh, filepath, verbose=True)` 函数已**完整实现**（非占位），按第 4.1.6 节映射契约逐一写出全部 11 个数据集。
+```python
+# Step 1：统计所有三角形的无向边（(a,b) 与 (b,a) 视为同一边）
+#   出现一次 → 拓扑外边界边；出现两次 → 内部共享边；出现 >2 → 非流形（拒绝）
+# Step 2：外边界节点 = 所有出现一次的无向边所含节点（0-based）
+# Step 3：idxevert = 外边界节点集合 +1（1-based），升序排序 → shape (nvert_ex,)
+# Step 4：idxivert = {1..N} \ idxevert 的升序补集 → shape (nvert_in,)
+#   nvert_ex = len(idxevert)；nvert_in = len(idxivert)；nvert_in + nvert_ex == N
+# Step 5：磁盘写出 shape：idxevert=(1,nvert_ex) float64；idxivert=(1,nvert_in) float64
+```
 
-**M3 前置条件**：M3 真实验收必须基于已经通过 M2 的 OFT 网格结果（`mesh_from_oft_domain()` / `generate_mesh()` 输出的 `Mesh2D`）。**M2 已于 v1.10 通过验收，M3 前置条件已满足，但 M3 正式验收尚未开始**（下一步见第 13 节 M3 与第 16 节）。
+**不得**用 `node_markers`/`boundary_segments`/`boundary_markers` 生成 `idxivert/idxevert`；**不得**根据 LCFS/第一壁/region ID/文件名推断（见第 4.1.4 节）。
+
+### 9.6 `write_hdf5()` 职责与约束（v1.11）
+
+完成第 16 节规定的 `Mesh2D` 解耦并通过 M2 回归后，M3 Writer 实施任务只允许修改 `src/linkmesh/writers/hdf5_writer.py` 与 `tests/test_hdf5_writer.py`。Writer 职责：
+
+1. 接收 `linkmesh.mesh.Mesh2D`；
+2. 验证 `nodes` shape `(N,2)`、`triangles` shape `(T,3)`；
+3. 验证有限值、0-based 整数索引、范围（`0 <= idx < N`）、无重复节点、无零面积（绝对面积 > `1e-12`）；
+4. 统计无向边并**拒绝非流形边**（出现 >2 次）；
+5. 生成升序 1-based `idxevert`（拓扑外边界节点）；
+6. 生成升序 1-based `idxivert`（`{1..N}` 补集）；
+7. 写 8 个核心 `float64` 数据集；
+8. `vert` 直接写 `(N,2)`（不转置）；
+9. `tria` 写 `(T,3)` 的 `triangles+1`（1-based，无第四列）；
+10. **不写** `region_ids`；
+11. **默认不写** `nbcRZ/Rbc/Zbc`；
+12. **不访问**旧 `boundary_segments`、`boundary_markers`、`node_markers`；
+13. **不修改**输入 `Mesh2D`；
+14. **不进入 M4**。
+
+**M3 前置条件（v1.11 铁律）**：M3 Writer 实施**必须在** `Mesh2D` 解耦完成并通过 M2 mock + 真实 DIII-D 回归**之后**才开始（见第 16 节实施顺序铁律）。**M3 尚未通过，不得宣称 M3 已通过。**
 
 ---
 
@@ -1144,7 +1243,7 @@ mesh.h5
 
 ### 10.1 实现依据与前置条件
 
-`src/linkmesh/writers/smb_writer.py` 的实现依赖对 `SCOREC/PUMI` 开源 C++ 源码的只读侦察结果，以及主管对实现路线的确认。**在 M3 完整验收通过、侦察任务完成并经主管确认前，本模块保持 `NotImplementedError` 占位实现，严禁提前编写任何字节流或序列化逻辑。**
+`src/linkmesh/writers/smb_writer.py` 的实现依赖对 `SCOREC/PUMI` 开源 C++ 源码的只读侦察结果，以及主管对实现路线的确认。**在 M3 完整验收通过、侦察任务完成并经主管确认前，本模块保持 `NotImplementedError` 占位实现，严禁提前编写任何字节流或序列化逻辑。v1.11 不修改任何 M4 `.smb` 未确认契约。**
 
 侦察目标文件（只读，严禁修改，M3 验收后执行）：
 - `M3DC1/m3dc1_scorec/src/m3dc1_mesh.cc`：`.smb` 文件读取的 C++ 实现入口
@@ -1184,7 +1283,7 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 - 输出统计信息文本框（LCFS 点数、磁轴坐标）
 - 保存为 PNG 文件，dpi=150
 
-**PNG 中文字形说明（v1.10 已修复）**：为避免服务器默认 `DejaVu Sans` 字体缺少中文字形导致的 `Glyph missing` 警告，所有渲染进 PNG（标题、图例、统计框）或打印到终端的字符串均使用英文；代码注释与文档字符串保留中文（不交给 Matplotlib 渲染）。
+**PNG 中文字形说明（v1.10 已修复，v1.11 保持）**：为避免服务器默认 `DejaVu Sans` 字体缺少中文字形导致的 `Glyph missing` 警告，所有渲染进 PNG（标题、图例、统计框）或打印到终端的字符串均使用英文；代码注释与文档字符串保留中文（不交给 Matplotlib 渲染）。
 
 #### `plot_mesh(gfile_data, mesh, filepath, show_boundary_markers=True, show_region_ids=False)`（M2 完整版本）
 
@@ -1199,9 +1298,11 @@ numL separatrixLoop innerWallLoop outerWallLoop vacuumLoop
 - 设置 `aspect='equal'`，保存为 PNG 文件，dpi=150
 - CLI 正式路径以 `show_region_ids=True` 调用，使 M2 PNG 默认显示各 OFT 区域离散颜色
 
-### 11.2 LCFS 显示闭合（v1.10 已实现）
+**Mesh2D 导入（v1.11）**：解耦后 `plotter.py` 从 `linkmesh.mesh` 导入 `Mesh2D`（仅用于类型标注可用 `TYPE_CHECKING`）。`region_ids` 仍由 Plotter 使用（着色），不受 M3 HDF5 契约"不写 region_ids"影响——后者只约束 HDF5 Writer 磁盘输出。
 
-【v1.10 已实现】`plotter.py` 通过 `_closed_for_display()` 在绘制 LCFS 与第一壁显示曲线时，若首尾不同则临时追加首点用于显示闭合，**仅用于绘图显示，绝不修改底层数据对象**。M2 正式验收 PNG 中 LCFS 红线与 First wall 蓝色虚线均闭合，无 M2-0 临时脚本中出现的显示缺口。
+### 11.2 LCFS 显示闭合（v1.10 已实现，v1.11 保持）
+
+【v1.10 已实现】`plotter.py` 通过 `_closed_for_display()` 在绘制 LCFS 与第一壁显示曲线时，若首尾不同则临时追加首点用于显示闭合，**仅用于绘图显示，绝不修改底层数据对象**。M2 正式验收 PNG 中 LCFS 红线与 First wall 蓝色虚线均闭合。
 
 ---
 
@@ -1233,7 +1334,7 @@ pytest>=7.0.0
 
 ## 13. 敏捷渐进里程碑（MVP 开发阶段）
 
-**【铁律】开发时序严格锁死：先完成 M2-0（OFT 可行性验证，已通过），再完成 M2（OFT 网格生成验收，已通过），再完成 M3（TRIMEG HDF5 闭环验证，尚未开始正式验收），确认网格几何物理质量完全合格后，再进军 M4（`.smb` 侦察与实现）。严禁跳序。**
+**【铁律】开发时序严格锁死：先完成 M2-0（OFT 可行性验证，已通过），再完成 M2（OFT 网格生成验收，已通过），再完成 Mesh2D 解耦（v1.11 新增前置任务），再完成 M3（TRIMEG HDF5 闭环验证，尚未通过），确认网格几何物理质量完全合格后，再进军 M4（`.smb` 侦察与实现）。严禁跳序。**
 
 ### 里程碑 M1：GFile 读取验收（P0 第一步）
 
@@ -1459,46 +1560,93 @@ python -m pytest -v tests/test_oft_adapter.py
 | User 人工几何和区域位置检查 | PASSED |
 | **M2 总体** | **PASSED** |
 
-**M2 边界声明**：M2 通过**不等于** M3、M4 或 M5 通过。M3 尚未开始正式验收（见下方 M3 与第 16 节）。
+**M2 边界声明**：M2 通过**不等于** M3、M4 或 M5 通过。M3 尚未通过（见下方 M3 与第 16 节）。
 
 **涉及模块**：`src/linkmesh/mesher/oft_adapter.py`（已实现，三层接口），`src/linkmesh/cli.py`（已接入 `generate_mesh()`），`src/linkmesh/utils/plotter.py`（区域着色 + LCFS 闭合显示 + PNG 英文文本），`tests/test_oft_adapter.py`（已实现，mock 退出码 0）
 
-**本轮源码提交号**：提交号待 User 补充（本轮为文档编辑任务，未从只读 Git 信息确认对应源码提交号）。
+**本轮源码提交号**：v1.10 文档提交为 `e5633fe`（docs：更新 M2 OFT Adapter 正式验收状态为 PASSED 并归档至 History）；M2 相关源码提交号待 User 补充。
+
+---
+
+### 里程碑 M2.5：Mesh2D 解耦（v1.11 新增前置任务，M3 Writer 前必须完成）
+
+**当前状态**：【待实施；M3 Writer 的强制前置任务】
+
+**目标**：将轻量 `Mesh2D` 从历史 `triangle_wrapper.py` 迁入独立正式模块 `src/linkmesh/mesh.py`，消除"正式 OFT 路径核心数据类型归属于历史 Wrapper"的结构耦合，且**不改变任何 M2 行为**。
+
+**允许修改的文件（下一轮独立窄范围任务）**：
+- 新建 `src/linkmesh/mesh.py`；
+- 修改 `src/linkmesh/mesher/oft_adapter.py`（`Mesh2D` 导入改为 `from linkmesh.mesh import Mesh2D`）；
+- 最小修改 `src/linkmesh/mesher/triangle_wrapper.py`（删除本地 `Mesh2D` 定义，改为 `from linkmesh.mesh import Mesh2D` 重导出）；
+- 最小修改 `src/linkmesh/utils/plotter.py`（`Mesh2D` 类型导入改为 `linkmesh.mesh`）；
+- 按实际引用最小修改 Writer 的类型导入（`hdf5_writer.py`、`smb_writer.py`，仅类型导入，可 `TYPE_CHECKING`）；
+- 新增或调整必要测试，证明新旧导入指向同一个类。
+
+**解耦验收标准**：
+1. `Mesh2D` 只有一个正式定义（位于 `src/linkmesh/mesh.py`）；
+2. OFT Adapter 不再从旧 Wrapper 获取 `Mesh2D`；
+3. 旧 Wrapper 重新导出同一个类（`linkmesh.mesh.Mesh2D is linkmesh.mesher.triangle_wrapper.Mesh2D`）；
+4. M2 mock 测试通过；
+5. 真实 DIII-D 仍生成 972 节点、1872 三角形和相同区域集合 `{1:633, 2:678, 3:561}`；
+6. PNG 行为不变；
+7. 不修改任何网格算法或数据。
+
+**铁律**：**只有解耦回归通过后才开始 M3 Writer 实现。**
+
+**涉及模块**：`src/linkmesh/mesh.py`（计划新增），`src/linkmesh/mesher/oft_adapter.py`，`src/linkmesh/mesher/triangle_wrapper.py`，`src/linkmesh/utils/plotter.py`，`src/linkmesh/writers/hdf5_writer.py`，`src/linkmesh/writers/smb_writer.py`
 
 ---
 
 ### 里程碑 M3：TRIMEG HDF5 输出验收（P0 第三步，第一战役闭环）
 
-**当前状态**：【尚未开始正式验收；M2 已通过，M3 前置条件已满足，下一步进入 M3 契约核对】
+**当前状态**：【M3 总体未通过；契约侦察已完成，Writer 待实施（前置：M2.5 解耦）】
 
-**目标**：将 OFT 生成的三角网格（经 `mesh_from_oft_domain()` / `generate_mesh()` 最小适配后的 `Mesh2D`）写出为 TRIMEG 可消费的 HDF5 文件，并通过 `loadfemmesh_h5.m` 读取验证，确认网格几何物理质量完全合格。
+**目标**：将 OFT 生成的三角网格（经 `mesh_from_oft_domain()` / `generate_mesh()` 最小适配后的 `Mesh2D`）写出为 TRIMEG 可消费的 HDF5 文件（8 核心数据集，v1.11 契约），并通过 `loadfemmesh_h5.m` 读取验证。
 
-**M3 下一步（契约核对，尚未开始）**：
-- 以 `docs/trimeg/loadfemmesh_h5.m` 和真实 HDF5 样例为直接证据；
-- 核对 `/femmesh/tria` 的真实 shape、dtype、索引和第四项语义；
-- 核对 `nvert_in`/`nvert_ex`、`idxivert`/`idxevert` 的生成规则；
-- 核对 `Rbc`/`Zbc`/`nbcRZ` 的必要性和语义；
-- 若真实证据与现有 Writer 或蓝图冲突，**先更新蓝图，再修改 HDF5 Writer**；
-- **当前不得宣称 M3 正式验收已经开始或通过**；
-- M4 仍必须等待 M3 完整通过。
+**M3 分项状态（v1.11）**：
 
-**M3 边界**：
-- Writer 不推断区域物理含义；
-- Writer 不重编号、偏置、压缩或排序 `region_ids`；
-- 节点连接表按契约从 0-based 转为 1-based（OFT 返回 0-based，M2-0 / M2 已确认）；
-- `region_id` 原样写出，不执行 `+1`。
+| 分项 | 状态 |
+|---|---|
+| MATLAB 消费接口侦察（`loadfemmesh_h5.m`：8 核心 + 3 可选） | PASSED |
+| 两个真实样例结构侦察（core / edge） | PASSED |
+| `vert`/`tria` shape、dtype 和 1-based 契约 | PASSED |
+| `idxivert`/`idxevert` 拓扑契约 | PASSED |
+| `Rbc`/`Zbc` 历史生成规则 | 未完全确认，当前可选（默认不写） |
+| 独立 `Mesh2D` 解耦（M2.5） | 待实施 |
+| M3 Writer 实现 | 待实施 |
+| Python/h5py 回读 | 待实施 |
+| MATLAB 消费验收 | 待实施 |
+| **M3 总体** | **未通过** |
+| M4 | **禁止开始** |
 
-**验收标准**：
+**M3 Writer 实施任务（前置：M2.5 解耦通过）**：只允许修改 `src/linkmesh/writers/hdf5_writer.py` 与 `tests/test_hdf5_writer.py`。Writer 职责与约束见第 9.6 节。
+
+**M3 测试要求（v1.11）**：
+- 精确检查 8 个核心路径存在；
+- 确认可选 3 路径默认不存在；
+- 全部核心 dtype 为 `float64`；
+- 计数 shape `(1,1)`；
+- `vert` shape `(N,2)`；
+- `tria` shape `(T,3)` 且等于 `mesh.triangles+1`；
+- 无第四列、无 region ID；
+- `idxevert`/`idxivert` 的 shape、计数、唯一性、互斥和全集覆盖正确；
+- 用含内部节点的受控网格验证边界提取；
+- 验证 Writer 不修改输入 `Mesh2D`；
+- 非法 shape、空网格、NaN/Inf、非整数连接、负索引、越界、重复节点、零面积和非流形边必须失败；
+- 使用 h5py 写临时文件并回读；
+- 最终在 Linux 服务器运行；
+- MATLAB `loadfemmesh_h5.m` 必须成功读取核心网格，允许缺少可选 3 项的预期 warning。
+
+**M3 验收标准（v1.11）**：
 1. `python -m linkmesh --gfile <真实 DIII-D 样例> --output mesh.h5 --no-smb` 能够运行；
-2. 生成的 `mesh.h5` 文件可用 `h5py` 正常打开；
-3. `h5py` 读取验证：`/femmesh/vert` shape=`(2,N)`，`/femmesh/tria` shape=`(4,T)`，`/femmesh/nvert`=N，`/femmesh/ntria`=T；
-4. 使用 `loadfemmesh_h5.m` 在 MATLAB 中读取 `mesh.h5`，`femmesh.vert` shape=`(N,2)`，`femmesh.tria` shape=`(T,4)`，无报错；
-5. 节点索引合法性验证：`femmesh.tria(:,1:3)` 中所有节点索引均为整数，且满足 `1 <= index <= N`；
-6. `/femmesh/tria` 第四列的含义通过真实 TRIMEG 样例核对确认（M3 验收时必须完成此核对）；
-7. 终端打印：`HDF5 写出完成：mesh.h5，节点数: N，三角形数: T`；
-8. `tests/test_hdf5_writer.py` 中的 M3 自动测试全部通过（测试文件计划新增）。
+2. 生成的 `mesh.h5` 文件可用 `h5py` 正常打开并回读 8 个核心数据集；
+3. `h5py` 读取验证：`/femmesh/vert` shape=`(N,2)`，`/femmesh/tria` shape=`(T,3)` 且为 1-based，`/femmesh/nvert` 值为 N，`/femmesh/ntria` 值为 T，核心 dtype 均为 float64；
+4. `idxevert`/`idxivert` 满足互斥、全集覆盖、升序、1-based；
+5. 使用 `loadfemmesh_h5.m` 在 MATLAB 中读取 `mesh.h5`，核心网格成功加载，可选 3 项缺失产生预期 warning；
+6. 终端打印：`HDF5 写出完成：mesh.h5，节点数: N，三角形数: T`；
+7. `tests/test_hdf5_writer.py`（v1.11 契约）全部通过。
 
-**涉及模块**：`src/linkmesh/writers/hdf5_writer.py`（已完整实现），`tests/test_hdf5_writer.py`（计划新增）
+**涉及模块**：`src/linkmesh/writers/hdf5_writer.py`（待按 v1.11 契约实现），`tests/test_hdf5_writer.py`（待按 v1.11 契约重写）
 
 ---
 
@@ -1559,11 +1707,11 @@ linkmesh \
 | 测试文件 | 服务里程碑 | 状态 | 核心验收内容 |
 |---|---|---|---|
 | `tests/test_gfile_reader.py` | M1 | 已通过（19 passed，git: f52a75f） | 验证 `read_gfile()` 能正确读取 EQDSK 文件；`GFileData` 所有字段类型与形状正确；LCFS 首尾闭合；LCFS 方向为逆时针；`current` 单位为 A（不缩放）；`gfile_reader.py` 中无手动文本解析逻辑 |
-| `tests/test_oft_adapter.py` | M2（正式） | 已实现，mock 契约测试退出码 0（测试总数与耗时未记录） | 见下方三层接口测试内容 |
-| `tests/test_triangle_wrapper.py` | M2（历史/过渡） | 历史证据保留（自动测试 36/36 通过；不能作为 OFT Adapter 正式验收替代） | 历史过渡测试，验证 Python triangle 包路线；当前保持文件不动，暂不删除、不扩展 |
-| `tests/test_hdf5_writer.py` | M3 | 【计划新增】 | 验证 `write_hdf5()` 写出的 HDF5 文件包含全部必须数据集；`/femmesh/vert` shape=`(2,N)`；`/femmesh/tria` shape=`(4,T)`；节点索引满足 `1 <= index <= N`；`region_id` 列无偏置；`nvert`/`ntria` 标量值正确 |
+| `tests/test_oft_adapter.py` | M2（正式） | 已实现，mock 契约测试退出码 0（测试总数与耗时未记录） | 见下方三层接口测试内容；解耦后应仍通过并可验证新旧导入指向同一 `Mesh2D` 类 |
+| `tests/test_triangle_wrapper.py` | M2（历史/过渡） | 历史证据保留（自动测试 36/36 通过；不能作为 OFT Adapter 正式验收替代） | 历史过渡测试，验证 Python triangle 包路线；用于证明 Mesh2D 解耦未意外破坏历史路径；当前保持文件不动，暂不删除、不扩展 |
+| `tests/test_hdf5_writer.py` | M3 | 【计划重写，v1.11 契约】 | 精确检查 8 核心路径存在、3 可选路径默认不存在、核心 dtype float64、计数 shape(1,1)、vert(N,2)、tria(T,3)=triangles+1 无第四列无 region ID、idxevert/idxivert 拓扑正确、Writer 不修改输入、各类非法输入失败、h5py 回读、MATLAB 消费成功（允许可选缺失 warning） |
 
-#### `tests/test_oft_adapter.py` 测试内容（v1.10 已实现）
+#### `tests/test_oft_adapter.py` 测试内容（v1.10 已实现，v1.11 保持）
 
 【已实现】`tests/test_oft_adapter.py` 使用 mock / 受控假 OFT Domain，覆盖：
 
@@ -1592,7 +1740,7 @@ linkmesh \
 - 测试使用 **mock**，不依赖本地 Windows 运行 OFT；
 - 最终真实测试和交付验收在 **Linux 服务器正式 OFT 26.6 环境**执行，已实测退出码 0（测试总数与耗时未记录）。
 
-**关于 `Mesh2D` 定义位置**：当前 `Mesh2D` 定义仍位于 `src/linkmesh/mesher/triangle_wrapper.py`，`oft_adapter.py` 从该模块导入。是否将 `Mesh2D` 迁出 `triangle_wrapper.py` 由后续减量任务裁决（见第 16.1 节）。
+**关于 `Mesh2D` 定义位置（v1.11）**：解耦后 `Mesh2D` 唯一正式定义位于 `src/linkmesh/mesh.py`，`oft_adapter.py` 与 `triangle_wrapper.py` 均从 `linkmesh.mesh` 获取同一个类；测试应验证 `linkmesh.mesh.Mesh2D is linkmesh.mesher.triangle_wrapper.Mesh2D`。
 
 ### 14.2 测试数据来源与许可证边界
 
@@ -1600,8 +1748,8 @@ linkmesh \
 
 | 测试层次 | 数据来源 | 依赖范围 | 说明 |
 |---|---|---|---|
-| 单元测试 | 受控合成对象或 mock（含 mock OFT Domain：单区域/两区域/三区域/N>3） | 不依赖 `TOKAMAKER/` 源码树 | 验证 Adapter 转换与校验逻辑（区域集合、shape/dtype、退化检查、最终区域 ID 时序等），不需要真实 GFile 或本地 OFT |
-| 集成测试（开发期） | 只读访问 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 或 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk` | 依赖 `TOKAMAKER/` 源码树（只读） | 验证 OFT 真实读取链路；仅在开发环境中使用，不得打包进最终交付物 |
+| 单元测试 | 受控合成对象或 mock（含 mock OFT Domain：单区域/两区域/三区域/N>3；含内部节点的受控网格用于 HDF5 边界提取测试） | 不依赖 `TOKAMAKER/` 源码树 | 验证 Adapter 转换与校验逻辑、HDF5 Writer 拓扑边界提取与非法输入拒绝，不需要真实 GFile 或本地 OFT |
+| 集成测试（开发期） | 只读访问 `TOKAMAKER/OpenFUSIONToolkit/src/examples/TokaMaker/DIIID/g192185.02440` 或 `TOKAMAKER/OpenFUSIONToolkit/src/tests/physics/ITER_test.eqdsk`；只读访问 `docs/trimeg/` 下两个真实 HDF5 样例 | 依赖 `TOKAMAKER/` 源码树（只读）/ `docs/trimeg/`（只读） | 验证 OFT 真实读取链路与 TRIMEG HDF5 契约核对；仅在开发环境中使用，不得打包进最终交付物 |
 | 交付测试 | LinkMesh 自有、来源明确、许可允许分发的样例 GFile | 不依赖 `TOKAMAKER/` 源码树 | 【计划新增，待许可确认】 |
 
 **许可证说明**：
@@ -1707,41 +1855,59 @@ if __name__ == "__main__":
 
 ## 16. 下一步任务与旧 Triangle 路径减量计划
 
-### 16.1 旧 Python Triangle 路径暂留原因与后续减量顺序
+### 16.1 Mesh2D 解耦与旧 Python Triangle 路径减量顺序
 
-【v1.10 记录，本轮不修改或删除任何源码】M2 正式路径已由 `oft_adapter.py` 承担，但当前**暂时不得删除**以下历史/过渡文件：
+【v1.11 记录，本轮不修改或删除任何源码】M2 正式路径已由 `oft_adapter.py` 承担，但正式模块从历史 `triangle_wrapper.py` 导入核心 `Mesh2D` 数据类，存在结构耦合。v1.11 规定先解耦 `Mesh2D`，再实施 M3 Writer。
 
+**当前暂时不得删除以下历史/过渡文件**：
 - `src/linkmesh/mesher/triangle_wrapper.py`
 - `tests/test_triangle_wrapper.py`
 
-**直接原因（导入耦合，删除会破坏正式 OFT 路径）**：
-- `oft_adapter.py` 当前仍从 `triangle_wrapper.py` 导入 `Mesh2D`；
-- `cli.py` 的历史 `_build_boundary_config()` 仍导入 `BoundaryConfig`；
-- Writer、Plotter 或测试可能仍通过旧模块间接引用 `Mesh2D`；
-- 直接删除会导致正式 OFT 路径导入失败或破坏历史兼容。
+**直接原因**：
+- 迁移前 `oft_adapter.py` 仍从 `triangle_wrapper.py` 导入 `Mesh2D`（结构耦合，非算法依赖）；
+- `cli.py` 的历史 `_build_boundary_config()` 仍导入 `BoundaryConfig`（`BoundaryConfig` 仍位于旧 Wrapper）；
+- 旧测试仍用于证明历史路径没有被解耦过程意外破坏；
+- 其他模块可能仍有旧导入，需要先静态搜索和迁移。
 
-**后续减量顺序（本轮仅记录计划，不执行）**：
-1. 在蓝图中确认独立轻量网格模型模块及文件路径（`Mesh2D` 的最终归属）；
-2. 将 `Mesh2D` 移到独立模块，核心保持 `nodes/triangles/region_ids`；
-3. 更新 OFT Adapter、Writer、Plotter 和测试的 `Mesh2D` 导入；
-4. 删除 CLI 中 `_build_boundary_config()` 和 `_resample_closed_curve()` 等历史逻辑；
-5. 全仓库静态搜索确认不再引用 `triangle_wrapper` 或 `BoundaryConfig`；
-6. 运行 M1–M3 回归测试；
-7. 再单独删除旧 Triangle Wrapper（`triangle_wrapper.py`）和其专属测试（`test_triangle_wrapper.py`）；
-8. 视情况在依赖清单中移除历史 `triangle` 依赖（与第 12.1 节一并处理）。
+**解耦 + 减量顺序（本轮仅记录计划，不执行）**：
+1. 新建独立 `src/linkmesh/mesh.py`，作为 `Mesh2D` 唯一正式定义；
+2. 更新所有正式模块导入（`oft_adapter.py`、`plotter.py`、Writer 类型导入）为 `linkmesh.mesh`；
+3. `triangle_wrapper.py` 删除本地 `Mesh2D` 定义，改为 `from linkmesh.mesh import Mesh2D` 重导出（保证 `is` 同一类）；
+4. 运行 OFT Adapter mock 测试和真实 DIII-D M2 回归（972 节点、1872 三角形、区域集合 `{1:633,2:678,3:561}` 不变）；
+5. 完成并验收 M3 Writer（第 9、13 节 M3）；
+6. 删除 CLI 历史 `BoundaryConfig` 构造逻辑（`_build_boundary_config()`/`_resample_closed_curve()`）；
+7. 全仓库静态搜索确认无正式引用 `triangle_wrapper`/`BoundaryConfig`；
+8. 再单独删除旧 Wrapper（`triangle_wrapper.py`）和其专属测试（`test_triangle_wrapper.py`）；
+9. 视情况在依赖清单中移除历史 `triangle` 依赖（与第 12.1 节一并处理）。
 
-上述减量顺序中每一步的执行都属于后续独立任务，必须在对应源码任务中单独裁决与验证，不在本轮实施。
+**【铁律】** 不得在 M3 Writer 实现任务中顺带删除旧路径。删除旧 Wrapper 属于 M3 验收之后的独立减量步骤。
 
-### 16.2 M2 之后允许的下一步方向（本轮不实施）
+### 16.2 实施顺序铁律（v1.11）
 
-本轮 v1.10 仅更新蓝图状态与 History，不实施任何源码。M2 已通过后，允许的下一步方向为：
+后续必须严格按以下顺序执行，禁止跳序或合并：
 
-1. **M3 TRIMEG HDF5 契约核对（下一步主线）**：以 `docs/trimeg/loadfemmesh_h5.m` 与真实 HDF5 样例为直接证据，核对 `/femmesh/tria` 第四列语义、`nvert_in/nvert_ex`、`idxivert/idxevert` 生成规则、`Rbc/Zbc/nbcRZ` 必要性；若与现有 Writer 或蓝图冲突，先更新蓝图再改 Writer（见第 13 节 M3）；
-2. **新增 `tests/test_hdf5_writer.py`**（M3 验收测试，计划新增）；
-3. **旧 Triangle 路径减量**（按第 16.1 节顺序，独立任务）；
-4. **不在本轮或 M3 契约核对任务中开始 M4 `.smb` 侦察或实现**（M4 必须等待 M3 完整通过）；
-5. **不新增通用区域配置文件、插件系统、后端抽象、Protocol/抽象基类或第二网格引擎**；
-6. **不引入 CLI 计算域选择参数**（未来如需，另行更新蓝图，见第 7.2.3 节）。
+1. **蓝图 v1.11 完成**（本轮）；
+2. **实施独立 Mesh2D 解耦**（M2.5，见第 16.1 节步骤 1–3）；
+3. **运行 M2 mock 和真实 DIII-D 回归**（确认 M2 行为不变）；
+4. **实施 HDF5 Writer**（按第 9 节 v1.11 契约，仅改 `hdf5_writer.py` 与 `tests/test_hdf5_writer.py`）；
+5. **运行 pytest 和 h5py 回读**；
+6. **运行真实 DIII-D `Mesh2D → HDF5`**；
+7. **使用 MATLAB `loadfemmesh_h5.m` 消费**（核心网格成功加载，允许可选 3 项缺失 warning）；
+8. **User 验收后更新 History**；
+9. **M3 完整通过后才能进入 M4**。
+
+**每一步的执行都属于后续独立任务，必须在对应任务中单独裁决与验证，不在本轮实施。**
+
+### 16.3 本轮不实施与禁止事项
+
+本轮 v1.11 仅更新蓝图，不实施任何源码。禁止：
+- 修改任何源码、测试、History、OFT、TRIMEG 样例或其他文件；
+- 运行任何代码、测试或格式化工具；
+- 宣称 M3 已通过；
+- 修改 M1/M2 已验收行为；
+- 修改 M4 `.smb` 未确认契约；
+- 新增通用区域配置文件、插件系统、后端抽象、Protocol/抽象基类或第二网格引擎；
+- 引入 CLI 计算域选择参数（未来如需，另行更新蓝图，见第 7.2.3 节）。
 
 若新增测试路径或 `Mesh2D` 定义位置与当前蓝图目录规则冲突，应在后续蓝图更新中明确最终位置；若无法确认，跳过该具体位置并在报告中列为待 User 裁决，不得整体停机。
 
@@ -1767,11 +1933,13 @@ if __name__ == "__main__":
 14. **将任何【待运行验证】事项更新为【已确认事实】**（必须有直接运行证据和 User 确认）；
 15. **修改 OFT 网格生成路线（如从历史/过渡代码切换到 OFT gs_Domain 路线，或决定废弃历史/过渡代码）**；
 16. **修改 `mesher/oft_adapter.py` 的三层接口职责边界或最小适配契约**；
-17. **迁移 `Mesh2D` 定义位置或修改其核心三数组契约**；
+17. **迁移 `Mesh2D` 定义位置或修改其核心三数组契约**（v1.11 已批准迁至 `src/linkmesh/mesh.py`，实施细节变更仍需更新蓝图）；
 18. **修改通用 N 区域校验规则或单区域 plasma-only 合法性定位**；
 19. **修改当前 GFile 默认区域策略（有壁三区域 / 无壁两区域）**；
 20. **将 TRIMEG/M3DC1 单区域支持从待证据/待源码确认转为已确认事实**（必须有直接证据）；
-21. **删除旧 Python Triangle 路径（`triangle_wrapper.py` / `test_triangle_wrapper.py`）或迁移其中的 `Mesh2D`/`BoundaryConfig` 定义**（按第 16.1 节减量顺序，需先更新蓝图确认 `Mesh2D` 归属）。
+21. **删除旧 Python Triangle 路径（`triangle_wrapper.py` / `test_triangle_wrapper.py`）或迁移其中的 `BoundaryConfig` 定义**（按第 16.1 节减量顺序）；
+22. **修改 M3 TRIMEG HDF5 契约（8 核心数据集磁盘 shape/dtype/1-based 索引、`idxevert/idxivert` 拓扑规则、3 可选数据集事实边界）**（必须有新的真实样例或生成端源码直接证据）；
+23. **将 `Rbc/Zbc/nbcRZ` 历史生成规则从"未完全确认/可选"转为"必需/已确认"**（必须有生成端直接证据）。
 
 **蓝图更新流程**：
 1. Aider 在对话中向主管提出蓝图迭代修改建议；
