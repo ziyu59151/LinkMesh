@@ -1,10 +1,21 @@
 """
-mesher —— TokaMaker/Triangle 唯一网格生成底座子包。
+mesher - LinkMesh OFT/TokaMaker-Triangle mesh generation package.
 
-公开接口：
-    generate_mesh(config: BoundaryConfig) -> Mesh2D
+Official interface:
+    linkmesh.mesher.oft_adapter.generate_mesh(gfile_data, ...) -> Mesh2D
 
-重要约束：
-    - 本子包是 LinkMesh 唯一的网格生成引擎，严禁引入第二种生成引擎
-    - 严禁引入三维网格生成逻辑
+Official data flow:
+    GFileData
+    -> build_oft_domain_from_gfile()
+    -> OFT gs_Domain
+    -> mesh_from_oft_domain()
+    -> Mesh2D
+
+Constraints:
+    - OpenFUSIONToolkit 26.6 is the only LinkMesh mesh-generation backend.
+    - Triangle is called internally by OFT through liboft_triangle; LinkMesh
+      does not directly depend on the Python triangle package.
+    - Do not introduce a second mesh-generation backend.
+    - Do not introduce three-dimensional mesh-generation logic.
+    - Mesh2D is defined only in linkmesh.mesh.
 """
