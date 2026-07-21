@@ -14,9 +14,12 @@ tests/test_mesh.py —— M2.5 Mesh2D 独立数据模型验收测试。
     3. 三个兼容字段自动得到正确空 shape 和 dtype；
     4. n_nodes / n_triangles / n_boundary_segments 返回正确值；
     5-7. 两个分别构造的实例不共享兼容默认数组；
-    8. 显式传入兼容数组时旧构造方式仍可用；
-    9. 新旧导入身份一致：
-       linkmesh.mesh.Mesh2D is linkmesh.mesher.triangle_wrapper.Mesh2D。
+    8. 显式传入兼容数组时旧构造方式仍可用。
+
+v1.12 历史 Python Triangle 路径删除说明：
+    旧 Wrapper（linkmesh.mesher.triangle_wrapper）已删除，其重导出身份断言
+    随之移除。Mesh2D 唯一正式定义位于 linkmesh.mesh，唯一导入路径为
+    `from linkmesh.mesh import Mesh2D`。
 
 最终真实回归在 Linux 服务器执行，本文件仅静态编辑，不宣称已通过。
 """
@@ -177,14 +180,3 @@ class TestMeshExplicitCompatConstruction:
         assert mesh.boundary_markers is boundary_markers
         assert mesh.node_markers is node_markers
         assert mesh.n_boundary_segments == 2
-
-
-# --------------------------------------------------------------------------- #
-# 9. 新旧导入身份一致                                                           #
-# --------------------------------------------------------------------------- #
-
-class TestMeshImportIdentity:
-    def test_new_and_legacy_import_same_class(self):
-        from linkmesh.mesh import Mesh2D as MeshFromMesh
-        from linkmesh.mesher.triangle_wrapper import Mesh2D as MeshFromWrapper
-        assert MeshFromMesh is MeshFromWrapper

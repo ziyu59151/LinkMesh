@@ -4,16 +4,14 @@
 # 核心科学计算
 numpy>=1.24.0
 
-# Triangle 网格生成（TokaMaker/Triangle 唯一底座）
-triangle>=20230923
-
 # HDF5 文件读写（第一战役：TRIMEG HDF5 格式映射）
 h5py>=3.8.0
 
 # 可视化自检
 matplotlib>=3.7.0
 
-# OFT（OpenFUSIONToolkit）：GFile 读取 Adapter 依赖
+# OFT（OpenFUSIONToolkit）：GFile 读取 Adapter 与网格生成底座依赖
+# OFT 内部通过 liboft_triangle 完成 Triangle 调用，LinkMesh 不直接依赖 Python triangle 包
 # 已在 Linux x86_64 服务器（liustation）上通过 pip 安装官方 manylinux wheel 验证
 # 不得写成 >=26.6，不得声称其他版本已经验证
 # 不依赖 TOKAMAKER/ 源码树，通过官方 wheel 获取
