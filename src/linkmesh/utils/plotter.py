@@ -14,13 +14,17 @@ v1.9 M2 说明：
     - LCFS/第一壁来自 GFileData，绘制时若首尾不同则临时追加首点用于显示闭合（不修改 GFileData）；
     - boundary_segments/boundary_markers 为空时跳过旧边界段绘制。
 
+v1.11 M2.5 说明：
+    - Mesh2D 类型注解来源改为 linkmesh.mesh（唯一正式定义），仍仅用于 TYPE_CHECKING；
+    - 运行时绘图行为完全不变。
+
 用户可见文本约定（v1.9 M2 PNG 修复）：
     - 所有会渲染进 PNG（标题、图例、统计框）或打印到终端的字符串一律使用英文，
       以避免服务器默认 DejaVu Sans 字体缺少中文字形导致的 Glyph missing 警告。
     - 代码注释与文档字符串保留中文（不交给 Matplotlib 渲染）。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v1.9 第 11 节
+    LinkMesh_Architecture_Plan.md v1.9 第 11 节；v1.11 第 2.2、16 节（Mesh2D 解耦）
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from linkmesh.readers.gfile_reader import GFileData
-    from linkmesh.mesher.triangle_wrapper import Mesh2D
+    from linkmesh.mesh import Mesh2D
 
 
 def _closed_for_display(r, z):

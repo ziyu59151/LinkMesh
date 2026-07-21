@@ -30,13 +30,14 @@ oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口）。
     - 不访问 OFT 私有下划线字段；
     - 不引入 Protocol、抽象基类、插件系统、通用区域配置类或额外模块。
 
-Mesh2D 兼容说明：
-    Mesh2D 从只读的 triangle_wrapper.py 导入。其构造函数当前要求六个必填字段，
-    OFT Adapter 显式传入核心三数组，并对 boundary_segments/boundary_markers/node_markers
-    传入空数组以兼容旧构造签名。空数组只是兼容占位，不表示已生成任何边界语义。
+Mesh2D 兼容说明（v1.11 M2.5）：
+    Mesh2D 从 linkmesh.mesh 导入（唯一正式定义）。其构造函数当前允许核心三数组
+    与可选兼容字段；OFT Adapter 显式传入核心三数组，并对
+    boundary_segments/boundary_markers/node_markers 传入空数组以维持与旧构造方式一致。
+    空数组只是兼容占位，不表示已生成任何边界语义。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v1.9 第 5、7 节
+    LinkMesh_Architecture_Plan.md v1.9 第 5、7 节；v1.11 第 2.2、16 节（Mesh2D 解耦）
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from linkmesh.mesher.triangle_wrapper import Mesh2D
+from linkmesh.mesh import Mesh2D
 
 if TYPE_CHECKING:
     from linkmesh.readers.gfile_reader import GFileData

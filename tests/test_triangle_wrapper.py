@@ -9,6 +9,12 @@ tests/test_triangle_wrapper.py —— M2 Triangle Wrapper 验收测试
        不 mock triangle.triangulate，调用真实 generate_mesh。
        需要 User 人工审查后在 Linux 服务器上运行，本轮 Aider 编辑期间未执行。
 
+v1.11 M2.5 说明：
+    Mesh2D 的唯一正式定义已迁至 linkmesh.mesh；triangle_wrapper 从该模块重导出
+    同一个类。本文件保留历史导入 `from linkmesh.mesher.triangle_wrapper import Mesh2D`，
+    并新增身份断言，证明旧路径重导出的是 linkmesh.mesh.Mesh2D（见
+    TestTriangleWrapperMesh2DIdentity）。旧 Triangle 行为期望保持不变。
+
 注意：本文件的编辑完成不等同于 M2 验收通过。M2 验收需要 User 在服务器上
 实际运行测试并确认结果，详见 LinkMesh_Architecture_Plan.md 第 12 节。
 """
@@ -144,6 +150,24 @@ def _make_triangle_output(mesh: Mesh2D) -> dict:
         "segment_markers": mesh.boundary_markers.reshape(-1, 1).copy(),
         "vertex_markers": mesh.node_markers.reshape(-1, 1).copy(),
     }
+
+
+# ---------------------------------------------------------------------------
+# M2.5：Mesh2D 解耦身份验证
+# ---------------------------------------------------------------------------
+
+class TestTriangleWrapperMesh2DIdentity:
+    """验证旧 Wrapper 路径重导出的 Mesh2D 就是 linkmesh.mesh.Mesh2D。"""
+
+    def test_wrapper_reexports_same_mesh2d_class(self):
+        from linkmesh.mesh import Mesh2D as MeshFromMesh
+        from linkmesh.mesher.triangle_wrapper import Mesh2D as MeshFromWrapper
+        assert MeshFromWrapper is MeshFromMesh
+
+    def test_module_level_import_is_same_class(self):
+        # 本文件顶部通过 triangle_wrapper 导入的 Mesh2D 也应是同一类对象
+        from linkmesh.mesh import Mesh2D as MeshFromMesh
+        assert Mesh2D is MeshFromMesh
 
 
 # ---------------------------------------------------------------------------

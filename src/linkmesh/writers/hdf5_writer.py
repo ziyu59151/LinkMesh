@@ -10,6 +10,11 @@ hdf5_writer.py —— 第一战役：TRIMEG HDF5 静态网格写出器。
     - 不得修改 Mesh2D 对象
     - 不得包含任何网格生成逻辑
 
+v1.11 M2.5 说明：
+    - Mesh2D 类型注解来源改为 linkmesh.mesh（唯一正式定义），仍仅用于 TYPE_CHECKING；
+    - 本轮 M2.5 仅迁移类型导入，未改动任何 HDF5 写出逻辑；
+    - 本文件当前实现仍为旧 HDF5 契约，将在 M3（v1.11 契约）单独修复，本轮不改动。
+
 关键实现约定（来自 loadfemmesh_h5.m 逐行解析，均为已确认事实）：
     1. 所有节点索引写入 HDF5 前必须 +1（0-based → 1-based，MATLAB 约定）
     2. /femmesh/vert 写出为 shape=(2, nvert)（转置），MATLAB h5read 后得 (nvert, 2)
@@ -29,7 +34,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from linkmesh.mesher.triangle_wrapper import Mesh2D
+    from linkmesh.mesh import Mesh2D
 
 
 def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:

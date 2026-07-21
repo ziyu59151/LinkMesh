@@ -11,6 +11,10 @@ smb_writer.py —— 第二战役：M3DC1 PUMI .smb 静态二进制网格写出�
     - 不得包含任何网格生成逻辑
     - 在完成 PUMI 源码只读侦察并经主管确认前，严禁编写任何字节流打包逻辑
 
+v1.11 M2.5 说明：
+    - Mesh2D 类型注解来源改为 linkmesh.mesh（唯一正式定义），仍仅用于 TYPE_CHECKING；
+    - 本轮 M2.5 仅迁移类型导入，未改动 SMB 占位实现。
+
 前置条件（必须全部满足后方可实现）：
     1. M3 里程碑（TRIMEG HDF5）已完全验收通过
     2. 已完成对以下文件的只读侦察：
@@ -28,7 +32,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from linkmesh.mesher.triangle_wrapper import Mesh2D
+    from linkmesh.mesh import Mesh2D
 
 
 def write_smb(mesh: "Mesh2D", filepath: str) -> None:

@@ -1,5 +1,5 @@
 """
-triangle_wrapper.py —— TokaMaker/Triangle 唯一底座封装。
+triangle_wrapper.py —— TokaMaker/Triangle 唯一底座封装（历史/过渡实现）。
 
 职责：
     - 接收 BoundaryConfig（边界点集与区域配置）
@@ -8,11 +8,21 @@ triangle_wrapper.py —— TokaMaker/Triangle 唯一底座封装。
     - 从 beta 字典提取输出字段（键名：vertices, triangles, triangle_attributes 等）
     - 返回统一内存网格对象 Mesh2D
 
+v1.11 M2.5 解耦说明：
+    Mesh2D 的唯一正式定义已迁出本模块到 src/linkmesh/mesh.py。
+    本模块不再定义第二份同名数据类，而从 linkmesh.mesh 重新导出同一个类，
+    以兼容历史导入：
+        from linkmesh.mesher.triangle_wrapper import Mesh2D
+    必须保证：
+        linkmesh.mesh.Mesh2D is linkmesh.mesher.triangle_wrapper.Mesh2D
+    BoundaryConfig 与历史 generate_mesh() 仍保留于本模块，暂不删除。
+
 禁止事项：
     - 不得读取 GFile 或任何文件
     - 不得写文件
     - 不得引入三维网格逻辑
     - 不得引入第二种网格生成引擎
+    - 不得在本模块重新定义第二份 Mesh2D
 
 调用风格参考（只读）：
     TOKAMAKER/.../TokaMaker/meshing.py 中 run_triangle 函数与 Mesh.get_mesh 方法
@@ -21,7 +31,7 @@ triangle_wrapper.py —— TokaMaker/Triangle 唯一底座封装。
     beta['vertices'], beta['triangles'], beta['triangle_attributes']
 
 参考规范：
-    LinkMesh_Architecture_Plan.md 第 7 节
+    LinkMesh_Architecture_Plan.md 第 7 节、第 16.1 节（Mesh2D 解耦）
 """
 
 from __future__ import annotations
@@ -30,6 +40,12 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+
+# Mesh2D 唯一正式定义位于 linkmesh.mesh；此处重新导出以兼容历史导入。
+# 不得在本模块重新定义第二份同名数据类。
+from linkmesh.mesh import Mesh2D
+
+__all__ = ["BoundaryConfig", "Mesh2D", "generate_mesh"]
 
 
 # --------------------------------------------------------------------------- #
@@ -69,79 +85,6 @@ class BoundaryConfig:
     # Triangle 质量控制参数
     min_angle: float = 20.0       # 最小三角形内角（度），默认 20°
     max_area: Optional[float] = None  # 全局最大三角形面积约束（m²），None 表示不限制
-
-
-# --------------------------------------------------------------------------- #
-# 输出数据结构                                                                  #
-# --------------------------------------------------------------------------- #
-
-@dataclass
-class Mesh2D:
-    """LinkMesh 核心内存网格对象。
-
-    该对象是 mesher/triangle_wrapper.py（TokaMaker/Triangle 唯一底座）的输出，
-    同时也是 writers/hdf5_writer.py 和 writers/smb_writer.py 的共同输入。
-    所有索引均从 0 开始（Python 约定，由 Triangle 'z' 控制字符保证）。
-    写出时各 writer 负责按目标格式约定进行索引转换。
-
-    字段来源（对应 TokaMaker run_triangle / tr.triangulate 返回字典键名）：
-        nodes             ← beta['vertices']
-        triangles         ← beta['triangles']
-        region_ids        ← beta['triangle_attributes']，reshape(-1)，dtype=int32
-        boundary_segments ← beta['segments']
-        boundary_markers  ← beta['segment_markers']，reshape(-1)，dtype=int32
-        node_markers      ← beta['vertex_markers']，reshape(-1)，dtype=int32
-
-    一维 shape 契约（v1.5）：
-        region_ids.shape    == (T,)，即使 T==1 也保持一维
-        boundary_markers.shape == (S,)，即使 S==1 也保持一维
-        node_markers.shape  == (N,)，即使 N==1 也保持一维
-        提取方式：np.asarray(..., dtype=np.int32).reshape(-1)，不使用 .squeeze()
-    """
-
-    # 节点坐标
-    # 来源：beta['vertices']，shape=(N, 2)
-    nodes: np.ndarray                # shape=(N, 2)，节点 [R, Z] 坐标 [m]，dtype=float64
-
-    # 三角形连接表（三角形顶点索引，逆时针方向）
-    # 来源：beta['triangles']，shape=(T, 3)
-    # 索引为 0-based（Triangle 'z' 标志保证）
-    triangles: np.ndarray            # shape=(T, 3)，三角形三顶点节点索引，dtype=int32
-
-    # 三角形区域标记（来自 Triangle triangleattributelist / beta['triangle_attributes']）
-    # 约定：1=plasma, 2=vacuum, 3=wall
-    # 提取：np.asarray(beta['triangle_attributes'], dtype=np.int32).reshape(-1)
-    region_ids: np.ndarray           # shape=(T,)，每个三角形的区域 ID，dtype=int32
-
-    # 边界线段连接表
-    # 来源：beta['segments']，shape=(S, 2)
-    # 索引为 0-based（Triangle 'z' 标志保证）
-    boundary_segments: np.ndarray    # shape=(S, 2)，边界线段端点节点索引，dtype=int32
-
-    # 边界线段标记（来自 Triangle segmentmarkerlist / beta['segment_markers']）
-    # 约定：1=LCFS, 2=first_wall, 3=outer_boundary
-    # 提取：np.asarray(beta['segment_markers'], dtype=np.int32).reshape(-1)
-    boundary_markers: np.ndarray     # shape=(S,)，每条边界线段的标记，dtype=int32
-
-    # 节点边界标记（来自 Triangle pointmarkerlist / beta['vertex_markers']）
-    # 0=内部节点，非零=边界节点
-    # 提取：np.asarray(beta['vertex_markers'], dtype=np.int32).reshape(-1)
-    node_markers: np.ndarray         # shape=(N,)，每个节点的边界标记，dtype=int32
-
-    @property
-    def n_nodes(self) -> int:
-        """节点总数。"""
-        return self.nodes.shape[0]
-
-    @property
-    def n_triangles(self) -> int:
-        """三角形总数。"""
-        return self.triangles.shape[0]
-
-    @property
-    def n_boundary_segments(self) -> int:
-        """边界线段总数。"""
-        return self.boundary_segments.shape[0]
 
 
 # --------------------------------------------------------------------------- #
