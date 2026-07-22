@@ -5,7 +5,7 @@
 - 知识库用途：参考架构
 - 文档状态：正式版 **2.1**（在 v2.0 基线上固化 M4-0 侦察成果：写入 User 已批准的两层输入架构与 `target/profile/boundary_source` 分层、`M3DC1ModelSpec` 目标专用对象、M3DC1 双文件输出契约（TXT model + SMB，SMB 经 PUMI/APF/MDS 官方 API 生成，禁止手写字节流）、C1 初始静态网格边界、M4 实现停止条件与 Level 1–4 验收；收紧 `outer_boundary` 与 `Rbc/Zbc/nbcRZ` 正式定义并记录 `71fe09f` 数据来源错误；补充 M4-0A..0E 子里程碑与后续严格顺序。本轮为文档固化，未修改任何业务源码或测试，M3 complete-11 与 M4 均未标 PASSED）
 - 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`（阶段证据，非本蓝图正文的长期正式依赖，蓝图正文自包含）
-- 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION】为已批准正式契约但尚未实现且未通过验收的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线
+- 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / PENDING CORRECTION AND VALIDATION】为已批准正式契约但尚未实现、或已有实现尝试但尚未通过验收的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线
 - 修改前置条件：任何对本文档接口、字段、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
 
 ---
@@ -92,7 +92,7 @@ M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对�
 
 **兼容字段（现存于 `mesh.py`，均安全空数组默认值，不参与 TRIMEG 契约）**：`boundary_segments (0,2) int32`、`boundary_markers (0,) int32`、`node_markers (0,) int32`。这三个字段**与下文 `outer_boundary` 不同义、不同名、语义不同**；不得改名或删除既有字段。
 
-**`outer_boundary` 字段（正式定义，实时 `mesh.py` 已含该可选字段并在 `__post_init__` 集中验证；M3 complete-11 的 OFT Adapter 传递与 Writer 写出 PENDING）**
+**`outer_boundary` 字段（正式定义，实时 `mesh.py` 已含该可选字段并在 `__post_init__` 中执行部分验证；提交 `71fe09f` 已有实现尝试，但 OFT Adapter 传入的数据来源错误，处于 PENDING CORRECTION AND VALIDATION）**
 
 `Mesh2D.outer_boundary` 表示当前 `Mesh2D` 所代表计算域**在进入 Triangle 前**的有序离散外边界。
 
@@ -100,15 +100,17 @@ M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对�
 |---|---|
 | 类型 / shape / dtype | `Optional[np.ndarray]` / `(B,2)` / `float64` |
 | 列含义 / 单位 | 第 0 列 R，第 1 列 Z / m |
-| 语义 | 传入网格生成器的、有序、最外层计算域几何边界点；一条简单闭合轮廓 |
+| 语义 | 传入网格生成器的、有序、最外层计算域几何边界点；一条**单一简单闭合轮廓** |
 | 闭合 | 末尾**不重复首点**，最后一点与第一点隐式闭合 |
 | 方向 | 顺时针（带符号闭合面积严格为负） |
-| 约束 | 至少 3 个互异有限点；无相邻重复点；无零长度闭合边；无退化面积；P0 只允许一条最外层闭合轮廓 |
+| 约束 | 至少 3 个互异有限点；无相邻重复点；无零长度闭合边；无退化面积；**单一简单闭环，禁止非相邻边自交**；P0 只允许一条最外层闭合轮廓 |
 | 所有权 | 数组由 `Mesh2D` **独立持有**（构造期规范化为 float64 独立副本），不与外部可变输入共享所有权 |
 | 必选性 | **TRIMEG target 必须提供**；`mesh_only` 与 M3DC1 target 按各自目标契约处理，可为 `None` |
 | 与 Steiner 点 | **不包含** OFT/Triangle 后续插入的边界 Steiner 节点 |
 | 与 `idxevert` | 不等同于最终拓扑外边界节点集合；因生成器插点，`B` 可小于最终 `nvert_ex` |
 | 性质 | 求解器无关的计算域几何，**不是**按节点编号升序生成的 `idxevert` 坐标表 |
+
+**验证实现状态（重要）**：`Mesh2D.__post_init__` 当前对 shape、dtype、有限性、点数、相邻重复点、隐式闭合语义、方向、退化面积执行验证；**尚未完整实现非相邻边自交检查**。完整自交验证及其测试列入返回 M3 complete-11 时**必须核对并补齐**的事项（见第 5 节 M3 complete-11 验收条件与第 10.3 节）。不得宣称当前 `__post_init__` 已完整实现全部自交检查。
 
 `outer_boundary` **不是**：人工矩形四个控制角点；最终按节点编号排序的 `idxevert`；Triangle 后续插入的全部 boundary Steiner points；永久固定的 LCFS；永久固定的 first wall；永久固定的 artificial outer。
 
@@ -187,9 +189,9 @@ M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对�
 
 由此确认：`Rbc/Zbc` 是有序边界几何（非升序坐标集合）；`idxevert` 描述最终拓扑外边界节点；`Rbc/Zbc` 不含生成器后插入点；`nbcRZ` 可等于或小于 `nvert_ex`。两样例均未证明固定起点规则，不得写成事实。
 
-**提交 `71fe09f` 状态（M3 complete-11 未通过）**：`71fe09f` 大体建立了 11 数据集的 Writer 映射，但其 `outer_boundary` 数据来源**错误地固定为人工矩形四个控制角点**，未经过 Triangle 输入前的真实重采样离散点列。该提交**未通过** M3 complete-11 架构验收。M4-0E 文档固化后必须先返回 M3 complete-11 修复该数据来源；不得把当前尝试标记为通过。
+**提交 `71fe09f` 状态（M3 complete-11 PENDING CORRECTION AND VALIDATION）**：`71fe09f` 已存在 `Mesh2D.outer_boundary` 字段、11 数据集 Writer 映射与相关测试的**实现尝试**，但 OFT Adapter 将**人工矩形四个控制角点**错误作为 `outer_boundary`，未经过 Triangle 输入前的真实重采样离散点列。该实现尝试**尚未通过**架构、真实 GFile、`h5py` 与 MATLAB/Octave 完整验收，处于 **PENDING CORRECTION AND VALIDATION**。M4-0E 文档固化后必须先返回 M3 complete-11 修正该数据来源并完成验收；不得把当前尝试标记为通过。
 
-**M3 complete-11 验收条件**：精确 11 数据集（path/shape/dtype 见上表）；`nbcRZ` 数值正确；`Rbc/Zbc` 来自 `outer_boundary`、不从 `idxevert` 反推、不要求 `nbcRZ==nvert_ex`、Steiner 点隔离；`h5py` 回读验证；MATLAB 或 Octave 用 `loadfemmesh_h5.m` 验证（不再出现缺三字段 warning）；两个真实 GFile 回归；PNG 或等效几何检查；并有测试证明人工控制角点不能错误代替离散边界点列。
+**M3 complete-11 验收条件**：精确 11 数据集（path/shape/dtype 见上表）；`nbcRZ` 数值正确；`Rbc/Zbc` 来自 `outer_boundary`、不从 `idxevert` 反推、不要求 `nbcRZ==nvert_ex`、Steiner 点隔离；`outer_boundary` 完整自交验证（单一简单闭环、禁止非相邻边自交）在 `Mesh2D.__post_init__` 或等效统一验证层补齐并有测试覆盖；`h5py` 回读验证；MATLAB 或 Octave 用 `loadfemmesh_h5.m` 验证（不再出现缺三字段 warning）；两个真实 GFile 回归；PNG 或等效几何检查；并有测试证明人工控制角点不能错误代替离散边界点列。
 
 ---
 
@@ -382,7 +384,7 @@ M4 面向 M3D-C1 消费端，产出**配套双文件**：TXT model file + SMB me
 | M2 OFT Adapter | PASSED | 三层接口；真实 DIII-D 972 节点/1872 三角形/3 区域 `{1:633,2:678,3:561}`；PNG 人工检查通过 |
 | M2.5 Mesh2D 解耦 | PASSED | `Mesh2D` 唯一定义位于 `src/linkmesh/mesh.py` |
 | **M3 core** | **PASSED** | 8 核心数据集 Writer、h5py 回读、MATLAB 核心加载与绘图通过 |
-| **M3 complete-11** | **PENDING IMPLEMENTATION** | `outer_boundary` 传递与 `nbcRZ/Rbc/Zbc` 写出尚未实现；`71fe09f` 数据来源错误待修复 |
+| **M3 complete-11** | **PENDING CORRECTION AND VALIDATION** | `71fe09f` 已有 `outer_boundary` 字段、11 数据集 Writer 与相关测试的实现尝试，但 OFT Adapter 将人工矩形四控制角点错误作为 `outer_boundary`；尚未通过架构、真实 GFile、h5py 与 MATLAB/Octave 完整验收；`outer_boundary` 完整自交验证及测试待补齐 |
 | CLI 区域密度参数 | 已实现并验收 | 三个 `dx` 参数；37 项 CLI 专项测试 + 165 项全量回归通过；真实 DIII-D 默认/粗/细网格通过 |
 | M4-0A 参考证据获取 | PASSED | M3DC1/SCOREC 参考源码与样例获取 |
 | M4-0B 源码/样例索引 | PASSED | 生成端/消费端导航索引建立 |
@@ -409,12 +411,12 @@ CLI 密度参数真实验收统计（DIII-D）：默认 `0.08/0.10/0.15` → 972
 
 | 测试文件 | 服务对象 | 状态 |
 |---|---|---|
-| `tests/test_mesh.py` | Mesh2D 数据模型（含 outer_boundary 集中验证） | 通过 |
+| `tests/test_mesh.py` | Mesh2D 数据模型（含 outer_boundary 集中验证，完整自交检查待补齐） | 通过 |
 | `tests/test_oft_adapter.py` | OFT Adapter 三层接口（mock/受控假 Domain） | 通过（退出码 0） |
 | `tests/test_hdf5_writer.py` | HDF5 Writer 契约 | AUTHORED（11 数据集测试待 M3 complete-11 真实运行验收） |
 | `tests/test_cli.py` | CLI 参数解析/验证/转发（monkeypatch 隔离） | 通过（37 项） |
 
-门槛：单元测试不依赖真实 OFT/GFile；集成与真实验收在 Linux 服务器 OFT 26.6 环境执行。M3 complete-11 实现后需：两个真实 GFile 回归；h5py 检查 11 数据集 shape/dtype/点序/闭合/方向/`nbcRZ`；`loadfemmesh_h5.m` 验证不再出现缺三字段 warning；测试证明人工控制角点不能错误代替离散边界。M4 需 Level 1（LinkMesh 测试）+ Level 2/3（唐同学或等效消费端）通过后方可标 PASSED。
+门槛：单元测试不依赖真实 OFT/GFile；集成与真实验收在 Linux 服务器 OFT 26.6 环境执行。M3 complete-11 修正后需：`outer_boundary` 数据来源改为真实重采样离散点列并补齐完整自交验证及测试；两个真实 GFile 回归；h5py 检查 11 数据集 shape/dtype/点序/闭合/方向/`nbcRZ`；`loadfemmesh_h5.m` 验证不再出现缺三字段 warning；测试证明人工控制角点不能错误代替离散边界。M4 需 Level 1（LinkMesh 测试）+ Level 2/3（唐同学或等效消费端）通过后方可标 PASSED。
 
 许可证边界：`TOKAMAKER/` 下 EQDSK 样例受 LGPL v3.0 约束，未经确认不得复制进 `tests/data/` 或 `examples/`，仅开发期只读集成测试使用。
 
@@ -429,11 +431,11 @@ M4-0 子阶段：M4-0A 参考证据获取 → M4-0B 源码/样例索引 → M4-0
 M4-0E 完成后的严格顺序（**不得改变"M3 complete-11 完整通过后才正式开始 M4 实现"**）：
 
 1. 返回 M3 complete-11；
-2. 修复 `71fe09f` 的 `outer_boundary` 数据来源（改为进入 Triangle 前真实重采样有序离散点列）；
+2. 修正 `71fe09f` 的 `outer_boundary` 数据来源（由人工矩形四控制角点改为进入 Triangle 前真实重采样有序离散点列）；
 3. 修改 `Mesh2D`（如需）与 OFT Adapter，保留网格生成前传入生成器的有序 outer boundary 并随 `Mesh2D` 返回；
-4. 验证方向（顺时针）、隐式闭合、有限性、无相邻重复点、稳定顺序、不含 Steiner 点；
+4. 补齐并验证方向（顺时针）、隐式闭合、有限性、无相邻重复点、稳定顺序、不含 Steiner 点，以及**完整非相邻边自交检查及其测试**；
 5. HDF5 Writer 写出完整 11 数据集（直接读 `mesh.outer_boundary`）；
-6. 更新 Mesh2D/Adapter/Writer 测试，含"人工控制角点不能代替离散边界"的测试；
+6. 更新 Mesh2D/Adapter/Writer 测试，含"人工控制角点不能代替离散边界"与自交拒绝的测试；
 7. 两个真实 GFile 回归；
 8. h5py 检查 11 数据集 shape/dtype/点序/闭合/方向/`nbcRZ`；
 9. `loadfemmesh_h5.m`（MATLAB/Octave）验证无缺字段 warning；PNG 或等效几何检查；
@@ -452,12 +454,12 @@ M4-0E 完成后的严格顺序（**不得改变"M3 complete-11 完整通过后�
 
 ### 10.2 蓝图更新纪律（先更新蓝图再实现）
 
-以下变更必须先更新本文档：新增/删除模块；修改 `GFileData`/`Mesh2D` 字段（含 `outer_boundary` 契约）；修改区域/边界编号约定；修改 HDF5 数据集契约（含 11 数据集 shape/dtype/1-based/`idxevert` 拓扑/`Rbc/Zbc/nbcRZ` 规则）；确认 `.smb` 或 PUMI/model file 任何细节；将【实现候选】PUMI API 转为固定接口；新增/修改 CLI 参数或 `linkmesh.in` 配置层次；修改 `target/profile/boundary_source` 分层与兼容矩阵；修改 `M3DC1ModelSpec` 职责；修改 OFT API 调用方式或 `openfusiontoolkit` 版本；修改默认区域策略或 outer boundary 形状；将任何【待源码确认】转为【已确认事实】（须直接证据）；将 M3DC1 多 face、C1/高阶要求或 Level 验收状态转为已通过。
+以下变更必须先更新本文档：新增/删除模块；修改 `GFileData`/`Mesh2D` 字段（含 `outer_boundary` 契约与自交验证要求）；修改区域/边界编号约定；修改 HDF5 数据集契约（含 11 数据集 shape/dtype/1-based/`idxevert` 拓扑/`Rbc/Zbc/nbcRZ` 规则）；确认 `.smb` 或 PUMI/model file 任何细节；将【实现候选】PUMI API 转为固定接口；新增/修改 CLI 参数或 `linkmesh.in` 配置层次；修改 `target/profile/boundary_source` 分层与兼容矩阵；修改 `M3DC1ModelSpec` 职责；修改 OFT API 调用方式或 `openfusiontoolkit` 版本；修改默认区域策略或 outer boundary 形状；将任何【待源码确认】转为【已确认事实】（须直接证据）；将 M3DC1 多 face、C1/高阶要求或 Level 验收状态转为已通过。
 
 ### 10.3 当前明确待决事项
 
-- M3 complete-11 尚未通过；`71fe09f` 的 `outer_boundary` 数据来源尚未修复。
-- `Mesh2D.outer_boundary` 的 OFT Adapter 传递与完整 11 数据集 Writer 尚未实施。
+- M3 complete-11 尚未通过；`71fe09f` 已有 `Mesh2D.outer_boundary`、11 数据集 Writer 与相关测试的实现尝试，但 OFT Adapter 将人工矩形四控制角点错误作为 `outer_boundary`，处于 PENDING CORRECTION AND VALIDATION，尚未通过架构、真实 GFile、h5py 与 MATLAB/Octave 完整验收。
+- `Mesh2D.outer_boundary` 的 OFT Adapter 数据来源需修正为真实重采样离散点列；`__post_init__` 的**完整非相邻边自交检查及其测试**尚未补齐，须在返回 M3 complete-11 时核对并补齐。
 - M4 PUMI/APF/MDS 目标版本、精确 API、classification 本地判定规则尚待实现阶段确认；M4 业务代码（TXT model Writer、PUMI Adapter、SMB 输出）尚未开始。
 - 唐同学 Level 2/3 实际验证尚未执行。
 - 两层输入架构（`linkmesh.in` + `EffectiveConfig`）、`target/profile/boundary_source`、`array_file`/`flux_surface` 提取接口尚未实现。
