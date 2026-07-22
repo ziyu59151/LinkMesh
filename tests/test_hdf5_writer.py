@@ -1,26 +1,28 @@
 """
-tests/test_hdf5_writer.py —— M3 HDF5 Writer 验收测试（v1.11 契约）。
+tests/test_hdf5_writer.py —— M3 HDF5 Writer 验收测试（v2.0 完整 11 数据集契约）。
 
 测试状态：AUTHORED_NOT_RUN
 整体状态：PENDING_MANUAL_REVIEW
 
-本文件所有测试均未执行，不能据此宣布 M3 验收通过。最终真实回读与 MATLAB
-消费验收在 Linux 服务器执行。
+本文件所有测试均未执行，不能据此宣布 M3 complete-11 验收通过。最终真实回读与
+MATLAB 消费验收在 Linux 服务器执行。
 
-测试原则（v1.11）：
+测试原则（v2.0）：
     - Mesh2D 从 linkmesh.mesh 导入（唯一正式定义）；
     - 使用 pytest tmp_path、真实 h5py 临时写入与回读、小型受控 NumPy 网格；
     - 不调用 OFT、Triangle、matplotlib 或真实 GFile；
     - 不读取或修改真实 HDF5 样例；
     - 不 mock h5py，不访问 Writer 私有实现绕过公开接口。
 
-v1.11 核心契约（8 核心数据集，均 float64）：
+v2.0 完整 11 数据集契约（均 float64）：
     nvert/ntria/nvert_in/nvert_ex : (1,1)
     vert                          : (N,2)，不转置
     tria                          : (T,3)，1-based，无第四列，无 region_ids
     idxivert                      : (1,nvert_in)，1-based，升序（拓扑内部节点补集）
     idxevert                      : (1,nvert_ex)，1-based，升序（拓扑外边界节点）
-    默认不写 nbcRZ/Rbc/Zbc。
+    nbcRZ                         : (1,1)，值为 B
+    Rbc                           : (B,1)，= outer_boundary[:,0]
+    Zbc                           : (B,1)，= outer_boundary[:,1]
 """
 
 import numpy as np
@@ -34,10 +36,39 @@ from linkmesh.writers.hdf5_writer import write_hdf5
 
 
 # ---------------------------------------------------------------------------
+# 测试辅助：合法顺时针 outer boundary
+# ---------------------------------------------------------------------------
+
+def _cw_outer_boundary() -> np.ndarray:
+    """合法顺时针、隐式闭合（末尾不重复首点）的 (4,2) outer boundary。
+
+    坐标故意与网格节点不同，便于验证 Rbc/Zbc 来自 outer_boundary 而非 vert。
+    顺时针：(−1,−1)→(−1,3)→(4,3)→(4,−1)，带符号闭合面积为负。
+    """
+    return np.array([
+        [-1.0, -1.0],
+        [-1.0, 3.0],
+        [4.0, 3.0],
+        [4.0, -1.0],
+    ], dtype=np.float64)
+
+
+def _cw_outer_boundary_5pts() -> np.ndarray:
+    """合法顺时针 5 点 outer boundary（用于 B=5，可测 nbcRZ==B 与 B<nvert_ex）。"""
+    return np.array([
+        [-1.0, -1.0],
+        [-1.0, 3.0],
+        [1.5, 4.0],
+        [4.0, 3.0],
+        [4.0, -1.0],
+    ], dtype=np.float64)
+
+
+# ---------------------------------------------------------------------------
 # 测试辅助：构造受控合法网格
 # ---------------------------------------------------------------------------
 
-def _make_center_mesh() -> Mesh2D:
+def _make_center_mesh(outer_boundary=None) -> Mesh2D:
     """网格 A：一个中心节点 + 一圈外边界节点。
 
     几何：
@@ -72,14 +103,18 @@ def _make_center_mesh() -> Mesh2D:
     # region_ids 与节点编号无关，且不是 {1,2,3}
     region_ids = np.array([7, 7, 9, 9], dtype=np.int32)
 
+    if outer_boundary is None:
+        outer_boundary = _cw_outer_boundary()
+
     return Mesh2D(
         nodes=nodes,
         triangles=triangles,
         region_ids=region_ids,
+        outer_boundary=outer_boundary,
     )
 
 
-def _make_single_triangle_mesh() -> Mesh2D:
+def _make_single_triangle_mesh(outer_boundary=None) -> Mesh2D:
     """网格 B：单三角形，三个节点均为外边界。
 
     拓扑期望：
@@ -100,16 +135,55 @@ def _make_single_triangle_mesh() -> Mesh2D:
 
     region_ids = np.array([5], dtype=np.int32)
 
+    if outer_boundary is None:
+        outer_boundary = _cw_outer_boundary()
+
     return Mesh2D(
         nodes=nodes,
         triangles=triangles,
         region_ids=region_ids,
+        outer_boundary=outer_boundary,
+    )
+
+
+def _make_grid_mesh_with_boundary(outer_boundary) -> Mesh2D:
+    """网格 C：更大的网格，nvert_ex 大，用于测试 B < nvert_ex。
+
+    构造 3x3 = 9 节点、8 三角形的规则网格，外边界节点数为 8，内部节点数为 1。
+    这样可以用小 B（如 4 或 5）的 outer boundary 验证 nbcRZ < nvert_ex。
+    """
+    # 3x3 网格节点（0-based，行优先）
+    coords = []
+    for j in range(3):
+        for i in range(3):
+            coords.append([float(i), float(j)])
+    nodes = np.array(coords, dtype=np.float64)  # 9 节点
+
+    # 8 三角形（每个单元格切两刀）
+    triangles = np.array([
+        [0, 1, 3],
+        [1, 4, 3],
+        [1, 2, 4],
+        [2, 5, 4],
+        [3, 4, 6],
+        [4, 7, 6],
+        [4, 5, 7],
+        [5, 8, 7],
+    ], dtype=np.int32)
+
+    region_ids = np.ones(triangles.shape[0], dtype=np.int32)
+
+    return Mesh2D(
+        nodes=nodes,
+        triangles=triangles,
+        region_ids=region_ids,
+        outer_boundary=outer_boundary,
     )
 
 
 def _copy_core_arrays(mesh: Mesh2D) -> dict:
     """复制 Mesh2D 核心与兼容数组，用于不可变性检查。"""
-    return {
+    d = {
         "nodes": mesh.nodes.copy(),
         "triangles": mesh.triangles.copy(),
         "region_ids": mesh.region_ids.copy(),
@@ -117,22 +191,25 @@ def _copy_core_arrays(mesh: Mesh2D) -> dict:
         "boundary_markers": mesh.boundary_markers.copy(),
         "node_markers": mesh.node_markers.copy(),
     }
+    if mesh.outer_boundary is not None:
+        d["outer_boundary"] = mesh.outer_boundary.copy()
+    return d
 
 
 # ===========================================================================
-# M3-1：核心数据集完整性与可选数据集缺失
+# M3-1：完整 11 数据集集合
 # ===========================================================================
 
 class TestHDF5DatasetSet:
-    """精确验证 8 个核心数据集存在、3 个可选数据集不存在。"""
+    """精确验证 11 个数据集存在，且不含 region_ids。"""
 
-    _CORE = {
+    _ELEVEN = {
         "nvert", "ntria", "nvert_in", "nvert_ex",
         "vert", "idxivert", "idxevert", "tria",
+        "nbcRZ", "Rbc", "Zbc",
     }
-    _OPTIONAL = {"nbcRZ", "Rbc", "Zbc"}
 
-    def test_exactly_eight_core_datasets(self, tmp_path):
+    def test_exactly_eleven_datasets(self, tmp_path):
         import h5py
         mesh = _make_center_mesh()
         h5_path = tmp_path / "mesh.h5"
@@ -141,21 +218,10 @@ class TestHDF5DatasetSet:
         with h5py.File(str(h5_path), "r") as f:
             assert "femmesh" in f, "缺少顶层组 /femmesh"
             keys = set(f["femmesh"].keys())
-            assert keys == self._CORE, (
-                f"数据集集合与 8 核心不一致：多余={keys - self._CORE}，"
-                f"缺失={self._CORE - keys}"
+            assert keys == self._ELEVEN, (
+                f"数据集集合与 11 数据集不一致：多余={keys - self._ELEVEN}，"
+                f"缺失={self._ELEVEN - keys}"
             )
-
-    def test_optional_datasets_absent(self, tmp_path):
-        import h5py
-        mesh = _make_center_mesh()
-        h5_path = tmp_path / "mesh.h5"
-        write_hdf5(mesh, str(h5_path), verbose=False)
-
-        with h5py.File(str(h5_path), "r") as f:
-            keys = set(f["femmesh"].keys())
-            present = self._OPTIONAL & keys
-            assert not present, f"不应写出可选数据集：{present}"
 
     def test_no_region_ids_dataset(self, tmp_path):
         import h5py
@@ -170,13 +236,13 @@ class TestHDF5DatasetSet:
 
 
 # ===========================================================================
-# M3-2：dtype 与 shape
+# M3-2：dtype 与 shape（含 nbcRZ/Rbc/Zbc）
 # ===========================================================================
 
 class TestHDF5ShapeAndDtype:
-    """全部 8 核心 dtype 为 float64；shape 精确符合 v1.11。"""
+    """全部 11 数据集 dtype 为 float64；shape 精确符合契约。"""
 
-    def test_all_core_dtype_float64(self, tmp_path):
+    def test_all_datasets_dtype_float64(self, tmp_path):
         import h5py
         mesh = _make_center_mesh()
         h5_path = tmp_path / "mesh.h5"
@@ -185,7 +251,8 @@ class TestHDF5ShapeAndDtype:
         with h5py.File(str(h5_path), "r") as f:
             grp = f["femmesh"]
             for name in ("nvert", "ntria", "nvert_in", "nvert_ex",
-                         "vert", "idxivert", "idxevert", "tria"):
+                         "vert", "idxivert", "idxevert", "tria",
+                         "nbcRZ", "Rbc", "Zbc"):
                 assert grp[name].dtype == np.float64, (
                     f"{name} dtype 应为 float64，实际 {grp[name].dtype}"
                 )
@@ -198,7 +265,7 @@ class TestHDF5ShapeAndDtype:
 
         with h5py.File(str(h5_path), "r") as f:
             grp = f["femmesh"]
-            for name in ("nvert", "ntria", "nvert_in", "nvert_ex"):
+            for name in ("nvert", "ntria", "nvert_in", "nvert_ex", "nbcRZ"):
                 assert grp[name].shape == (1, 1), (
                     f"{name} shape 应为 (1,1)，实际 {grp[name].shape}"
                 )
@@ -225,6 +292,37 @@ class TestHDF5ShapeAndDtype:
                 f"idxevert shape 期望 (1,{nvert_ex})"
             )
 
+    def test_rbc_zbc_shape_Bx1(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary()
+        b = ob.shape[0]  # 4
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            assert grp["Rbc"].shape == (b, 1), (
+                f"Rbc shape 期望 ({b},1)，实际 {grp['Rbc'].shape}"
+            )
+            assert grp["Zbc"].shape == (b, 1), (
+                f"Zbc shape 期望 ({b},1)，实际 {grp['Zbc'].shape}"
+            )
+
+    def test_rbc_zbc_not_transposed_to_1xB(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary()
+        b = ob.shape[0]
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            # 明确不是 (1,B)
+            assert grp["Rbc"].shape != (1, b)
+            assert grp["Zbc"].shape != (1, b)
+
     def test_count_values(self, tmp_path):
         import h5py
         mesh = _make_center_mesh()
@@ -237,6 +335,151 @@ class TestHDF5ShapeAndDtype:
             assert int(round(float(grp["ntria"][()][0, 0]))) == 4
             assert int(round(float(grp["nvert_in"][()][0, 0]))) == 1
             assert int(round(float(grp["nvert_ex"][()][0, 0]))) == 4
+
+    def test_nbcRZ_equals_B(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary()
+        b = ob.shape[0]  # 4
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            nbcRZ = int(round(float(f["femmesh"]["nbcRZ"][()][0, 0])))
+        assert nbcRZ == b, f"nbcRZ 应等于 B={b}，实际={nbcRZ}"
+
+
+# ===========================================================================
+# M3-2b：Rbc/Zbc 内容来自 outer_boundary（不重复首点，不来自 idxevert）
+# ===========================================================================
+
+class TestHDF5RbcZbcContent:
+    """Rbc/Zbc 数值与 mesh.outer_boundary 两列精确一致。"""
+
+    def test_rbc_zbc_equal_outer_boundary_columns(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary()
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            rbc = f["femmesh"]["Rbc"][:].reshape(-1)
+            zbc = f["femmesh"]["Zbc"][:].reshape(-1)
+
+        np.testing.assert_array_almost_equal(rbc, ob[:, 0])
+        np.testing.assert_array_almost_equal(zbc, ob[:, 1])
+
+    def test_rbc_zbc_no_duplicate_first_point(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary()
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            rbc = f["femmesh"]["Rbc"][:].reshape(-1)
+            zbc = f["femmesh"]["Zbc"][:].reshape(-1)
+
+        # 末尾不重复首点
+        assert not (rbc[0] == rbc[-1] and zbc[0] == zbc[-1]), (
+            "Rbc/Zbc 末尾不应重复首点"
+        )
+
+    def test_rbc_zbc_not_derived_from_vert(self, tmp_path):
+        """Rbc/Zbc 来自 outer_boundary，与 vert（网格节点）不同。"""
+        import h5py
+        ob = _cw_outer_boundary()  # 坐标含负值，网格节点均为正
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            rbc = f["femmesh"]["Rbc"][:].reshape(-1)
+            vert = f["femmesh"]["vert"][:]
+
+        # outer boundary 含负坐标，网格节点最小坐标为正 → 必然不同
+        assert rbc.min() < 0.0
+        assert vert.min() >= 0.0
+
+
+# ===========================================================================
+# M3-2c：B < nvert_ex 与 nbcRZ != nvert_ex（不要求相等）
+# ===========================================================================
+
+class TestHDF5NbcRZvsNvertEx:
+    """nbcRZ 可小于 nvert_ex；不要求相等；idxevert 可含额外 Steiner 节点。"""
+
+    def test_B_less_than_nvert_ex_allowed(self, tmp_path):
+        import h5py
+        # 3x3 网格外边界节点数=8；outer boundary 用 4 点 → B=4 < nvert_ex=8
+        ob = _cw_outer_boundary()  # B=4
+        mesh = _make_grid_mesh_with_boundary(ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            nbcRZ = int(round(float(grp["nbcRZ"][()][0, 0])))
+            nvert_ex = int(round(float(grp["nvert_ex"][()][0, 0])))
+
+        assert nbcRZ == 4, f"nbcRZ 应为 4，实际={nbcRZ}"
+        assert nvert_ex == 8, f"nvert_ex 应为 8，实际={nvert_ex}"
+        assert nbcRZ < nvert_ex, "本用例应满足 nbcRZ < nvert_ex"
+
+    def test_nbcRZ_not_forced_equal_nvert_ex(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary_5pts()  # B=5
+        mesh = _make_grid_mesh_with_boundary(ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            nbcRZ = int(round(float(grp["nbcRZ"][()][0, 0])))
+            nvert_ex = int(round(float(grp["nvert_ex"][()][0, 0])))
+
+        # B=5，nvert_ex=8：写出成功且不相等，证明未强制 nbcRZ==nvert_ex
+        assert nbcRZ == 5
+        assert nvert_ex == 8
+        assert nbcRZ != nvert_ex
+
+    def test_idxevert_contains_more_than_B_nodes(self, tmp_path):
+        """最终拓扑 idxevert 可包含比 B 更多的（可模拟的额外 Steiner）边界节点。"""
+        import h5py
+        ob = _cw_outer_boundary()  # B=4
+        mesh = _make_grid_mesh_with_boundary(ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            nvert_ex = int(round(float(grp["nvert_ex"][()][0, 0])))
+            nbcRZ = int(round(float(grp["nbcRZ"][()][0, 0])))
+
+        # idxevert 描述最终拓扑外边界节点（8 个），多于 B（4 个）
+        assert nvert_ex > nbcRZ, (
+            "idxevert（拓扑外边界节点）可多于 outer boundary 几何点 B"
+        )
+
+    def test_extra_boundary_nodes_not_in_rbc(self, tmp_path):
+        """额外拓扑边界节点坐标不会进入 Rbc/Zbc（Rbc/Zbc 仅来自 outer_boundary）。"""
+        import h5py
+        ob = _cw_outer_boundary()  # 4 个角点，坐标为负/大值
+        mesh = _make_grid_mesh_with_boundary(ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            rbc = grp["Rbc"][:].reshape(-1)
+            zbc = grp["Zbc"][:].reshape(-1)
+
+        # 网格外边界节点（如 (1.0,0.0) 中点）坐标落在 [0,2]，
+        # 而 outer boundary 用 [-1,4] 范围；额外边界节点坐标不应出现在 Rbc
+        bc_pts = set(zip(rbc.tolist(), zbc.tolist()))
+        # 网格中点节点 (1.0, 0.0) 是拓扑外边界节点但不是 outer_boundary 点
+        assert (1.0, 0.0) not in bc_pts
 
 
 # ===========================================================================
@@ -494,6 +737,10 @@ class TestHDF5WriterImmutability:
             mesh.node_markers, before["node_markers"],
             err_msg="write_hdf5 修改了 mesh.node_markers"
         )
+        np.testing.assert_array_equal(
+            mesh.outer_boundary, before["outer_boundary"],
+            err_msg="write_hdf5 修改了 mesh.outer_boundary"
+        )
 
     def test_does_not_depend_on_compat_arrays(self, tmp_path):
         """兼容字段为默认空数组时仍能正确写出（不依赖 node_markers 等）。"""
@@ -520,7 +767,7 @@ class TestHDF5WriterImmutability:
 # ===========================================================================
 
 class TestHDF5Verbose:
-    """verbose=False 不打印完成信息；verbose=True 打印且不宣称写出可选数据集。"""
+    """verbose=False 不打印完成信息；verbose=True 打印完整摘要。"""
 
     def test_verbose_false_silent(self, tmp_path, capsys):
         mesh = _make_center_mesh()
@@ -540,10 +787,6 @@ class TestHDF5Verbose:
         assert "三角形数" in out
         assert "内部节点数" in out
         assert "外边界节点数" in out
-        # 不得声称写出可选数据集
-        assert "nbcRZ" not in out
-        assert "Rbc" not in out
-        assert "Zbc" not in out
 
 
 # ===========================================================================
@@ -567,6 +810,7 @@ class TestHDF5InputFailures:
             nodes=np.array([1.0, 2.0, 3.0], dtype=np.float64),
             triangles=np.array([[0, 1, 2]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="二维")
 
@@ -576,6 +820,7 @@ class TestHDF5InputFailures:
                            dtype=np.float64),
             triangles=np.array([[0, 1, 2]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match=r"\(N,2\)")
 
@@ -584,6 +829,7 @@ class TestHDF5InputFailures:
             nodes=np.zeros((0, 2), dtype=np.float64),
             triangles=np.zeros((0, 3), dtype=np.int32),
             region_ids=np.zeros((0,), dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="空")
 
@@ -592,7 +838,8 @@ class TestHDF5InputFailures:
         bad = mesh.nodes.copy()
         bad[0, 0] = np.nan
         mesh2 = Mesh2D(nodes=bad, triangles=mesh.triangles.copy(),
-                       region_ids=mesh.region_ids.copy())
+                       region_ids=mesh.region_ids.copy(),
+                       outer_boundary=_cw_outer_boundary())
         self._assert_fail_no_file(mesh2, tmp_path, match="有限")
 
     def test_nodes_inf(self, tmp_path):
@@ -600,7 +847,8 @@ class TestHDF5InputFailures:
         bad = mesh.nodes.copy()
         bad[1, 1] = np.inf
         mesh2 = Mesh2D(nodes=bad, triangles=mesh.triangles.copy(),
-                       region_ids=mesh.region_ids.copy())
+                       region_ids=mesh.region_ids.copy(),
+                       outer_boundary=_cw_outer_boundary())
         self._assert_fail_no_file(mesh2, tmp_path, match="有限")
 
     def test_triangles_not_2d(self, tmp_path):
@@ -608,6 +856,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([0, 1, 2], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="二维")
 
@@ -616,6 +865,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([[0, 1]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match=r"\(T,3\)")
 
@@ -624,6 +874,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.zeros((0, 3), dtype=np.int32),
             region_ids=np.zeros((0,), dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="空")
 
@@ -632,6 +883,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([[0.0, 1.0, np.nan]], dtype=np.float64),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="有限|整数")
 
@@ -640,6 +892,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([[0.0, 1.0, np.inf]], dtype=np.float64),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="有限|整数")
 
@@ -649,6 +902,7 @@ class TestHDF5InputFailures:
                            dtype=np.float64),
             triangles=np.array([[0.0, 1.0, 2.5]], dtype=np.float64),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="整数")
 
@@ -657,6 +911,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([[-1, 1, 2]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="越界")
 
@@ -665,6 +920,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([[0, 1, 99]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="越界")
 
@@ -673,6 +929,7 @@ class TestHDF5InputFailures:
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]], dtype=np.float64),
             triangles=np.array([[0, 0, 2]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="重复顶点")
 
@@ -683,16 +940,17 @@ class TestHDF5InputFailures:
                            dtype=np.float64),
             triangles=np.array([[0, 1, 2]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="面积")
 
     def test_triangles_tiny_area(self, tmp_path):
         """面积不大于 1e-12：应失败。"""
-        eps = 1e-9  # 底约 1，高约 1e-9 → 面积约 5e-10？调小到不大于 1e-12
         mesh = Mesh2D(
             nodes=np.array([[0.0, 0.0], [1.0, 0.0], [0.5, 1e-13]], dtype=np.float64),
             triangles=np.array([[0, 1, 2]], dtype=np.int32),
             region_ids=np.array([1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="面积")
 
@@ -715,6 +973,7 @@ class TestHDF5InputFailures:
             nodes=nodes,
             triangles=triangles,
             region_ids=np.array([1, 1, 1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="非流形")
 
@@ -744,5 +1003,76 @@ class TestHDF5InputFailures:
             nodes=nodes,
             triangles=triangles,
             region_ids=np.array([1, 1, 1, 1], dtype=np.int32),
+            outer_boundary=_cw_outer_boundary(),
         )
         self._assert_fail_no_file(mesh, tmp_path, match="外边界")
+
+
+# ===========================================================================
+# M3-9：outer_boundary 相关的 Writer 侧失败（文件打开前，不创建/截断）
+# ===========================================================================
+
+class TestHDF5OuterBoundaryFailures:
+    """outer_boundary 缺失或非法时在打开目标文件前失败。"""
+
+    def _assert_fail_no_file(self, mesh, tmp_path, match):
+        h5_path = tmp_path / "should_not_exist_ob.h5"
+        assert not h5_path.exists()
+        with pytest.raises(ValueError, match=match):
+            write_hdf5(mesh, str(h5_path), verbose=False)
+        assert not h5_path.exists(), "验证失败时不得创建或截断目标文件"
+
+    def test_missing_outer_boundary_fails(self, tmp_path):
+        # 不提供 outer_boundary（None）时，写完整 11 数据集必须失败
+        mesh = Mesh2D(
+            nodes=np.array([
+                [0.10, 0.20], [2.30, 0.15], [2.45, 1.90],
+                [0.05, 1.75], [1.20, 0.95],
+            ], dtype=np.float64),
+            triangles=np.array([
+                [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4],
+            ], dtype=np.int32),
+            region_ids=np.array([7, 7, 9, 9], dtype=np.int32),
+            # outer_boundary 默认 None
+        )
+        assert mesh.outer_boundary is None
+        self._assert_fail_no_file(mesh, tmp_path, match="outer_boundary|缺失")
+
+    def test_counterclockwise_outer_boundary_fails(self, tmp_path):
+        # 逆时针轮廓会在 Mesh2D 构造期被拒绝；此处直接断言构造失败
+        ccw = np.array([
+            [0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0],
+        ], dtype=np.float64)
+        with pytest.raises(ValueError, match="顺时针"):
+            _make_center_mesh(outer_boundary=ccw)
+
+
+# ===========================================================================
+# M3-10：round-trip 一致性（vert/tria/Rbc/Zbc 联合回读）
+# ===========================================================================
+
+class TestHDF5RoundTrip:
+    """写出后回读，联合校验核心与新增数据集一致。"""
+
+    def test_full_roundtrip_center_mesh(self, tmp_path):
+        import h5py
+        ob = _cw_outer_boundary()
+        mesh = _make_center_mesh(outer_boundary=ob)
+        h5_path = tmp_path / "mesh.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            vert = grp["vert"][:]
+            tria = grp["tria"][:]
+            rbc = grp["Rbc"][:].reshape(-1)
+            zbc = grp["Zbc"][:].reshape(-1)
+            nbcRZ = int(round(float(grp["nbcRZ"][()][0, 0])))
+
+        np.testing.assert_array_almost_equal(vert, mesh.nodes)
+        np.testing.assert_array_almost_equal(
+            tria, mesh.triangles.astype(np.float64) + 1.0
+        )
+        np.testing.assert_array_almost_equal(rbc, ob[:, 0])
+        np.testing.assert_array_almost_equal(zbc, ob[:, 1])
+        assert nbcRZ == ob.shape[0]

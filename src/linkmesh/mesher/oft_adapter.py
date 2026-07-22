@@ -15,6 +15,17 @@ oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口）。
     GFileData → build_oft_domain_from_gfile → OFT gs_Domain
              → mesh_from_oft_domain/build_mesh → pts/lc/reg → Mesh2D
 
+v2.0 M3 complete-11 新增数据流（outer boundary 捕获）：
+    build_oft_domain_from_gfile 在调用 OFT 之前，由 LinkMesh 亲手计算人工
+    outer 矩形四角坐标（LCFS 与第一壁联合包围盒 + outer_padding）。该矩形
+    四角就是"网格生成前、Steiner 插点之前"的有序最外层计算域边界几何。
+    本函数将其规范化为顺时针、隐式闭合（末尾不重复首点）的 (B,2) float64
+    有序轮廓，作为 LinkMesh 私有属性 domain._linkmesh_outer_boundary 附加在
+    返回的 domain 上（该属性不是 OFT 字段，OFT 不消费它）。
+    mesh_from_oft_domain 读取该私有属性并注入最终 Mesh2D.outer_boundary。
+    由于矩形四角是 LinkMesh 自造几何、与 build_mesh() 返回的 pts/lc 无关，
+    天然不含 OFT/Triangle 后续插入的 Steiner 点，也不依赖最终 idxevert。
+
 区域 ID 时序（重要）：
     OFT gs_Domain.build_mesh() 会根据区域类型和定义顺序重新排列区域 ID，
     并原地更新 domain.region_info[name]["id"]。因此 Adapter 必须在 build_mesh()
@@ -28,6 +39,7 @@ oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口）。
     - 不在通用核心中判断 plasma/vacuum/outer 语义，不写死区域数量/名称/类型/整数 ID；
     - 不重编号、不排序、不压缩、不执行 +1；
     - 不访问 OFT 私有下划线字段；
+    - 不用 build_mesh() 后的 pts/lc 或最终 idxevert 反推 outer boundary；
     - 不引入 Protocol、抽象基类、插件系统、通用区域配置类或额外模块。
 
 Mesh2D 兼容说明（v1.11 M2.5）：
@@ -37,12 +49,13 @@ Mesh2D 兼容说明（v1.11 M2.5）：
     空数组只是兼容占位，不表示已生成任何边界语义。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v1.9 第 5、7 节；v1.11 第 2.2、16 节（Mesh2D 解耦）
+    LinkMesh_Architecture_Plan.md v2.0 第 4、10.1 节；v1.9 第 5、7 节；
+    v1.11 第 2.2、16 节（Mesh2D 解耦）
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 
@@ -50,6 +63,11 @@ from linkmesh.mesh import Mesh2D
 
 if TYPE_CHECKING:
     from linkmesh.readers.gfile_reader import GFileData
+
+
+# LinkMesh 私有属性名：附加在 domain 上的网格生成前有序 outer boundary。
+# 该属性不是 OFT gs_Domain 的字段，OFT 不读取、不消费它。
+_OUTER_BOUNDARY_ATTR = "_linkmesh_outer_boundary"
 
 
 # --------------------------------------------------------------------------- #
@@ -111,6 +129,46 @@ def _validate_integer_semantics(arr_float: np.ndarray, name: str) -> None:
         raise ValueError(f"{name} 含非整数值，不具备整数语义")
 
 
+def _signed_area_closed(boundary: np.ndarray) -> float:
+    """对隐式闭合（末尾不重复首点）的轮廓计算带符号闭合面积（鞋带公式）。
+
+    正值为逆时针，负值为顺时针。
+    """
+    r = boundary[:, 0]
+    z = boundary[:, 1]
+    r_next = np.roll(r, -1)
+    z_next = np.roll(z, -1)
+    return 0.5 * float(np.sum(r * z_next - r_next * z))
+
+
+def _make_clockwise_rectangle_boundary(
+    rmin: float, rmax: float, zmin: float, zmax: float
+) -> np.ndarray:
+    """由矩形范围构造顺时针、隐式闭合（末尾不重复首点）的 (4,2) float64 轮廓。
+
+    这是"网格生成前、Steiner 插点之前"的实际 outer boundary 几何独立副本。
+    点序固定为顺时针，且不重复首点；同一输入范围产生确定顺序。
+
+    顺时针顺序（在 R 向右、Z 向上的常规坐标系中）：
+        (rmin,zmin) → (rmin,zmax) → (rmax,zmax) → (rmax,zmin)
+    带符号闭合面积为负，符合 Mesh2D outer_boundary 顺时针契约。
+    """
+    boundary = np.array(
+        [
+            [rmin, zmin],
+            [rmin, zmax],
+            [rmax, zmax],
+            [rmax, zmin],
+        ],
+        dtype=np.float64,
+    )
+    # 防御：若坐标系约定导致方向相反，只允许通过反转点序规范化为顺时针，
+    # 不排序、不旋转到固定起点、不重复首点。
+    if _signed_area_closed(boundary) >= 0:
+        boundary = boundary[::-1].copy()
+    return boundary
+
+
 # --------------------------------------------------------------------------- #
 # 1. 通用 N 区域核心                                                            #
 # --------------------------------------------------------------------------- #
@@ -125,11 +183,21 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         4. build_mesh() 成功后重新读取 domain.region_info，
            提取 OFT 最终区域 ID 集合（build_mesh 会原地重排区域 ID）；
         5. 规范化并验证输出，用最终区域 ID 集合校验 reg；
-        6. 构造 Mesh2D。
+        6. 若 domain 携带 LinkMesh 私有的网格生成前有序 outer boundary
+           （由 build_oft_domain_from_gfile 附加），读取其独立副本注入 Mesh2D；
+        7. 构造 Mesh2D。
 
     对任意正区域数量 N 通用，包括 N=1、N=2、N=3、N>3，无特殊分支。
     不判断 LCFS/第一壁/plasma/vacuum/outer，不写死区域名称/类型/数量/整数 ID。
     不重编号、不排序、不压缩、不执行 +1。
+
+    outer boundary 时序（关键）：
+        outer boundary 从 domain 上的 LinkMesh 私有属性读取，该属性由
+        build_oft_domain_from_gfile 在 build_mesh() 之前构造并附加，
+        因此只包含网格生成前的原始几何点，绝不含 build_mesh() 插入的
+        Steiner 点，也绝不从最终 pts/lc/idxevert 反推。
+        当 domain 未携带该属性（例如受控测试直接构造 Domain）时，
+        Mesh2D.outer_boundary 保持 None（未提供）。
 
     区域 ID 时序（关键）：
         OFT build_mesh() 会根据区域类型和定义顺序重排区域 ID，并原地更新
@@ -140,7 +208,8 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         domain: 已由调用方构造完成的 OFT gs_Domain 对象
 
     返回：
-        Mesh2D 对象（核心三数组 nodes/triangles/region_ids，兼容空边界数组）
+        Mesh2D 对象（核心三数组 nodes/triangles/region_ids，兼容空边界数组，
+        可选 outer_boundary）
 
     异常：
         ValueError: 输出不满足契约（形状、dtype、索引范围、退化、区域集合等），
@@ -156,6 +225,11 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
     # 因为 build_mesh() 会原地重排区域 ID。
     if not hasattr(domain, "region_info"):
         raise TypeError("domain 必须提供可读取的 region_info 属性")
+
+    # --- 在调用 build_mesh() 之前读取 LinkMesh 私有 outer boundary（若存在）---
+    # 该属性是网格生成前的几何，读取时机与 build_mesh 无关；这里在生成前读取，
+    # 进一步确保绝不受 Steiner 插点影响。
+    outer_boundary = _extract_prebuild_outer_boundary(domain)
 
     # --- Step 2：调用且只调用一次 build_mesh() ---
     result = build_mesh()
@@ -255,7 +329,7 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         if rid not in actual_ids:
             raise ValueError(f"区域 ID {rid} 未对应任何三角形")
 
-    # --- Step 6：构造 Mesh2D（兼容旧六字段构造签名）---
+    # --- Step 6/7：构造 Mesh2D（兼容旧六字段构造签名，附加 outer_boundary）---
     mesh = Mesh2D(
         nodes=nodes,
         triangles=triangles,
@@ -263,8 +337,28 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         boundary_segments=np.empty((0, 2), dtype=np.int32),
         boundary_markers=np.empty((0,), dtype=np.int32),
         node_markers=np.empty((0,), dtype=np.int32),
+        outer_boundary=outer_boundary,
     )
     return mesh
+
+
+def _extract_prebuild_outer_boundary(domain: Any) -> Optional[np.ndarray]:
+    """从 domain 读取 LinkMesh 私有的网格生成前有序 outer boundary 独立副本。
+
+    该属性由 build_oft_domain_from_gfile 在 build_mesh() 之前构造并附加，
+    只包含网格生成前的原始几何点，不含 Steiner 点。返回独立 float64 副本，
+    避免与 domain 上的数组共享内存。若 domain 未携带该属性，返回 None。
+
+    参数：
+        domain: OFT gs_Domain 对象
+
+    返回：
+        (B,2) float64 独立副本，或 None（domain 未携带时）
+    """
+    ob = getattr(domain, _OUTER_BOUNDARY_ATTR, None)
+    if ob is None:
+        return None
+    return np.array(ob, dtype=np.float64, copy=True)
 
 
 def _extract_region_ids(region_info: Any) -> set:
@@ -362,6 +456,14 @@ def build_oft_domain_from_gfile(
     本函数不调用 build_mesh()，不转换 pts/lc/reg，不复制 OFT 的重采样、
     点合并、种子搜索或 Triangle 算法。
 
+    outer boundary 捕获（v2.0）：
+        人工 outer 矩形四角坐标由 LinkMesh 在调用 OFT 之前用纯 numpy 算出，
+        这正是"网格生成前、Steiner 插点之前"的有序最外层计算域边界几何。
+        本函数将其规范化为顺时针、隐式闭合（末尾不重复首点）的 (4,2) float64
+        有序轮廓，作为 LinkMesh 私有属性附加在返回 domain 上，供
+        mesh_from_oft_domain 注入 Mesh2D.outer_boundary。矩形形状、outer_padding
+        与区域策略均不改变。
+
     参数：
         gfile_data:    GFileData 对象（含 lcfs_r/lcfs_z，可选 wall_r/wall_z）
         plasma_dx:     plasma 区域网格尺度（有限正数）
@@ -370,7 +472,8 @@ def build_oft_domain_from_gfile(
         outer_padding: 人工 outer 矩形四侧扩展比例（有限非负数）
 
     返回：
-        已构造但尚未 build_mesh() 的 OFT gs_Domain 对象
+        已构造但尚未 build_mesh() 的 OFT gs_Domain 对象，
+        并附加 LinkMesh 私有属性（网格生成前有序 outer boundary）
 
     异常：
         ValueError: 参数或轮廓非法
@@ -441,6 +544,12 @@ def build_oft_domain_from_gfile(
             f"人工 outer 矩形尺寸非法：宽={rect_w}，高={rect_h}"
         )
 
+    # --- 捕获网格生成前的有序 outer boundary（顺时针、隐式闭合、不重复首点）---
+    # 这是 LinkMesh 亲手构造、尚未进入 OFT/Triangle 的实际最外层几何独立副本。
+    outer_boundary = _make_clockwise_rectangle_boundary(
+        rect_rmin, rect_rmax, rect_zmin, rect_zmax
+    )
+
     # --- 构造 OFT Domain（延迟导入）---
     gs_Domain = _load_gs_domain_class()
     domain = gs_Domain()
@@ -458,8 +567,17 @@ def build_oft_domain_from_gfile(
         # 无壁两区域：PLASMA + OUTER
         domain.add_polygon(lcfs, "plasma", parent_name="outer")
 
-    # 人工 outer rectangle
+    # 人工 outer rectangle（形状/尺寸/名称不变）
     domain.add_rectangle(rect_rc, rect_zc, rect_w, rect_h, name="outer")
+
+    # 将网格生成前有序 outer boundary 作为 LinkMesh 私有属性附加在 domain 上。
+    # OFT 不消费该属性；仅供 mesh_from_oft_domain 注入 Mesh2D.outer_boundary。
+    try:
+        setattr(domain, _OUTER_BOUNDARY_ATTR, outer_boundary)
+    except (AttributeError, TypeError):
+        # 极少数情况下 domain 不允许附加任意属性；此时不阻断网格生成，
+        # outer boundary 将在 mesh_from_oft_domain 中表现为未提供（None）。
+        pass
 
     return domain
 
@@ -530,6 +648,8 @@ def generate_mesh(
     """CLI 便利入口：只组合 build_oft_domain_from_gfile 与 mesh_from_oft_domain。
 
     本函数不包含第二套输入规范化、输出验证、区域判断或网格算法。
+    网格生成前有序 outer boundary 由 build_oft_domain_from_gfile 附加在 domain 上，
+    并由 mesh_from_oft_domain 注入最终 Mesh2D.outer_boundary。
 
     参数：
         gfile_data:    GFileData 对象

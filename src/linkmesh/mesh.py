@@ -14,17 +14,27 @@ mesh.py —— LinkMesh 唯一正式内存网格对象模块。
       的 +1）由目标 Writer 在写出阶段自行完成；
     - region_ids 原样保存 OFT 最终区域编号，不重编号、不排序、不压缩、不 +1。
 
+v2.0 M3 complete-11 新增：
+    - 新增正式字段 outer_boundary（有序、顺时针、隐式闭合的最外层计算域
+      几何边界），供 TRIMEG HDF5 Writer 写出 nbcRZ/Rbc/Zbc。
+    - outer_boundary 与现有兼容字段 boundary_segments/boundary_markers/
+      node_markers 语义不同、名称不同，互不替代。
+    - outer_boundary 为可选字段，默认 None（表示"未提供"）；仅当提供时
+      在 __post_init__ 中执行集中式验证。空/None 不是合法几何状态，
+      不得被当作合法 outer boundary 写入 TRIMEG HDF5。
+
 模块依赖边界（铁律）：
     本模块不得依赖 OFT、Python Triangle、h5py、PUMI、CLI、Plotter、Reader
     或任何 Writer，也不得引入任何网格生成后端。仅依赖 numpy 与标准库。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v1.11 第 2.2 节、第 16 节 M2.5
+    LinkMesh_Architecture_Plan.md v2.0 第 3.2 节；v1.11 第 2.2 节、第 16 节 M2.5
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
 
@@ -75,8 +85,27 @@ class Mesh2D:
         参与 v1.11 M3 HDF5 契约。保留字段定义以维持与现有过渡代码的兼容性。
         使用 default_factory 避免不同实例共享同一可变 NumPy 默认数组。
 
-    本数据类不在构造时复制、重排、转换或校验输入数组；边界校验分别由
-    OFT Adapter 和各 Writer 承担。
+    outer_boundary（v2.0 M3 complete-11 新增正式字段）：
+        含义   ← 传入网格生成器的、有序、最外层计算域几何边界点，
+                 一条简单闭合轮廓，用于写出 TRIMEG HDF5 的 nbcRZ/Rbc/Zbc。
+        shape  ← (B, 2)，第 0 列 R，第 1 列 Z，单位 m
+        dtype  ← float64
+        闭合   ← 末尾不重复首点，最后一点与第一点隐式闭合
+        方向   ← 顺时针（带符号闭合面积严格为负）
+        约束   ← B>=3，坐标全有限，至少 3 个互异点，无相邻重复点，
+                 首尾不同（闭合边非零），面积非退化，P0 仅一条闭合轮廓
+        非语义 ← 不包含 OFT/Triangle 后续插入的边界 Steiner 点；
+                 不等同于最终拓扑外边界节点集合 idxevert；
+                 B 可小于最终 nvert_ex；不是按节点编号升序的坐标表。
+        与兼容字段区别 ← 与 boundary_segments/boundary_markers/node_markers
+                 语义不同、名称不同、互不替代。
+        默认   ← None（表示"未提供"，不是合法几何）。仅当提供（非 None）时
+                 在 __post_init__ 中执行集中验证并规范化为 float64。
+                 空数组/None 不得被写入 TRIMEG HDF5。
+
+    本数据类除对 outer_boundary（若提供）执行集中验证外，不在构造时复制、
+    重排、转换或校验核心/兼容输入数组；这些边界校验分别由 OFT Adapter 和
+    各 Writer 承担。
     """
 
     # M2 正式核心字段（来自 OFT build_mesh() 返回值）
@@ -89,6 +118,18 @@ class Mesh2D:
     boundary_segments: np.ndarray = field(default_factory=_empty_segments)  # shape=(0,2) int32
     boundary_markers: np.ndarray = field(default_factory=_empty_markers)    # shape=(0,) int32
     node_markers: np.ndarray = field(default_factory=_empty_markers)        # shape=(0,) int32
+
+    # v2.0 新增正式字段：有序最外层计算域边界几何（可选，默认 None）
+    outer_boundary: Optional[np.ndarray] = None                             # shape=(B,2) float64 或 None
+
+    def __post_init__(self) -> None:
+        """仅对 outer_boundary（若提供）执行集中验证并规范化为 float64。
+
+        核心字段与兼容字段维持既有"不在构造期校验"的行为，本方法不触碰它们。
+        outer_boundary 为 None 时视为"未提供"，跳过全部验证（不作为合法几何）。
+        """
+        if self.outer_boundary is not None:
+            self.outer_boundary = _validate_outer_boundary(self.outer_boundary)
 
     @property
     def n_nodes(self) -> int:
@@ -104,3 +145,102 @@ class Mesh2D:
     def n_boundary_segments(self) -> int:
         """边界线段总数。"""
         return self.boundary_segments.shape[0]
+
+
+def _signed_area_closed(boundary: np.ndarray) -> float:
+    """对隐式闭合（末尾不重复首点）的轮廓计算带符号闭合面积（鞋带公式）。
+
+    约定：正值为逆时针，负值为顺时针。最后一点到第一点的隐式闭合边参与求和。
+
+    参数：
+        boundary: (B,2) float64 数组，末尾不重复首点
+
+    返回：
+        带符号面积（float）
+    """
+    r = boundary[:, 0]
+    z = boundary[:, 1]
+    r_next = np.roll(r, -1)
+    z_next = np.roll(z, -1)
+    return 0.5 * float(np.sum(r * z_next - r_next * z))
+
+
+def _validate_outer_boundary(outer_boundary_in) -> np.ndarray:
+    """验证并返回规范化后的 outer_boundary（float64，(B,2)，顺时针，隐式闭合）。
+
+    集中式验证（不修改坐标顺序，不复制首点，不排序，不规定固定起点）：
+        1. 可转换为 NumPy 数组；
+        2. 二维 (B,2)；
+        3. B >= 3；
+        4. 规范化 dtype 为 float64；
+        5. 所有坐标有限（无 NaN/Inf）；
+        6. 至少 3 个互异点；
+        7. 相邻点不重复（含首尾相邻的隐式闭合边端点比较由第 8 步覆盖）；
+        8. 首点与末点不同（末尾不重复首点，闭合边长度非零）；
+        9. 带符号闭合面积严格为负（顺时针）；
+        10. 面积非退化（严格大于 1e-12，且第 9 步已保证为负）。
+
+    参数：
+        outer_boundary_in: 待验证的 outer boundary 输入
+
+    返回：
+        (B,2) float64 数组
+
+    异常：
+        ValueError: 不满足上述任一约束
+    """
+    ob = np.asarray(outer_boundary_in, dtype=np.float64)
+
+    # 2. 二维 (B,2)
+    if ob.ndim != 2:
+        raise ValueError(
+            f"outer_boundary 必须是二维数组，实际 ndim={ob.ndim}"
+        )
+    if ob.shape[1] != 2:
+        raise ValueError(
+            f"outer_boundary 必须为 (B,2)，实际 shape={ob.shape}"
+        )
+
+    b = ob.shape[0]
+    # 3. B >= 3
+    if b < 3:
+        raise ValueError(
+            f"outer_boundary 至少需要 3 个点（B>=3），实际 B={b}"
+        )
+
+    # 5. 有限性
+    if not np.all(np.isfinite(ob)):
+        raise ValueError("outer_boundary 含非有限值（NaN/Inf）")
+
+    # 8. 首尾不同（末尾不重复首点，闭合边非零）
+    if np.array_equal(ob[0], ob[-1]):
+        raise ValueError(
+            "outer_boundary 首点与末点相同：应隐式闭合，末尾不得重复首点"
+        )
+
+    # 7. 相邻点不重复（相邻显式点对，不含隐式闭合边——闭合边由第 8 步保证非零）
+    diffs = np.diff(ob, axis=0)
+    seg_len_sq = np.sum(diffs * diffs, axis=1)
+    if np.any(seg_len_sq == 0.0):
+        raise ValueError("outer_boundary 存在相邻重复点（零长度边）")
+
+    # 6. 至少 3 个互异点
+    unique_pts = np.unique(ob, axis=0)
+    if unique_pts.shape[0] < 3:
+        raise ValueError(
+            f"outer_boundary 互异点不足 3 个，实际互异点数={unique_pts.shape[0]}"
+        )
+
+    # 9 & 10. 带符号闭合面积严格为负（顺时针）且非退化
+    area = _signed_area_closed(ob)
+    if abs(area) <= 1e-12:
+        raise ValueError(
+            f"outer_boundary 面积退化（近零或共线）：signed_area={area}"
+        )
+    if area >= 0:
+        raise ValueError(
+            "outer_boundary 方向必须为顺时针（带符号闭合面积应严格为负），"
+            f"实际 signed_area={area}（逆时针或退化）"
+        )
+
+    return ob

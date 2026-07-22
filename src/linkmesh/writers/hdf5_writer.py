@@ -1,11 +1,11 @@
 """
-hdf5_writer.py —— 第一战役：TRIMEG HDF5 静态网格写出器（v1.11 正式契约）。
+hdf5_writer.py —— 第一战役：TRIMEG HDF5 静态网格写出器（v2.0 完整 11 数据集契约）。
 
 职责：
     - 接收 Mesh2D 对象
     - 严格对照 docs/trimeg/loadfemmesh_h5.m 与两个真实样例
       （femmesh_65402_t1_nr16core.h5 / femmesh_65402_t1_nr16nout4edge.h5）
-    - 按 v1.11 TRIMEG HDF5 契约写出 8 个核心数据集
+    - 按 v2.0 TRIMEG HDF5 契约写出完整 11 个数据集
 
 禁止事项：
     - 不得修改 Mesh2D 对象
@@ -14,29 +14,31 @@ hdf5_writer.py —— 第一战役：TRIMEG HDF5 静态网格写出器（v1.11 �
     - 不得对 vert/tria 转置
     - 不得写 tria 第四列
     - 不得访问旧 boundary_segments / boundary_markers / node_markers
+    - 不得由 idxevert 反推 Rbc/Zbc；不得把 Steiner 点加入 Rbc/Zbc
+    - 不得要求 nbcRZ == nvert_ex；不得把 Rbc/Zbc 转置成 (1,B)；不得重复首点
 
-v1.11 M3 契约（依据 loadfemmesh_h5.m 与两个真实样例，均为已确认事实）：
-    - MATLAB 消费端无条件读取 8 个核心数据集；nbcRZ/Rbc/Zbc 为可选，缺失只 warning。
-    - 8 个核心数据集磁盘 dtype 全部为 float64（计数/连接表/索引均以 float64 存储，
-      虽具整数语义）。
-    - 磁盘 shape：
-          nvert/ntria/nvert_in/nvert_ex 均为 (1,1)
+v2.0 M3 complete-11 契约（依据 loadfemmesh_h5.m 与两个真实样例，均为已确认事实）：
+    完整 11 数据集（全部磁盘 dtype float64，位于 /femmesh/）：
+        nvert ntria nvert_in nvert_ex vert idxivert idxevert tria nbcRZ Rbc Zbc
+    - 8 核心数据集契约保持不变：
+          nvert/ntria/nvert_in/nvert_ex 均 (1,1)
           vert     = (N,2)，每行 [R,Z]，不转置
-          tria     = (T,3)，1-based，无第四列
+          tria     = (T,3)，1-based（triangles+1），无第四列
           idxivert = (1,nvert_in)，1-based，升序
-          idxevert = (1,nvert_ex)，1-based，升序
-    - idxevert 为三角形无向边拓扑外边界节点（无向边只出现一次的边所含节点）的
-      升序 1-based 集合；idxivert 为其在 {1..N} 中的升序补集。
-      不由 LCFS/第一壁/region ID/node_markers/文件名推断。
-    - 关于 MATLAB 中的 h5read(...).' ：那是 MATLAB/HDF5 维度解释（列优先）问题，
-      不能反向推导 Python Writer 必须转置。h5py 磁盘 shape 直接按上表写出。
+          idxevert = (1,nvert_ex)，1-based，升序（只出现一次的无向边端点集合）
+    - 新增 3 数据集：
+          nbcRZ = (1,1)，值为 B（整数语义），float64
+          Rbc   = (B,1)，内容为 mesh.outer_boundary[:,0]
+          Zbc   = (B,1)，内容为 mesh.outer_boundary[:,1]
+    - Rbc/Zbc 来自有序 mesh.outer_boundary（网格生成前几何），
+      不由升序 idxevert 反推，不含生成器后插入的 Steiner 边界点；
+      nbcRZ 可等于或小于 nvert_ex（不要求相等）。
 
-关于旧契约（v1.11 全篇撤销，已被真实样例否定，禁止再据其编码）：
-    - vert=(2,N)、tria=(4,T)、Writer 转置 vert/tria、tria 第四列写 region_id、
-      11 数据集全必需、用 node_markers 生成 idxivert/idxevert 等表述均已废止。
+关于 MATLAB 中的 h5read(...).' ：那是 MATLAB/HDF5 维度解释（列优先）问题，
+不能反向推导 Python Writer 必须转置。h5py 磁盘 shape 直接按上表写出。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v1.11 第 4.1 节、第 9 节
+    LinkMesh_Architecture_Plan.md v2.0 第 5、9、10.1 节
     docs/trimeg/loadfemmesh_h5.m（黄金标尺，只读）
 """
 
@@ -154,6 +156,85 @@ def _validate_triangle_areas(nodes: np.ndarray, triangles: np.ndarray) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# 内部辅助：outer_boundary 验证（用于 nbcRZ/Rbc/Zbc）                           #
+# --------------------------------------------------------------------------- #
+
+def _signed_area_closed(boundary: np.ndarray) -> float:
+    """对隐式闭合（末尾不重复首点）的轮廓计算带符号闭合面积（鞋带公式）。
+
+    正值为逆时针，负值为顺时针。
+    """
+    r = boundary[:, 0]
+    z = boundary[:, 1]
+    r_next = np.roll(r, -1)
+    z_next = np.roll(z, -1)
+    return 0.5 * float(np.sum(r * z_next - r_next * z))
+
+
+def _validate_outer_boundary(outer_boundary_in) -> np.ndarray:
+    """验证并返回 (B,2) float64 outer_boundary（顺时针、隐式闭合、不重复首点）。
+
+    该验证与 Mesh2D 集中验证同义，作为 Writer 侧独立防线（Writer 不得依赖
+    上游是否已验证，也不修改输入）。
+
+    要求：
+        - outer_boundary 不为 None；
+        - 二维 (B,2)；
+        - B >= 3；
+        - float64 可转换、全有限；
+        - 至少 3 个互异点；
+        - 相邻点不重复；
+        - 首点与末点不同（末尾不重复首点）；
+        - 带符号闭合面积严格为负（顺时针）且非退化。
+
+    返回：
+        (B,2) float64 数组
+
+    异常：
+        ValueError: 缺失或不满足上述任一约束
+    """
+    if outer_boundary_in is None:
+        raise ValueError(
+            "mesh.outer_boundary 缺失（None）：写出完整 11 数据集需要有序 outer boundary"
+        )
+
+    ob = np.asarray(outer_boundary_in, dtype=np.float64)
+    if ob.ndim != 2:
+        raise ValueError(f"outer_boundary 必须是二维数组，实际 ndim={ob.ndim}")
+    if ob.shape[1] != 2:
+        raise ValueError(f"outer_boundary 必须为 (B,2)，实际 shape={ob.shape}")
+    b = ob.shape[0]
+    if b < 3:
+        raise ValueError(f"outer_boundary 至少需要 3 个点（B>=3），实际 B={b}")
+    if not np.all(np.isfinite(ob)):
+        raise ValueError("outer_boundary 含非有限值（NaN/Inf）")
+    if np.array_equal(ob[0], ob[-1]):
+        raise ValueError(
+            "outer_boundary 首点与末点相同：应隐式闭合，末尾不得重复首点"
+        )
+    diffs = np.diff(ob, axis=0)
+    seg_len_sq = np.sum(diffs * diffs, axis=1)
+    if np.any(seg_len_sq == 0.0):
+        raise ValueError("outer_boundary 存在相邻重复点（零长度边）")
+    unique_pts = np.unique(ob, axis=0)
+    if unique_pts.shape[0] < 3:
+        raise ValueError(
+            f"outer_boundary 互异点不足 3 个，实际互异点数={unique_pts.shape[0]}"
+        )
+    area = _signed_area_closed(ob)
+    if abs(area) <= 1e-12:
+        raise ValueError(
+            f"outer_boundary 面积退化（近零或共线）：signed_area={area}"
+        )
+    if area >= 0:
+        raise ValueError(
+            "outer_boundary 方向必须为顺时针（带符号闭合面积应严格为负），"
+            f"实际 signed_area={area}"
+        )
+    return ob
+
+
+# --------------------------------------------------------------------------- #
 # 内部辅助：拓扑外边界节点提取                                                  #
 # --------------------------------------------------------------------------- #
 
@@ -235,18 +316,17 @@ def _extract_boundary_indices(triangles: np.ndarray, n_nodes: int):
 # --------------------------------------------------------------------------- #
 
 def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
-    """将 Mesh2D 对象写出为 TRIMEG 标准 HDF5 静态网格文件（v1.11 契约）。
+    """将 Mesh2D 对象写出为 TRIMEG 标准 HDF5 静态网格文件（v2.0 完整 11 数据集）。
 
     黄金标尺：docs/trimeg/loadfemmesh_h5.m + 两个真实样例。
-    只写 8 个核心数据集，全部磁盘 dtype 为 float64；默认不写可选的
-    nbcRZ/Rbc/Zbc（MATLAB 允许缺失，仅产生预期 warning）。
+    写出完整 11 个数据集，全部磁盘 dtype 为 float64。
 
     参数：
-        mesh:     Mesh2D 对象（内部三角形索引全部为 0-based）
+        mesh:     Mesh2D 对象（内部三角形索引全部为 0-based，含有序 outer_boundary）
         filepath: 输出 .h5 文件路径（若已存在则覆盖）
         verbose:  是否打印写出完成信息（默认 True）
 
-    写出的 HDF5 结构（8 核心，磁盘 shape / dtype）：
+    写出的 HDF5 结构（11 数据集，磁盘 shape / dtype）：
         /femmesh/nvert      (1,1) float64   节点总数 N（整数语义）
         /femmesh/ntria      (1,1) float64   三角形总数 T（整数语义）
         /femmesh/nvert_in   (1,1) float64   内部节点数 nvert_in
@@ -255,19 +335,27 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
         /femmesh/idxivert   (1,nvert_in) float64  内部节点全局索引，1-based，升序
         /femmesh/idxevert   (1,nvert_ex) float64  外边界节点全局索引，1-based，升序
         /femmesh/tria       (T,3) float64   三角形连接表，1-based，无第四列
+        /femmesh/nbcRZ      (1,1) float64   有序 outer boundary 点数 B（整数语义）
+        /femmesh/Rbc        (B,1) float64   mesh.outer_boundary[:,0]
+        /femmesh/Zbc        (B,1) float64   mesh.outer_boundary[:,1]
 
     索引与偏置约定：
         - mesh.triangles 内部保持 0-based；
         - tria 写出 (mesh.triangles + 1).astype(float64)（1-based，不转置，无第四列）；
         - region_ids 不写入 TRIMEG HDF5。
 
-    重要：全部输入验证、面积检查、边统计、非流形检查、拓扑索引派生与集合一致性
-    检查均在打开/覆盖目标文件之前完成；任一失败时不创建或截断目标文件。
+    Rbc/Zbc/nbcRZ 约定：
+        - 直接读 mesh.outer_boundary（有序、顺时针、隐式闭合、不重复首点）；
+        - 不由升序 idxevert 反推；不含 Steiner 点；nbcRZ=B 可小于 nvert_ex。
+
+    重要：全部输入验证（含 outer_boundary）、面积检查、边统计、非流形检查、
+    拓扑索引派生与集合一致性检查均在打开/覆盖目标文件之前完成；任一失败时
+    不创建或截断目标文件。
 
     异常：
         ImportError: h5py 不可用（保留原始异常链）
-        ValueError:  输入不满足 v1.11 契约（shape/有限值/整数语义/索引范围/退化/
-                     非流形/无拓扑外边界/集合一致性等）
+        ValueError:  输入不满足 v2.0 契约（shape/有限值/整数语义/索引范围/退化/
+                     非流形/无拓扑外边界/集合一致性/outer_boundary 非法等）
     """
     # ------------------------------------------------------------------ #
     # Step 1：全部验证与拓扑派生（在打开文件之前）                          #
@@ -284,8 +372,12 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
     nvert_in = int(idxivert.shape[0])
     nvert_ex = int(idxevert.shape[0])
 
+    # outer_boundary 验证（在打开文件之前；Writer 独立防线，不修改输入）
+    outer_boundary = _validate_outer_boundary(getattr(mesh, "outer_boundary", None))
+    n_bc = int(outer_boundary.shape[0])  # B
+
     # ------------------------------------------------------------------ #
-    # Step 2：组装 8 个核心磁盘数组（全部 float64）                         #
+    # Step 2：组装 11 个磁盘数组（全部 float64）                            #
     # ------------------------------------------------------------------ #
     # 计数标量：二维单元素数组 (1,1)，不得写成 HDF5 标量
     nvert_ds = np.array([[n_nodes]], dtype=np.float64)
@@ -304,6 +396,13 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
     idxivert_ds = idxivert.astype(np.float64).reshape(1, nvert_in)
     idxevert_ds = idxevert.astype(np.float64).reshape(1, nvert_ex)
 
+    # nbcRZ：(1,1) float64，值为 B（整数语义）
+    nbcRZ_ds = np.array([[n_bc]], dtype=np.float64)
+
+    # Rbc / Zbc：(B,1) float64，直接取 outer_boundary 两列（不转置成 (1,B)，不重复首点）
+    Rbc_ds = outer_boundary[:, 0].astype(np.float64).reshape(n_bc, 1)
+    Zbc_ds = outer_boundary[:, 1].astype(np.float64).reshape(n_bc, 1)
+
     # ------------------------------------------------------------------ #
     # Step 3：延迟导入 h5py 并写出（覆盖语义）                              #
     # ------------------------------------------------------------------ #
@@ -318,6 +417,7 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
     with h5py.File(filepath, "w") as f:
         grp = f.create_group("femmesh")
 
+        # 8 核心数据集
         grp.create_dataset("nvert",    data=nvert_ds)
         grp.create_dataset("ntria",    data=ntria_ds)
         grp.create_dataset("nvert_in", data=nvert_in_ds)
@@ -327,11 +427,15 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
         grp.create_dataset("idxevert", data=idxevert_ds)
         grp.create_dataset("tria",     data=tria_ds)
 
-        # 默认不写可选数据集 nbcRZ / Rbc / Zbc（v1.11）。
+        # 新增 3 数据集（v2.0 完整 11 数据集）
+        grp.create_dataset("nbcRZ",    data=nbcRZ_ds)
+        grp.create_dataset("Rbc",      data=Rbc_ds)
+        grp.create_dataset("Zbc",      data=Zbc_ds)
 
     if verbose:
         print(
             f"HDF5 写出完成：{filepath}，"
             f"节点数: {n_nodes}，三角形数: {n_triangles}，"
-            f"内部节点数: {nvert_in}，外边界节点数: {nvert_ex}"
+            f"内部节点数: {nvert_in}，外边界节点数: {nvert_ex}，"
+            f"outer boundary 点数: {n_bc}"
         )

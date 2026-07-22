@@ -1,5 +1,5 @@
 """
-tests/test_mesh.py —— M2.5 Mesh2D 独立数据模型验收测试。
+tests/test_mesh.py —— M2.5 Mesh2D 独立数据模型验收测试（v2.0 扩充 outer_boundary）。
 
 测试原则：
     - 只针对 linkmesh.mesh.Mesh2D 数据模型；
@@ -14,7 +14,13 @@ tests/test_mesh.py —— M2.5 Mesh2D 独立数据模型验收测试。
     3. 三个兼容字段自动得到正确空 shape 和 dtype；
     4. n_nodes / n_triangles / n_boundary_segments 返回正确值；
     5-7. 两个分别构造的实例不共享兼容默认数组；
-    8. 显式传入兼容数组时旧构造方式仍可用。
+    8. 显式传入兼容数组时旧构造方式仍可用；
+    9. outer_boundary 默认 None（未提供）；
+    10. 合法顺时针 outer_boundary 构造与 (B,2)/float64/数值不被意外修改；
+    11. 末尾不重复首点；
+    12. 逆时针被拒绝；少于 3 点被拒绝；非 (B,2) 被拒绝；NaN/Inf 被拒绝；
+        相邻重复点被拒绝；首尾重复点被拒绝；零面积/共线被拒绝；
+    13. 不同实例不共享 outer_boundary 数组。
 
 v1.12 历史 Python Triangle 路径删除说明：
     旧 Wrapper（linkmesh.mesher.triangle_wrapper）已删除，其重导出身份断言
@@ -27,6 +33,7 @@ v1.12 历史 Python Triangle 路径删除说明：
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 
 # --------------------------------------------------------------------------- #
@@ -47,6 +54,31 @@ def _core_arrays():
     ], dtype=np.int32)
     region_ids = np.array([1, 2], dtype=np.int32)
     return nodes, triangles, region_ids
+
+
+def _cw_boundary():
+    """构造合法顺时针、隐式闭合（末尾不重复首点）的 (4,2) outer boundary。
+
+    顺时针顺序（R 向右、Z 向上）：
+        (0,0) → (0,1) → (1,1) → (1,0)
+    带符号闭合面积为负（顺时针）。
+    """
+    return np.array([
+        [0.0, 0.0],
+        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, 0.0],
+    ], dtype=np.float64)
+
+
+def _ccw_boundary():
+    """构造逆时针（带符号面积为正）的 (4,2) 轮廓，用于拒绝测试。"""
+    return np.array([
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+    ], dtype=np.float64)
 
 
 # --------------------------------------------------------------------------- #
@@ -180,3 +212,172 @@ class TestMeshExplicitCompatConstruction:
         assert mesh.boundary_markers is boundary_markers
         assert mesh.node_markers is node_markers
         assert mesh.n_boundary_segments == 2
+
+
+# --------------------------------------------------------------------------- #
+# 9. outer_boundary 默认与合法构造                                              #
+# --------------------------------------------------------------------------- #
+
+class TestMeshOuterBoundaryDefaultAndValid:
+    def test_outer_boundary_default_none(self):
+        """不提供 outer_boundary 时默认 None（未提供，不作为合法几何）。"""
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        mesh = Mesh2D(nodes=nodes, triangles=triangles, region_ids=region_ids)
+        assert mesh.outer_boundary is None
+
+    def test_valid_clockwise_boundary_accepted(self):
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        ob = _cw_boundary()
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob,
+        )
+        assert mesh.outer_boundary is not None
+        assert mesh.outer_boundary.ndim == 2
+        assert mesh.outer_boundary.shape == (4, 2)
+
+    def test_outer_boundary_dtype_float64(self):
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        # 传入整数轮廓，构造后应规范化为 float64
+        ob_int = np.array([[0, 0], [0, 1], [1, 1], [1, 0]], dtype=np.int64)
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob_int,
+        )
+        assert mesh.outer_boundary.dtype == np.float64
+
+    def test_outer_boundary_values_preserved(self):
+        """数值不被意外修改（顺序与坐标保持）。"""
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        ob = _cw_boundary()
+        expected = ob.copy()
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob,
+        )
+        np.testing.assert_array_equal(mesh.outer_boundary, expected)
+
+    def test_outer_boundary_last_not_equal_first(self):
+        """末尾不重复首点（合法输入本就不重复，验证保持）。"""
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        ob = _cw_boundary()
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob,
+        )
+        assert not np.array_equal(
+            mesh.outer_boundary[0], mesh.outer_boundary[-1]
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 10. outer_boundary 非法输入被拒绝                                             #
+# --------------------------------------------------------------------------- #
+
+class TestMeshOuterBoundaryRejections:
+    def _construct(self, ob):
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        return Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob,
+        )
+
+    def test_counterclockwise_rejected(self):
+        with pytest.raises(ValueError, match="顺时针"):
+            self._construct(_ccw_boundary())
+
+    def test_fewer_than_three_points_rejected(self):
+        ob = np.array([[0.0, 0.0], [1.0, 0.0]], dtype=np.float64)
+        with pytest.raises(ValueError, match="3"):
+            self._construct(ob)
+
+    def test_not_bx2_rejected(self):
+        ob = np.array([[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+                      dtype=np.float64)
+        with pytest.raises(ValueError, match=r"\(B,2\)"):
+            self._construct(ob)
+
+    def test_one_dimensional_rejected(self):
+        ob = np.array([0.0, 1.0, 2.0], dtype=np.float64)
+        with pytest.raises(ValueError, match="二维"):
+            self._construct(ob)
+
+    def test_nan_rejected(self):
+        ob = _cw_boundary().copy()
+        ob[1, 0] = np.nan
+        with pytest.raises(ValueError, match="有限"):
+            self._construct(ob)
+
+    def test_inf_rejected(self):
+        ob = _cw_boundary().copy()
+        ob[2, 1] = np.inf
+        with pytest.raises(ValueError, match="有限"):
+            self._construct(ob)
+
+    def test_adjacent_duplicate_point_rejected(self):
+        # 在顺时针轮廓中插入相邻重复点（零长度边）
+        ob = np.array([
+            [0.0, 0.0],
+            [0.0, 1.0],
+            [0.0, 1.0],  # 与上一点重复
+            [1.0, 1.0],
+            [1.0, 0.0],
+        ], dtype=np.float64)
+        with pytest.raises(ValueError, match="相邻重复点"):
+            self._construct(ob)
+
+    def test_first_last_duplicate_rejected(self):
+        # 首尾重复（末尾复制首点）应被拒绝
+        ob = np.array([
+            [0.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+            [0.0, 0.0],  # 重复首点
+        ], dtype=np.float64)
+        with pytest.raises(ValueError, match="首点与末点相同"):
+            self._construct(ob)
+
+    def test_collinear_zero_area_rejected(self):
+        # 三点共线，面积退化
+        ob = np.array([
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [2.0, 0.0],
+        ], dtype=np.float64)
+        with pytest.raises(ValueError, match="面积"):
+            self._construct(ob)
+
+
+# --------------------------------------------------------------------------- #
+# 11. outer_boundary 不共享                                                     #
+# --------------------------------------------------------------------------- #
+
+class TestMeshOuterBoundaryNotShared:
+    def test_two_instances_do_not_share_array(self):
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        m1 = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=_cw_boundary(),
+        )
+        m2 = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=_cw_boundary(),
+        )
+        assert m1.outer_boundary is not m2.outer_boundary
+
+    def test_default_none_instances_independent(self):
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        m1 = Mesh2D(nodes=nodes, triangles=triangles, region_ids=region_ids)
+        m2 = Mesh2D(nodes=nodes, triangles=triangles, region_ids=region_ids)
+        # 默认均为 None，互不影响
+        assert m1.outer_boundary is None
+        assert m2.outer_boundary is None
