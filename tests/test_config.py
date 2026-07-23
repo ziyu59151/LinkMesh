@@ -44,6 +44,12 @@ def _write_toml(dir_path: Path, text: str, name: str = "linkmesh.in") -> Path:
 
 
 def _overrides(**kw) -> CliOverrides:
+    """构造 CliOverrides；未在 kw 中提供的字段保持正式 UNSET sentinel。
+
+    CliOverrides 每个字段默认即为 config.UNSET（表示“CLI 未显式提供”），
+    因此仅把 kw 中显式给出的字段设值即可；不得把未提供字段设为 None，
+    否则会被生产合并逻辑误判为“用户显式提供”，从而覆盖 TOML 值。
+    """
     return CliOverrides(**kw)
 
 
@@ -294,6 +300,8 @@ class TestMerge:
         assert cfg.target == "mesh_only"
 
     def test_toml_profile_boundary_used(self, tmp_path):
+        # TOML 提供 domain 与 input.gfile；CLI 全部未显式提供（保持 UNSET），
+        # 因此 profile/boundary_source/gfile 均应采用 TOML 值。
         _write_toml(
             tmp_path,
             "schema_version = 1\n[domain]\nprofile = 'nested_three_region'\n"
@@ -302,6 +310,8 @@ class TestMerge:
         cfg = load_effective_config(_overrides(), no_config=False, cwd=tmp_path)
         assert cfg.profile == "nested_three_region"
         assert cfg.boundary_source == "artificial_outer"
+        # TOML 中的 gfile 被采用（相对配置目录解析为绝对路径）
+        assert cfg.gfile_path == (tmp_path / "g.eqdsk").resolve()
 
 
 # --------------------------------------------------------------------------- #
@@ -317,6 +327,8 @@ class TestPathResolution:
             "schema_version = 1\n[input]\ngfile = 'eq.gfile'\n",
             name="custom.in",
         )
+        # CLI 不显式提供 gfile（保持 UNSET），使 TOML 的相对 gfile 生效；
+        # 该相对路径应相对配置文件所在目录（sub）解析。
         cfg = load_effective_config(
             _overrides(profile="nested_three_region",
                        boundary_source="artificial_outer"),

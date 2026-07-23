@@ -431,9 +431,10 @@ class TestCombinations:
         assert mocks["write_hdf5"].call_count == 1
         assert mocks["plot_mesh"].call_count == 1
         assert mocks["write_smb"].call_count == 0
-        # HDF5 输出路径为用户指定（现为规范化绝对路径，用 basename 核对）
+        # 生产调用契约为 write_hdf5(mesh, filepath)：mesh 在位置 0，路径在位置 1。
+        # HDF5 输出路径为用户指定（现为规范化绝对路径，用 basename 核对）。
         w_posargs, _ = mocks["write_hdf5"].call_args
-        assert str(w_posargs[0]).endswith("out.h5")
+        assert str(w_posargs[1]).endswith("out.h5")
 
     def test_default_flow_unchanged_when_new_params_absent(self, monkeypatch, tmp_path):
         # 不提供新参数时，既有默认 CLI 流程不变：转发默认 dx，且默认写 HDF5 + SMB
