@@ -21,7 +21,7 @@ LinkMesh 是一个**独立命令行程序（CLI）**，用于打通「等离子�
 **正式数据流**：
 
 ```text
-GFile/EQDSK → Reader → OFT Adapter → Mesh2D → TRIMEG HDF5 / future PUMI API output → PNG
+GFile/EQDSK → Reader → OFT Adapter → Mesh2D → TRIMEG HDF5 / M3DC1 TXT model + PUMI SMB → PNG → PNG
 ```
 
 **P0 范围**：
@@ -31,7 +31,7 @@ GFile/EQDSK → Reader → OFT Adapter → Mesh2D → TRIMEG HDF5 / future PUMI 
 | 输入 | 通过 OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile | 在 LinkMesh 侧手写 GFile 文本解析；复杂 CAD；多维输入 |
 | 网格生成 | 调用 OFT `gs_Domain` / `build_mesh()` | 引入第二网格引擎；复制 OFT 通用几何算法；三维网格；自适应细化；修改/维护 OFT 分支 |
 | 并行切分 | 不涉及 | 生成 `**1.smb`~`**16.smb` 并行分区 |
-| 输出 | TRIMEG HDF5；M3DC1 PUMI `.smb`（M4，经 PUMI/APF/MDS 官方 API） | 三维输出；手写、拼接、修改或逆向 `.smb` 二进制字节流 |
+| 输出 | TRIMEG HDF5；M3DC1 配套 TXT model file + PUMI .smb（M4，经 PUMI/APF/MDS 官方 API） | 三维输出；手写、拼接、修改或逆向 `.smb` 二进制字节流 |
 | 可视化 | matplotlib 自检 PNG | 交互式/三维渲染 |
 | 配置 | 当前 CLI 参数；两层输入架构（`linkmesh.in` + CLI，见第 6A 节，PLANNED） | 通用配置 DSL / 任意 N 区域语言 / 插件系统 |
 
