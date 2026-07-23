@@ -23,12 +23,17 @@ v2.0 M3 complete-11 新增：
       在 __post_init__ 中执行集中式验证。空/None 不是合法几何状态，
       不得被当作合法 outer boundary 写入 TRIMEG HDF5。
 
+v2.2 M3 complete-11 修正：
+    - outer_boundary 集中验证补齐完整非相邻边自交检查（单一简单闭环，
+      禁止非相邻边严格交叉、端点接触、共线重叠）；相邻边（含首末相邻边）
+      共享端点不误判为自交。
+
 模块依赖边界（铁律）：
     本模块不得依赖 OFT、Python Triangle、h5py、PUMI、CLI、Plotter、Reader
     或任何 Writer，也不得引入任何网格生成后端。仅依赖 numpy 与标准库。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v2.0 第 3.2 节；v1.11 第 2.2 节、第 16 节 M2.5
+    LinkMesh_Architecture_Plan.md v2.2 第 3.2 节；v1.11 第 2.2 节、第 16 节 M2.5
 """
 
 from __future__ import annotations
@@ -93,7 +98,8 @@ class Mesh2D:
         闭合   ← 末尾不重复首点，最后一点与第一点隐式闭合
         方向   ← 顺时针（带符号闭合面积严格为负）
         约束   ← B>=3，坐标全有限，至少 3 个互异点，无相邻重复点，
-                 首尾不同（闭合边非零），面积非退化，P0 仅一条闭合轮廓
+                 首尾不同（闭合边非零），面积非退化，单一简单闭环
+                 （禁止非相邻边自交），P0 仅一条闭合轮廓
         非语义 ← 不包含 OFT/Triangle 后续插入的边界 Steiner 点；
                  不等同于最终拓扑外边界节点集合 idxevert；
                  B 可小于最终 nvert_ex；不是按节点编号升序的坐标表。
@@ -165,6 +171,124 @@ def _signed_area_closed(boundary: np.ndarray) -> float:
     return 0.5 * float(np.sum(r * z_next - r_next * z))
 
 
+# --------------------------------------------------------------------------- #
+# 内部辅助：小型、局部、确定性的二维线段相交判断（用于自交检查）                #
+# --------------------------------------------------------------------------- #
+
+def _orientation(ax, ay, bx, by, cx, cy, tol: float) -> int:
+    """三点 (a,b,c) 的有向面积符号（叉积），带容差。
+
+    返回：
+        +1 逆时针；-1 顺时针；0 共线（在 tol 容差内）。
+    """
+    val = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+    if val > tol:
+        return 1
+    if val < -tol:
+        return -1
+    return 0
+
+
+def _on_segment(ax, ay, bx, by, px, py, tol: float) -> bool:
+    """在已知 p 与 (a,b) 共线的前提下，判断 p 是否落在闭线段 [a,b] 上。
+
+    使用带容差的包围盒判定。
+    """
+    return (
+        min(ax, bx) - tol <= px <= max(ax, bx) + tol
+        and min(ay, by) - tol <= py <= max(ay, by) + tol
+    )
+
+
+def _segments_intersect(
+    p1, p2, p3, p4, tol: float
+) -> bool:
+    """判断闭线段 [p1,p2] 与 [p3,p4] 是否相交（含端点接触与共线重叠）。
+
+    标准 orientation 判定：
+        - 一般情况：o1 != o2 且 o3 != o4 → 严格交叉；
+        - 共线特殊情况：某端点落在另一条线段上 → 端点接触或共线重叠。
+
+    参数均为 (x, y) 二元序列；tol 为几何容差。
+    """
+    a1x, a1y = float(p1[0]), float(p1[1])
+    a2x, a2y = float(p2[0]), float(p2[1])
+    b1x, b1y = float(p3[0]), float(p3[1])
+    b2x, b2y = float(p4[0]), float(p4[1])
+
+    o1 = _orientation(a1x, a1y, a2x, a2y, b1x, b1y, tol)
+    o2 = _orientation(a1x, a1y, a2x, a2y, b2x, b2y, tol)
+    o3 = _orientation(b1x, b1y, b2x, b2y, a1x, a1y, tol)
+    o4 = _orientation(b1x, b1y, b2x, b2y, a2x, a2y, tol)
+
+    # 一般情况：严格交叉
+    if o1 != o2 and o3 != o4:
+        return True
+
+    # 共线/端点接触特殊情况
+    if o1 == 0 and _on_segment(a1x, a1y, a2x, a2y, b1x, b1y, tol):
+        return True
+    if o2 == 0 and _on_segment(a1x, a1y, a2x, a2y, b2x, b2y, tol):
+        return True
+    if o3 == 0 and _on_segment(b1x, b1y, b2x, b2y, a1x, a1y, tol):
+        return True
+    if o4 == 0 and _on_segment(b1x, b1y, b2x, b2y, a2x, a2y, tol):
+        return True
+
+    return False
+
+
+def _check_no_self_intersection(boundary: np.ndarray, tol: float) -> None:
+    """完整非相邻边自交检查（单一简单闭环）。
+
+    边定义（隐式闭合）：
+        边 i 连接点 i 与点 (i+1) mod B。
+
+    检查规则：
+        - 遍历所有边对 (i, j)，i < j；
+        - 跳过同一条边（i == j）；
+        - 跳过相邻边（共享一个正常端点）：j == i+1，或
+          (i == 0 且 j == B-1)（第一条边与最后一条边相邻）；
+        - 其余非相邻边对：严格交叉、端点接触、共线重叠中任一发生即拒绝。
+
+    复杂度 O(B²)，P0 边界规模有限，不引入扫描线或计算几何依赖。
+
+    参数：
+        boundary: (B,2) float64，末尾不重复首点
+        tol:      几何容差（与其它验证同风格）
+
+    异常：
+        ValueError: 存在非相邻边自交（含端点接触、共线重叠）
+    """
+    b = boundary.shape[0]
+    # B<3 已在上游拒绝；这里防御性返回
+    if b < 4:
+        # 三角形（B==3）只有三条边，且两两相邻，不可能存在非相邻边自交。
+        return
+
+    for i in range(b):
+        i_p1 = boundary[i]
+        i_p2 = boundary[(i + 1) % b]
+        for j in range(i + 1, b):
+            # 跳过同一条边
+            if j == i:
+                continue
+            # 跳过相邻边：共享一个端点
+            if j == i + 1:
+                continue
+            if i == 0 and j == b - 1:
+                # 第一条边 (0,1) 与最后一条边 (B-1,0) 相邻，共享点 0
+                continue
+            j_p1 = boundary[j]
+            j_p2 = boundary[(j + 1) % b]
+            if _segments_intersect(i_p1, i_p2, j_p1, j_p2, tol):
+                raise ValueError(
+                    "outer_boundary 存在非相邻边自交（self-intersection）："
+                    f"边 {i}->{(i + 1) % b} 与边 {j}->{(j + 1) % b} 相交、"
+                    "端点接触或共线重叠；outer_boundary 必须是单一简单闭环"
+                )
+
+
 def _validate_outer_boundary(outer_boundary_in) -> np.ndarray:
     """验证并返回规范化后的 outer_boundary（float64，(B,2)，顺时针，隐式闭合）。
 
@@ -178,7 +302,13 @@ def _validate_outer_boundary(outer_boundary_in) -> np.ndarray:
         7. 相邻点不重复（含首尾相邻的隐式闭合边端点比较由第 8 步覆盖）；
         8. 首点与末点不同（末尾不重复首点，闭合边长度非零）；
         9. 带符号闭合面积严格为负（顺时针）；
-        10. 面积非退化（严格大于 1e-12，且第 9 步已保证为负）。
+        10. 面积非退化（严格大于 1e-12，且第 9 步已保证为负）；
+        11. 单一简单闭环：非相邻边不得严格交叉、端点接触或共线重叠。
+
+    验证顺序说明：
+        自交检查安排在 shape/有限性/相邻重复/首尾/方向/面积等基础检查之后，
+        使得基础退化输入被各自专属错误明确拒绝；而真正的自交（形状合法、
+        方向合法但非简单）轮廓能被明确识别为自交，不被无关错误掩盖。
 
     参数：
         outer_boundary_in: 待验证的 outer boundary 输入
@@ -242,5 +372,20 @@ def _validate_outer_boundary(outer_boundary_in) -> np.ndarray:
             "outer_boundary 方向必须为顺时针（带符号闭合面积应严格为负），"
             f"实际 signed_area={area}（逆时针或退化）"
         )
+
+    # 11. 单一简单闭环：非相邻边自交检查（含端点接触、共线重叠）
+    # 容差与其它几何判定同风格：以轮廓尺度为基准的相对容差，退化时回落到绝对小量。
+    scale = float(
+        max(
+            ob[:, 0].max() - ob[:, 0].min(),
+            ob[:, 1].max() - ob[:, 1].min(),
+        )
+    )
+    if not (np.isfinite(scale) and scale > 0):
+        scale = 1.0
+    tol = 1e-12 * scale * scale
+    if tol <= 0:
+        tol = 1e-12
+    _check_no_self_intersection(ob, tol)
 
     return ob

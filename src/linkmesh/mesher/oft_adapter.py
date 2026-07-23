@@ -1,7 +1,7 @@
 """
-oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口）。
+oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口，v2.2 outer boundary 修正）。
 
-职责（严格对齐 LinkMesh_Architecture_Plan.md v1.9 第 7 节）：
+职责（严格对齐 LinkMesh_Architecture_Plan.md v2.2 第 2、3.2、3.2A 节）：
     - mesh_from_oft_domain(domain) -> Mesh2D
           通用 N 区域核心：接收已构造的 OFT gs_Domain，调用一次 build_mesh()，
           将 pts/lc/reg 规范化并验证为 Mesh2D。对任意正区域数量 N 通用（含 N=1）。
@@ -15,16 +15,23 @@ oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口）。
     GFileData → build_oft_domain_from_gfile → OFT gs_Domain
              → mesh_from_oft_domain/build_mesh → pts/lc/reg → Mesh2D
 
-v2.0 M3 complete-11 新增数据流（outer boundary 捕获）：
-    build_oft_domain_from_gfile 在调用 OFT 之前，由 LinkMesh 亲手计算人工
-    outer 矩形四角坐标（LCFS 与第一壁联合包围盒 + outer_padding）。该矩形
-    四角就是"网格生成前、Steiner 插点之前"的有序最外层计算域边界几何。
-    本函数将其规范化为顺时针、隐式闭合（末尾不重复首点）的 (B,2) float64
-    有序轮廓，作为 LinkMesh 私有属性 domain._linkmesh_outer_boundary 附加在
-    返回的 domain 上（该属性不是 OFT 字段，OFT 不消费它）。
-    mesh_from_oft_domain 读取该私有属性并注入最终 Mesh2D.outer_boundary。
-    由于矩形四角是 LinkMesh 自造几何、与 build_mesh() 返回的 pts/lc 无关，
-    天然不含 OFT/Triangle 后续插入的 Steiner 点，也不依赖最终 idxevert。
+v2.2 M3 complete-11 outer boundary 正式数据链（版本锁定兼容接口，见蓝图第 3.2A 节）：
+    1. 策略层 build_oft_domain_from_gfile 创建 artificial outer Region
+       （add_rectangle(name="outer")）；
+    2. 策略层在 add_rectangle 前后用 domain.regions 长度差异捕获新增的 outer
+       Region 对象引用（不写死整数 region ID、不按名称猜测、不遍历私有 map），
+       作为 LinkMesh 私有属性 domain._linkmesh_outer_region 附加在返回的 domain
+       上（该属性不是 OFT 字段，OFT 不消费它）；
+    3. mesh_from_oft_domain 调用 domain.build_mesh()；OFT Mesh.__init__() 内部完成
+       实际重采样、共享边界处理、点合并、全局重编号与 segment 方向处理，并把该
+       Region 的有序离散点列回写到 outer_region._resampled_points；
+    4. build_mesh() 完成后，受控读取 outer_region._resampled_points（Triangle 输入
+       前的真实有序离散点列，与最终 vert 同源同批），删除可能的显式闭合重复末点、
+       规范化为顺时针、创建 float64 独立副本；
+    5. 由 Mesh2D 统一验证完整几何契约，注入 Mesh2D.outer_boundary。
+
+    该私有依赖是版本锁定（openfusiontoolkit==26.6）、范围受控、失败即停止的兼容
+    接口，不是通用稳定公共 API；只服务于获取 outer_boundary。
 
 区域 ID 时序（重要）：
     OFT gs_Domain.build_mesh() 会根据区域类型和定义顺序重新排列区域 ID，
@@ -38,8 +45,9 @@ v2.0 M3 complete-11 新增数据流（outer boundary 捕获）：
     - 不把 TOKAMAKER/ 快照加入 sys.path/PYTHONPATH；
     - 不在通用核心中判断 plasma/vacuum/outer 语义，不写死区域数量/名称/类型/整数 ID；
     - 不重编号、不排序、不压缩、不执行 +1；
-    - 不访问 OFT 私有下划线字段；
-    - 不用 build_mesh() 后的 pts/lc 或最终 idxevert 反推 outer boundary；
+    - 不解析 domain.mesh._reg_seg_map / _resampled_segments / Mesh._resampled_points；
+    - 不调用 Region.get_resampled_points() 作为 outer_boundary 来源；
+    - 不用 build_mesh() 后的 pts/lc、最终 idxevert 或人工矩形四角反推 outer boundary；
     - 不引入 Protocol、抽象基类、插件系统、通用区域配置类或额外模块。
 
 Mesh2D 兼容说明（v1.11 M2.5）：
@@ -49,8 +57,8 @@ Mesh2D 兼容说明（v1.11 M2.5）：
     空数组只是兼容占位，不表示已生成任何边界语义。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v2.0 第 4、10.1 节；v1.9 第 5、7 节；
-    v1.11 第 2.2、16 节（Mesh2D 解耦）
+    LinkMesh_Architecture_Plan.md v2.2 第 2、3.2、3.2A、4、10.1 节；
+    v1.9 第 5、7 节；v1.11 第 2.2、16 节（Mesh2D 解耦）
 """
 
 from __future__ import annotations
@@ -65,9 +73,14 @@ if TYPE_CHECKING:
     from linkmesh.readers.gfile_reader import GFileData
 
 
-# LinkMesh 私有属性名：附加在 domain 上的网格生成前有序 outer boundary。
+# LinkMesh 私有属性名：附加在 domain 上的、策略层捕获的 outer Region 对象引用。
 # 该属性不是 OFT gs_Domain 的字段，OFT 不读取、不消费它。
-_OUTER_BOUNDARY_ATTR = "_linkmesh_outer_boundary"
+# 注意：它保存的是 outer Region 对象引用（供 build_mesh() 后读取回写点列），
+# 绝不保存人工矩形四角数组。
+_OUTER_REGION_ATTR = "_linkmesh_outer_region"
+
+# 版本锁定兼容接口绑定的 OFT 版本（见蓝图第 3.2A 节）。
+_REQUIRED_OFT_VERSION = "26.6"
 
 
 # --------------------------------------------------------------------------- #
@@ -102,6 +115,51 @@ def _load_gs_domain_class() -> Any:
             f"\n原始错误：{e}"
         ) from e
     return gs_Domain
+
+
+def _get_installed_oft_version() -> Optional[str]:
+    """读取当前环境安装的 openfusiontoolkit 版本字符串。
+
+    使用仓库现有依赖（标准库 importlib.metadata）读取，不引入第三方依赖。
+    读取失败时返回 None（由调用方转化为明确失败）。
+
+    返回：
+        版本字符串（如 "26.6"），或 None（无法取得）
+    """
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        return str(_pkg_version("openfusiontoolkit"))
+    except Exception:
+        return None
+
+
+def _check_oft_version_locked() -> None:
+    """集中、可测试的 OFT 版本兼容检查（版本锁定兼容接口前置条件）。
+
+    该检查在受控读取 outer Region 私有属性 _resampled_points 之前执行：
+        - 版本无法取得 → 明确失败；
+        - 版本不等于 26.6 → 明确失败。
+    错误信息包含 openfusiontoolkit、检测值与要求版本。
+
+    版本判断只在本函数集中实现，不在多个函数中重复。
+
+    异常：
+        ValueError: 版本无法取得或不等于 26.6
+    """
+    detected = _get_installed_oft_version()
+    if detected is None:
+        raise ValueError(
+            "无法读取 openfusiontoolkit 版本：outer boundary 私有兼容接口要求"
+            f" openfusiontoolkit=={_REQUIRED_OFT_VERSION}（版本锁定），"
+            "检测值=None（未取得）。"
+        )
+    if detected != _REQUIRED_OFT_VERSION:
+        raise ValueError(
+            "openfusiontoolkit 版本与 outer boundary 私有兼容接口锁定版本不一致："
+            f"检测值={detected}，要求版本={_REQUIRED_OFT_VERSION}。"
+            "该私有依赖为版本锁定兼容接口，升级前必须重新核对 OFT 内部数据流。"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -141,32 +199,124 @@ def _signed_area_closed(boundary: np.ndarray) -> float:
     return 0.5 * float(np.sum(r * z_next - r_next * z))
 
 
-def _make_clockwise_rectangle_boundary(
-    rmin: float, rmax: float, zmin: float, zmax: float
-) -> np.ndarray:
-    """由矩形范围构造顺时针、隐式闭合（末尾不重复首点）的 (4,2) float64 轮廓。
+# --------------------------------------------------------------------------- #
+# outer Region 回写点列的读取与规范化（版本锁定兼容接口，见蓝图第 3.2A 节）      #
+# --------------------------------------------------------------------------- #
 
-    这是"网格生成前、Steiner 插点之前"的实际 outer boundary 几何独立副本。
-    点序固定为顺时针，且不重复首点；同一输入范围产生确定顺序。
+def _normalize_resampled_points(raw: Any) -> np.ndarray:
+    """把 outer Region 回写的 _resampled_points 规范化为顺时针 (B,2) float64 副本。
 
-    顺时针顺序（在 R 向右、Z 向上的常规坐标系中）：
-        (rmin,zmin) → (rmin,zmax) → (rmax,zmax) → (rmax,zmin)
-    带符号闭合面积为负，符合 Mesh2D outer_boundary 顺时针契约。
+    仅做：
+        - 转 (B,2) float64 独立副本；
+        - 删除可能存在的显式闭合重复末点（末点≈首点时只删一个）；
+        - 用带符号闭合面积判断方向，逆时针则整体反转为顺时针；
+    不做任何新的边界插值/重采样，不静默修补自交/退化/重复点
+    （完整几何契约交由 Mesh2D 统一验证）。
+
+    参数：
+        raw: outer_region._resampled_points（OFT 回写点列）
+
+    返回：
+        (B,2) float64 顺时针独立副本
+
+    异常：
+        ValueError: None、shape 非法、空、NaN/Inf、删末点后点数不足、方向不可判定
     """
-    boundary = np.array(
-        [
-            [rmin, zmin],
-            [rmin, zmax],
-            [rmax, zmax],
-            [rmax, zmin],
-        ],
-        dtype=np.float64,
-    )
-    # 防御：若坐标系约定导致方向相反，只允许通过反转点序规范化为顺时针，
-    # 不排序、不旋转到固定起点、不重复首点。
-    if _signed_area_closed(boundary) >= 0:
-        boundary = boundary[::-1].copy()
-    return boundary
+    if raw is None:
+        raise ValueError(
+            "outer_region._resampled_points 为 None：OFT 未回写有序离散边界点列"
+        )
+
+    pts = np.array(raw, dtype=np.float64, copy=True)
+    if pts.ndim != 2:
+        raise ValueError(
+            f"outer_region._resampled_points 必须是二维数组，实际 ndim={pts.ndim}"
+        )
+    if pts.shape[1] != 2:
+        raise ValueError(
+            f"outer_region._resampled_points 必须为 (B,2)，实际 shape={pts.shape}"
+        )
+    if pts.shape[0] == 0:
+        raise ValueError("outer_region._resampled_points 为空数组")
+    if not np.all(np.isfinite(pts)):
+        raise ValueError("outer_region._resampled_points 含非有限值（NaN/Inf）")
+
+    # 删除可能存在的显式闭合重复末点（末点与首点在容差内重复时只删一个）
+    if pts.shape[0] >= 2:
+        scale = float(
+            max(
+                pts[:, 0].max() - pts[:, 0].min(),
+                pts[:, 1].max() - pts[:, 1].min(),
+            )
+        )
+        if not (np.isfinite(scale) and scale > 0):
+            scale = 1.0
+        tol = 1e-9 * scale
+        gap = float(np.hypot(pts[0, 0] - pts[-1, 0], pts[0, 1] - pts[-1, 1]))
+        if gap <= tol:
+            pts = pts[:-1]
+
+    if pts.shape[0] < 3:
+        raise ValueError(
+            "outer_region._resampled_points 删除显式闭合重复末点后不足 3 个点，"
+            f"实际={pts.shape[0]}"
+        )
+
+    # 方向规范化为顺时针（带符号闭合面积应为负）；逆时针则整体反转。
+    # 不排序、不旋转到固定起点（仅在反转时保持确定顺序）。
+    area = _signed_area_closed(pts)
+    if area == 0.0:
+        # 退化方向留给 Mesh2D 统一验证明确拒绝，不在此静默处理
+        return pts
+    if area > 0.0:
+        pts = pts[::-1].copy()
+    return pts
+
+
+def _extract_outer_boundary_after_build(domain: Any) -> Optional[np.ndarray]:
+    """build_mesh() 之后，从策略层捕获的 outer Region 读取回写点列并规范化。
+
+    仅当 domain 携带 LinkMesh 私有属性 _linkmesh_outer_region（outer Region 对象
+    引用）时才尝试读取；否则返回 None（通用 domain 不猜测 outer Region）。
+
+    读取路径严格限定为 outer_region._resampled_points（版本锁定兼容接口，
+    见蓝图第 3.2A 节）：
+        - 不读取 domain.mesh._reg_seg_map；
+        - 不读取 domain.mesh._resampled_segments；
+        - 不读取 domain.mesh._resampled_points；
+        - 不调用 outer_region.get_resampled_points()；
+        - 不从最终 pts/lc/idxevert 反推；
+        - 不使用人工矩形四角。
+
+    在读取私有属性前执行集中的 OFT 版本锁定检查。
+
+    参数：
+        domain: build_mesh() 已完成的 OFT gs_Domain
+
+    返回：
+        (B,2) float64 顺时针独立副本，或 None（未捕获 outer Region）
+
+    异常：
+        ValueError: 版本不符、缺 _resampled_points、None、shape/有限性/点数非法、
+                    方向不可判定等（失败即停，禁止回退四角/idxevert/自行重采样）
+    """
+    outer_region = getattr(domain, _OUTER_REGION_ATTR, None)
+    if outer_region is None:
+        # 通用 domain（非策略层构造）：不猜测 outer Region，outer_boundary 保持 None。
+        return None
+
+    # 受控读取私有属性前，先做版本锁定检查（集中实现）。
+    _check_oft_version_locked()
+
+    if not hasattr(outer_region, "_resampled_points"):
+        raise ValueError(
+            "捕获的 outer Region 缺少 _resampled_points 属性："
+            "OFT 26.6 应在 build_mesh() 内回写该属性，缺失即失败，"
+            "禁止回退四角/idxevert/自行重采样"
+        )
+
+    raw = getattr(outer_region, "_resampled_points")
+    return _normalize_resampled_points(raw)
 
 
 # --------------------------------------------------------------------------- #
@@ -178,26 +328,27 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
 
     仅负责：
         1. 在调用前验证 domain 提供可调用的 build_mesh() 和可读取的 region_info 属性；
-        2. 调用一次 domain.build_mesh()；
-        3. 接收 pts, lc, reg；
-        4. build_mesh() 成功后重新读取 domain.region_info，
+        2. 在 build_mesh() 前取得并保存策略层附加的 outer Region 引用（若有）；
+        3. 调用一次 domain.build_mesh()；
+        4. 接收 pts, lc, reg；
+        5. build_mesh() 成功后重新读取 domain.region_info，
            提取 OFT 最终区域 ID 集合（build_mesh 会原地重排区域 ID）；
-        5. 规范化并验证输出，用最终区域 ID 集合校验 reg；
-        6. 若 domain 携带 LinkMesh 私有的网格生成前有序 outer boundary
-           （由 build_oft_domain_from_gfile 附加），读取其独立副本注入 Mesh2D；
-        7. 构造 Mesh2D。
+        6. build_mesh() 之后，从捕获的 outer Region 受控读取回写点列
+           outer_region._resampled_points，规范化为顺时针 (B,2) float64 独立副本；
+        7. 规范化并验证输出，用最终区域 ID 集合校验 reg；
+        8. 构造 Mesh2D（由 Mesh2D 统一验证 outer_boundary 完整几何契约）。
 
     对任意正区域数量 N 通用，包括 N=1、N=2、N=3、N>3，无特殊分支。
     不判断 LCFS/第一壁/plasma/vacuum/outer，不写死区域名称/类型/数量/整数 ID。
     不重编号、不排序、不压缩、不执行 +1。
 
-    outer boundary 时序（关键）：
-        outer boundary 从 domain 上的 LinkMesh 私有属性读取，该属性由
-        build_oft_domain_from_gfile 在 build_mesh() 之前构造并附加，
-        因此只包含网格生成前的原始几何点，绝不含 build_mesh() 插入的
-        Steiner 点，也绝不从最终 pts/lc/idxevert 反推。
-        当 domain 未携带该属性（例如受控测试直接构造 Domain）时，
-        Mesh2D.outer_boundary 保持 None（未提供）。
+    outer boundary 时序（关键，v2.2）：
+        outer boundary 来自策略层捕获的 outer Region 对象在 build_mesh() 之后被
+        OFT 回写的 _resampled_points（Triangle 输入前、Steiner 插点之前的有序离散
+        点列，与最终 vert 同源同批）。读取发生在 build_mesh() 之后（不得在之前）。
+        当 domain 未携带该 outer Region 引用（例如受控测试直接构造 Domain，或通用
+        N 区域 domain）时，Mesh2D.outer_boundary 保持 None（未提供），核心不猜测
+        outer Region、不读取 OFT 私有 map、不从最终 pts/lc/idxevert 反推。
 
     区域 ID 时序（关键）：
         OFT build_mesh() 会根据区域类型和定义顺序重排区域 ID，并原地更新
@@ -212,7 +363,8 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         可选 outer_boundary）
 
     异常：
-        ValueError: 输出不满足契约（形状、dtype、索引范围、退化、区域集合等），
+        ValueError: 输出不满足契约（形状、dtype、索引范围、退化、区域集合、
+                    outer boundary 私有接口/版本/点列等），
                     或 build_mesh() 后 region_info 为空/非法/含重复或非正 ID
         TypeError:  domain 缺少 build_mesh() 或 region_info
     """
@@ -226,12 +378,12 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
     if not hasattr(domain, "region_info"):
         raise TypeError("domain 必须提供可读取的 region_info 属性")
 
-    # --- 在调用 build_mesh() 之前读取 LinkMesh 私有 outer boundary（若存在）---
-    # 该属性是网格生成前的几何，读取时机与 build_mesh 无关；这里在生成前读取，
-    # 进一步确保绝不受 Steiner 插点影响。
-    outer_boundary = _extract_prebuild_outer_boundary(domain)
+    # --- Step 2：build_mesh() 前确认 outer Region 引用已捕获（若策略层附加）---
+    # 此处只取引用，不读取 _resampled_points；点列必须在 build_mesh() 之后读取，
+    # 因为 OFT 在 Mesh.__init__() 期间才回写 region._resampled_points。
+    _ = getattr(domain, _OUTER_REGION_ATTR, None)
 
-    # --- Step 2：调用且只调用一次 build_mesh() ---
+    # --- Step 3：调用且只调用一次 build_mesh() ---
     result = build_mesh()
     try:
         pts, lc, reg = result
@@ -240,7 +392,7 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
             f"build_mesh() 应返回 (pts, lc, reg) 三元组，实际无法解包：{e}"
         ) from e
 
-    # --- Step 4：build_mesh() 成功后重新读取 region_info，提取 OFT 最终区域 ID 集合 ---
+    # --- Step 5：build_mesh() 成功后重新读取 region_info，提取 OFT 最终区域 ID 集合 ---
     region_info = getattr(domain, "region_info", None)
     if region_info is None:
         raise TypeError("build_mesh() 后 domain.region_info 为 None，无法读取最终区域 ID")
@@ -252,7 +404,11 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
             "build_mesh() 后 domain.region_info 为空，未定义任何区域"
         )
 
-    # --- Step 5：规范化并验证 nodes ---
+    # --- Step 6：build_mesh() 之后受控读取 outer Region 回写点列并规范化 ---
+    # 失败即停（版本不符/缺属性/None/非法），禁止回退四角/idxevert/自行重采样。
+    outer_boundary = _extract_outer_boundary_after_build(domain)
+
+    # --- Step 7：规范化并验证 nodes ---
     nodes = _as_finite_float_2d(pts, "pts")
     if nodes.shape[0] == 0:
         raise ValueError("build_mesh() 返回节点数为 0")
@@ -329,7 +485,7 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         if rid not in actual_ids:
             raise ValueError(f"区域 ID {rid} 未对应任何三角形")
 
-    # --- Step 6/7：构造 Mesh2D（兼容旧六字段构造签名，附加 outer_boundary）---
+    # --- Step 8：构造 Mesh2D（兼容旧六字段构造签名，附加 outer_boundary）---
     mesh = Mesh2D(
         nodes=nodes,
         triangles=triangles,
@@ -340,25 +496,6 @@ def mesh_from_oft_domain(domain: Any) -> Mesh2D:
         outer_boundary=outer_boundary,
     )
     return mesh
-
-
-def _extract_prebuild_outer_boundary(domain: Any) -> Optional[np.ndarray]:
-    """从 domain 读取 LinkMesh 私有的网格生成前有序 outer boundary 独立副本。
-
-    该属性由 build_oft_domain_from_gfile 在 build_mesh() 之前构造并附加，
-    只包含网格生成前的原始几何点，不含 Steiner 点。返回独立 float64 副本，
-    避免与 domain 上的数组共享内存。若 domain 未携带该属性，返回 None。
-
-    参数：
-        domain: OFT gs_Domain 对象
-
-    返回：
-        (B,2) float64 独立副本，或 None（domain 未携带时）
-    """
-    ob = getattr(domain, _OUTER_BOUNDARY_ATTR, None)
-    if ob is None:
-        return None
-    return np.array(ob, dtype=np.float64, copy=True)
 
 
 def _extract_region_ids(region_info: Any) -> set:
@@ -456,13 +593,15 @@ def build_oft_domain_from_gfile(
     本函数不调用 build_mesh()，不转换 pts/lc/reg，不复制 OFT 的重采样、
     点合并、种子搜索或 Triangle 算法。
 
-    outer boundary 捕获（v2.0）：
-        人工 outer 矩形四角坐标由 LinkMesh 在调用 OFT 之前用纯 numpy 算出，
-        这正是"网格生成前、Steiner 插点之前"的有序最外层计算域边界几何。
-        本函数将其规范化为顺时针、隐式闭合（末尾不重复首点）的 (4,2) float64
-        有序轮廓，作为 LinkMesh 私有属性附加在返回 domain 上，供
-        mesh_from_oft_domain 注入 Mesh2D.outer_boundary。矩形形状、outer_padding
-        与区域策略均不改变。
+    outer Region 捕获（v2.2，见蓝图第 3.2A 节）：
+        人工 outer 矩形由 add_rectangle(name="outer") 创建（形状/尺寸/名称/
+        outer_dx/区域策略均不变）。策略层在 add_rectangle 前后用 domain.regions
+        长度差异捕获新增的 outer Region 对象引用（不写死整数 region ID、不按名称
+        猜测、不遍历私有 map），作为 LinkMesh 私有属性附加在返回 domain 上。
+        该引用供 mesh_from_oft_domain 在 build_mesh() 之后受控读取
+        outer_region._resampled_points，得到 Triangle 输入前的真实有序离散边界。
+        本函数不读取任何 _resampled_points（build_mesh() 之前 OFT 尚未回写），
+        不使用人工矩形四角作为 outer_boundary。
 
     参数：
         gfile_data:    GFileData 对象（含 lcfs_r/lcfs_z，可选 wall_r/wall_z）
@@ -473,10 +612,11 @@ def build_oft_domain_from_gfile(
 
     返回：
         已构造但尚未 build_mesh() 的 OFT gs_Domain 对象，
-        并附加 LinkMesh 私有属性（网格生成前有序 outer boundary）
+        并附加 LinkMesh 私有属性（捕获的 outer Region 对象引用）
 
     异常：
-        ValueError: 参数或轮廓非法
+        ValueError: 参数或轮廓非法，或 outer Region 捕获失败（regions 缺失/
+                    非预期容器/未恰好新增一个 Region）
         ImportError: OFT 不可用
     """
     # --- 参数校验 ---
@@ -544,12 +684,6 @@ def build_oft_domain_from_gfile(
             f"人工 outer 矩形尺寸非法：宽={rect_w}，高={rect_h}"
         )
 
-    # --- 捕获网格生成前的有序 outer boundary（顺时针、隐式闭合、不重复首点）---
-    # 这是 LinkMesh 亲手构造、尚未进入 OFT/Triangle 的实际最外层几何独立副本。
-    outer_boundary = _make_clockwise_rectangle_boundary(
-        rect_rmin, rect_rmax, rect_zmin, rect_zmax
-    )
-
     # --- 构造 OFT Domain（延迟导入）---
     gs_Domain = _load_gs_domain_class()
     domain = gs_Domain()
@@ -567,13 +701,37 @@ def build_oft_domain_from_gfile(
         # 无壁两区域：PLASMA + OUTER
         domain.add_polygon(lcfs, "plasma", parent_name="outer")
 
-    # 人工 outer rectangle（形状/尺寸/名称不变）
+    # --- 捕获 outer Region 对象引用（add_rectangle 前后 domain.regions 长度差异）---
+    # 有壁/无壁使用同一捕获逻辑；不写死整数 region ID、不按名称猜测、不遍历私有 map。
+    regions = getattr(domain, "regions", None)
+    if regions is None or not hasattr(regions, "__len__"):
+        raise ValueError(
+            "domain.regions 不存在或不是预期容器：无法捕获 outer Region 引用，"
+            "失败即停，不回退四角/idxevert/自行重采样"
+        )
+    n_before = len(regions)
+
+    # 人工 outer rectangle（形状/尺寸/名称/outer_dx 不变）
     domain.add_rectangle(rect_rc, rect_zc, rect_w, rect_h, name="outer")
 
-    # 将网格生成前有序 outer boundary 作为 LinkMesh 私有属性附加在 domain 上。
-    # OFT 不消费该属性；仅供 mesh_from_oft_domain 注入 Mesh2D.outer_boundary。
+    regions_after = getattr(domain, "regions", None)
+    if regions_after is None or not hasattr(regions_after, "__len__"):
+        raise ValueError(
+            "add_rectangle 后 domain.regions 不存在或不是预期容器，无法捕获 outer Region"
+        )
+    n_after = len(regions_after)
+    if n_after != n_before + 1:
+        raise ValueError(
+            "add_rectangle 后 domain.regions 未恰好新增一个 Region："
+            f"新增前={n_before}，新增后={n_after}；无法可靠捕获 outer Region 引用，"
+            "失败即停"
+        )
+    outer_region = regions_after[-1]
+
+    # 将捕获的 outer Region 对象引用作为 LinkMesh 私有属性附加在 domain 上。
+    # OFT 不消费该属性；仅供 mesh_from_oft_domain 在 build_mesh() 之后读取回写点列。
     try:
-        setattr(domain, _OUTER_BOUNDARY_ATTR, outer_boundary)
+        setattr(domain, _OUTER_REGION_ATTR, outer_region)
     except (AttributeError, TypeError):
         # 极少数情况下 domain 不允许附加任意属性；此时不阻断网格生成，
         # outer boundary 将在 mesh_from_oft_domain 中表现为未提供（None）。
@@ -648,8 +806,9 @@ def generate_mesh(
     """CLI 便利入口：只组合 build_oft_domain_from_gfile 与 mesh_from_oft_domain。
 
     本函数不包含第二套输入规范化、输出验证、区域判断或网格算法。
-    网格生成前有序 outer boundary 由 build_oft_domain_from_gfile 附加在 domain 上，
-    并由 mesh_from_oft_domain 注入最终 Mesh2D.outer_boundary。
+    outer Region 引用由 build_oft_domain_from_gfile 捕获并附加在 domain 上，
+    mesh_from_oft_domain 在 build_mesh() 之后受控读取回写点列并注入
+    最终 Mesh2D.outer_boundary。
 
     参数：
         gfile_data:    GFileData 对象
