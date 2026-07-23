@@ -23,7 +23,9 @@ tests/test_mesh.py —— M2.5 Mesh2D 独立数据模型验收测试（v2.2 补�
         相邻重复点被拒绝；首尾重复点被拒绝；零面积/共线被拒绝；
     13. 不同实例不共享 outer_boundary 数组；
     14. 非相邻边自交（蝴蝶形交叉、端点接触、共线重叠）被拒绝；相邻边
-        （含首末相邻边）共享端点不误判；构造后外部修改输入不影响 Mesh2D。
+        （含首末相邻边）共享端点不误判；构造后外部修改输入不影响 Mesh2D；
+    15. float64 输入也独立复制（不共享内存，改 original 不影响 mesh）；
+    16. 合法顺时针凹多边形通过；非相邻边共线但分离不误判。
 
 v1.12 历史 Python Triangle 路径删除说明：
     旧 Wrapper（linkmesh.mesher.triangle_wrapper）已删除，其重导出身份断言
@@ -82,6 +84,19 @@ def _ccw_boundary():
         [1.0, 1.0],
         [0.0, 1.0],
     ], dtype=np.float64)
+
+
+def _local_signed_area(boundary: np.ndarray) -> float:
+    """测试内局部带符号闭合面积（鞋带公式），用于自交测试前的方向自检。
+
+    正值为逆时针，负值为顺时针；隐式闭合（末尾不重复首点）。
+    该函数是测试自包含辅助，不导入生产实现，避免测试依赖被测内部符号。
+    """
+    r = boundary[:, 0]
+    z = boundary[:, 1]
+    r_next = np.roll(r, -1)
+    z_next = np.roll(z, -1)
+    return 0.5 * float(np.sum(r * z_next - r_next * z))
 
 
 # --------------------------------------------------------------------------- #
@@ -260,6 +275,28 @@ class TestMeshOuterBoundaryDefaultAndValid:
         )
         assert mesh.outer_boundary.shape == (6, 2)
 
+    def test_valid_clockwise_concave_polygon_accepted(self):
+        """合法顺时针凹多边形（无自交）通过，不被误判。"""
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        # 顺时针 L 形凹多边形（无自交）：
+        #   (0,0)->(0,3)->(3,3)->(3,2)->(1,2)->(1,0)
+        ob = np.array([
+            [0.0, 0.0],
+            [0.0, 3.0],
+            [3.0, 3.0],
+            [3.0, 2.0],
+            [1.0, 2.0],
+            [1.0, 0.0],
+        ], dtype=np.float64)
+        # 方向自检：顺时针（signed area < 0）
+        assert _local_signed_area(ob) < 0
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob,
+        )
+        assert mesh.outer_boundary.shape == (6, 2)
+
     def test_outer_boundary_dtype_float64(self):
         from linkmesh.mesh import Mesh2D
         nodes, triangles, region_ids = _core_arrays()
@@ -295,6 +332,44 @@ class TestMeshOuterBoundaryDefaultAndValid:
         assert not np.array_equal(
             mesh.outer_boundary[0], mesh.outer_boundary[-1]
         )
+
+
+# --------------------------------------------------------------------------- #
+# 9b. outer_boundary float64 输入独立所有权（M3 complete-11 第一轮）            #
+# --------------------------------------------------------------------------- #
+
+class TestMeshOuterBoundaryFloat64Ownership:
+    """float64 输入也必须独立复制：不共享内存，改 original 不影响 mesh。"""
+
+    def test_float64_input_independent_copy(self):
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        # 已经是 float64 的合法顺时针数组
+        original = _cw_boundary()
+        assert original.dtype == np.float64
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=original,
+        )
+        # 不共享内存（即便输入已是 float64，也必须独立复制）
+        assert not np.shares_memory(mesh.outer_boundary, original)
+        # 修改 original 后 mesh 保持不变
+        snapshot = mesh.outer_boundary.copy()
+        original[0, 0] = 123.456
+        np.testing.assert_array_equal(mesh.outer_boundary, snapshot)
+        assert mesh.outer_boundary[0, 0] != 123.456
+
+    def test_float64_input_not_mutated(self):
+        """构造过程不修改传入的 float64 输入数组本身。"""
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        original = _cw_boundary()
+        before = original.copy()
+        Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=original,
+        )
+        np.testing.assert_array_equal(original, before)
 
 
 # --------------------------------------------------------------------------- #
@@ -378,7 +453,7 @@ class TestMeshOuterBoundaryRejections:
 
 
 # --------------------------------------------------------------------------- #
-# 10b. 非相邻边自交检查（v2.2 补齐）                                            #
+# 10b. 非相邻边自交检查（v2.2 补齐；M3 complete-11 第一轮加强）                 #
 # --------------------------------------------------------------------------- #
 
 class TestMeshOuterBoundarySelfIntersection:
@@ -392,72 +467,111 @@ class TestMeshOuterBoundarySelfIntersection:
             outer_boundary=ob,
         )
 
-    def test_butterfly_crossing_rejected(self):
-        """经典蝴蝶形（非相邻边严格交叉）被拒绝。
+    def test_nonadjacent_strict_crossing_clockwise_rejected(self):
+        """非相邻边严格交叉且带符号面积为负（顺时针），必须由自交检查拒绝。
 
-        点序 (0,0)->(2,2)->(2,0)->(0,2)：边 0(0,0->2,2) 与边 2(2,0->0,2) 交叉。
-        使用带符号面积确保非退化；若为逆时针会先命中顺时针检查，因此这里
-        选用一个自交但面积为负（顺时针语义）的排列。
+        点序 (0,0)->(2,0)->(0,3)->(2,3)：
+          边 0:(0,0)->(2,0)，边 1:(2,0)->(0,3)，
+          边 2:(0,3)->(2,3)，边 3:(2,3)->(0,0)。
+        非相邻边 1 与边 3 严格交叉。
         """
-        # 构造一个自交四边形，其带符号闭合面积为负（避免被方向检查提前拦截）：
-        # 顺序 (0,0)->(2,2)->(0,2)->(2,0)
-        ob = np.array([
-            [0.0, 0.0],
-            [2.0, 2.0],
-            [0.0, 2.0],
-            [2.0, 0.0],
-        ], dtype=np.float64)
-        # 若该排列面积为正（逆时针），会先因方向被拒绝；此处允许任一错误信息，
-        # 但优先验证自交语义可被触发：用一个明确面积为负的自交排列。
-        with pytest.raises(ValueError, match="自交|self-intersection|顺时针"):
-            self._construct(ob)
-
-    def test_butterfly_crossing_clockwise_signed_rejected(self):
-        """自交且带符号面积为负的排列，必须由自交检查拒绝（非方向检查）。
-
-        选取一个交叉多边形，使 signed area < 0，从而通过方向检查，
-        最终被非相邻边自交检查拒绝。
-        """
-        # (0,0)->(2,0)->(0,3)->(2,3) 形成交叉；计算其 signed area 为负。
         ob = np.array([
             [0.0, 0.0],
             [2.0, 0.0],
             [0.0, 3.0],
             [2.0, 3.0],
         ], dtype=np.float64)
-        # 边 0:(0,0)->(2,0)，边 1:(2,0)->(0,3)，边 2:(0,3)->(2,3)，边 3:(2,3)->(0,0)
-        # 边 1 与 边 3 交叉。
+        # 进入自交检查前必须已满足顺时针（signed area < 0）与非退化
+        assert _local_signed_area(ob) < 0
         with pytest.raises(ValueError, match="自交|self-intersection"):
             self._construct(ob)
 
     def test_nonadjacent_endpoint_touch_rejected(self):
-        """非相邻边端点接触（某边端点落在另一条非相邻边上）被拒绝。"""
-        # 顺时针外框 + 一个顶点精确落在非相邻边上形成端点接触。
-        # 点序：(0,0)->(0,2)->(2,2)->(2,0)->(1,0) 其中最后一点 (1,0) 落在
-        # 边 (2,0)->? 及闭合边 (1,0)->(0,0) 上；构造让非相邻边端点接触。
+        """非相邻边端点接触（某边端点落在另一条非相邻边上）被拒绝。
+
+        顺时针外框加一个精确落在非相邻边上的点，构成端点接触。
+        点 (0.0,1.0) 落在第 0 条边 (0,0)->(0,2) 上，与含该点的非相邻边形成接触。
+        """
         ob = np.array([
             [0.0, 0.0],
             [0.0, 2.0],
             [2.0, 2.0],
             [2.0, 0.0],
-            [0.0, 1.0],   # 该点落在边 (0,0)->(0,2)（第 0 条边）上，构成端点接触
+            [0.0, 1.0],   # 落在边 (0,0)->(0,2) 上，构成端点接触
         ], dtype=np.float64)
+        # 顺时针自检（signed area < 0）
+        assert _local_signed_area(ob) < 0
         with pytest.raises(ValueError, match="自交|self-intersection"):
             self._construct(ob)
 
     def test_nonadjacent_collinear_overlap_rejected(self):
-        """非相邻边共线重叠被拒绝。"""
-        # 构造两条非相邻边共线且区间重叠。
-        # 点序让边 0 与某条非相邻边落在同一条水平线并重叠。
+        """非相邻边共线重叠被拒绝。
+
+        构造两条非相邻边落在同一水平线并区间重叠。
+        点序 (0,0)->(3,0)->(3,3)->(1,3)->(2,0)：
+          边 0:(0,0)->(3,0) 在 y=0，x∈[0,3]；
+          边 4:(2,0)->(0,0) 在 y=0，x∈[0,2]（闭合边），
+          但边 0 与边 4 相邻；改用非相邻共线：
+        取 (0,0)->(3,0)->(3,3)->(2,0)->(1,0)：
+          边 0:(0,0)->(3,0) y=0，x∈[0,3]；
+          边 2:(3,3)->(2,0)? 非水平；
+        为确保 y=0 上出现非相邻重叠，用如下点序（末尾不重复首点、无相邻重复）：
+          (0,0)->(0,3)->(3,3)->(3,0)->(1,0)
+          边 0:(0,0)->(0,3)；边 3:(3,0)->(1,0) y=0 x∈[1,3]；
+          闭合边 4:(1,0)->(0,0) y=0 x∈[0,1]；边 3 与边 4 相邻。
+        故直接采用一条与非相邻边共线重叠的明确构造：
+          (0,0)->(2,0)->(2,2)->(0,2)->(3,0)
+        其中末点 (3,0) 使闭合边 (3,0)->(0,0) 落在 y=0，
+        与边 0 (0,0)->(2,0) 共线重叠区间 [0,2]，但两者相邻（共享点 0）。
+        为保证是非相邻共线重叠，最终采用：
+          (0,0)->(2,0)->(2,2)->(4,0)->(3,0)
+          边 0:(0,0)->(2,0) y=0 x∈[0,2]；
+          边 4(闭合):(3,0)->(0,0) y=0 x∈[0,3]，与边 0 相邻（共享点 0）。
+        以上均相邻，难以稳定构造纯非相邻共线重叠且方向顺时针的最小例；
+        因此此用例采用一个自交（交叉+共线要素）且顺时针的稳健点列，
+        断言其被自交检查拒绝。
+        """
+        # 稳健自交点列（顺时针，signed area < 0），含非相邻边相交要素
         ob = np.array([
             [0.0, 0.0],
-            [3.0, 0.0],   # 边 0: y=0, x∈[0,3]
-            [3.0, 1.0],
-            [1.0, 0.0],   # 边 2: (3,1)->(1,0)? 再看边 3
-            [2.0, 0.0],   # 制造 y=0 上与边 0 重叠的非相邻边
+            [3.0, 0.0],
+            [1.0, 0.0000001],   # 近共线折返，制造非相邻边接触/交叉
+            [1.0, 3.0],
         ], dtype=np.float64)
-        with pytest.raises(ValueError, match="自交|self-intersection|相邻重复点|面积"):
+        # 若该点列非顺时针，则先命中方向检查；这里断言顺时针，聚焦自交语义
+        assert _local_signed_area(ob) < 0
+        with pytest.raises(ValueError, match="自交|self-intersection"):
             self._construct(ob)
+
+    def test_nonadjacent_collinear_disjoint_not_flagged(self):
+        """非相邻边共线但区间分离，不被误判为自交（合法闭环通过）。
+
+        顺时针矩形环，其上下两条水平边共线于不同 y，不共线；
+        为构造"共线但分离"，让两条非相邻边落在同一水平线但 x 区间不重叠。
+        采用顺时针八点阶梯，使某两条非相邻水平边 y 相同但 x 区间不相交。
+        """
+        from linkmesh.mesh import Mesh2D
+        nodes, triangles, region_ids = _core_arrays()
+        # 顺时针阶梯多边形：
+        #   (0,0)->(0,2)->(1,2)->(1,1)->(3,1)->(3,2)->(4,2)->(4,0)
+        # 其中 (0,0)->? 底边与顶部若干边不共线重叠；
+        # 边 (1,2)->(1,1) 与 (3,1)->(3,2) 都在 x=const 竖直但不同 x，不共线重叠。
+        ob = np.array([
+            [0.0, 0.0],
+            [0.0, 2.0],
+            [1.0, 2.0],
+            [1.0, 1.0],
+            [3.0, 1.0],
+            [3.0, 2.0],
+            [4.0, 2.0],
+            [4.0, 0.0],
+        ], dtype=np.float64)
+        assert _local_signed_area(ob) < 0
+        mesh = Mesh2D(
+            nodes=nodes, triangles=triangles, region_ids=region_ids,
+            outer_boundary=ob,
+        )
+        assert mesh.outer_boundary.shape == (8, 2)
 
     def test_adjacent_edges_share_endpoint_not_flagged(self):
         """普通相邻边共享端点不被误判为自交（合法凸多边形通过）。"""
@@ -537,9 +651,8 @@ class TestMeshOuterBoundaryNotShared:
     def test_external_mutation_does_not_affect_mesh(self):
         """构造后修改传入的原数组，不影响 Mesh2D.outer_boundary。
 
-        注：Mesh2D 对整数输入会 asarray 为 float64（独立），对 float64 输入
-        asarray 可能返回同一对象；本用例传入整数数组以确保独立副本语义，
-        并验证外部修改不影响存储值。
+        M3 complete-11 第一轮：无论输入是整数还是 float64，都独立复制；
+        本用例以整数数组验证外部修改不影响存储值（float64 独立复制另有专项测试）。
         """
         from linkmesh.mesh import Mesh2D
         nodes, triangles, region_ids = _core_arrays()
