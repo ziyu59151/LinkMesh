@@ -23,6 +23,12 @@ v2.0 完整 11 数据集契约（均 float64）：
     nbcRZ                         : (1,1)，值为 B
     Rbc                           : (B,1)，= outer_boundary[:,0]
     Zbc                           : (B,1)，= outer_boundary[:,1]
+
+v2.2 M3 complete-11 第三轮补充：
+    - 真实 boundary Steiner 隔离测试（(1,0) 在 idxevert 但不在 Rbc/Zbc，
+      nvert_ex==5，nbcRZ==4，nbcRZ<nvert_ex）；
+    - Writer outer_boundary 自交/共线重叠二次防线（构造后替换 mesh.outer_boundary）；
+    - 文件打开前失败时既有文件不被截断（哨兵）。
 """
 
 import numpy as np
@@ -62,6 +68,19 @@ def _cw_outer_boundary_5pts() -> np.ndarray:
         [4.0, 3.0],
         [4.0, -1.0],
     ], dtype=np.float64)
+
+
+def _local_signed_area(boundary: np.ndarray) -> float:
+    """测试内局部带符号闭合面积（鞋带公式），用于自交测试前的方向自检。
+
+    正值为逆时针，负值为顺时针；隐式闭合（末尾不重复首点）。
+    该函数是测试自包含辅助，不导入生产实现。
+    """
+    r = boundary[:, 0]
+    z = boundary[:, 1]
+    r_next = np.roll(r, -1)
+    z_next = np.roll(z, -1)
+    return 0.5 * float(np.sum(r * z_next - r_next * z))
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +197,60 @@ def _make_grid_mesh_with_boundary(outer_boundary) -> Mesh2D:
         triangles=triangles,
         region_ids=region_ids,
         outer_boundary=outer_boundary,
+    )
+
+
+def _make_boundary_steiner_mesh() -> Mesh2D:
+    """网格 D：真实 boundary Steiner 隔离网格（v2.2 第三轮任务六）。
+
+    Triangle 输入前 outer boundary 为顺时针四角：
+        (0,0),(0,2),(2,2),(2,0)
+    最终网格 nodes 在底边 (2,0)->(0,0) 上额外含中点 (1,0)（模拟 Triangle 输出
+    后新增的 boundary Steiner point），再含中心点 (1,1)。以中心点扇形三角形，
+    使有序拓扑外边界为 (0,0)->(0,2)->(2,2)->(2,0)->(1,0)->(0,0)。
+
+    拓扑期望：
+        节点 0:(0,0) 1:(0,2) 2:(2,2) 3:(2,0) 4:(1,0) 中心 5:(1,1)
+        扇形三角（公共顶点 5）：
+            0-1-5, 1-2-5, 2-3-5, 3-4-5, 4-0-5
+        外边界环边 0-1,1-2,2-3,3-4,4-0 各出现一次 → 外边界；
+        辐条边 0-5,1-5,2-5,3-5,4-5 各出现两次 → 内部；
+        外边界节点 = {0,1,2,3,4}（1-based {1,2,3,4,5}），nvert_ex=5；
+        内部节点 = {5}（1-based {6}），nvert_in=1；
+        (1,0) 即节点 4，属于 idxevert，但不属于 outer_boundary（B=4）。
+    """
+    nodes = np.array([
+        [0.0, 0.0],   # 0
+        [0.0, 2.0],   # 1
+        [2.0, 2.0],   # 2
+        [2.0, 0.0],   # 3
+        [1.0, 0.0],   # 4  底边 Steiner 中点
+        [1.0, 1.0],   # 5  中心点（内部）
+    ], dtype=np.float64)
+
+    triangles = np.array([
+        [0, 1, 5],
+        [1, 2, 5],
+        [2, 3, 5],
+        [3, 4, 5],
+        [4, 0, 5],
+    ], dtype=np.int32)
+
+    region_ids = np.ones(triangles.shape[0], dtype=np.int32)
+
+    # 输入前 outer boundary：顺时针四角，不含 (1,0)
+    ob = np.array([
+        [0.0, 0.0],
+        [0.0, 2.0],
+        [2.0, 2.0],
+        [2.0, 0.0],
+    ], dtype=np.float64)
+
+    return Mesh2D(
+        nodes=nodes,
+        triangles=triangles,
+        region_ids=region_ids,
+        outer_boundary=ob,
     )
 
 
@@ -1076,3 +1149,220 @@ class TestHDF5RoundTrip:
         np.testing.assert_array_almost_equal(rbc, ob[:, 0])
         np.testing.assert_array_almost_equal(zbc, ob[:, 1])
         assert nbcRZ == ob.shape[0]
+
+
+# ===========================================================================
+# M3-11：真实 boundary Steiner 隔离（v2.2 第三轮任务六）
+# ===========================================================================
+
+class TestHDF5BoundarySteinerIsolation:
+    """区分 Triangle 输入前 outer boundary 与输出后拓扑外边界新增点。
+
+    输入前 outer boundary 四角：(0,0),(0,2),(2,2),(2,0)（B=4）。
+    最终网格底边新增 boundary Steiner 中点 (1,0)（节点 4），加中心点 (1,1)。
+    有序拓扑外边界为 (0,0)->(0,2)->(2,2)->(2,0)->(1,0)->(0,0)，nvert_ex=5。
+
+    断言：
+        - (1,0) 属于 idxevert（拓扑外边界节点）；
+        - (1,0) 不属于 Rbc/Zbc（几何 outer boundary 点）；
+        - nvert_ex == 5；nbcRZ == 4；nbcRZ < nvert_ex。
+    """
+
+    def test_steiner_node_in_idxevert_not_in_rbc(self, tmp_path):
+        import h5py
+        mesh = _make_boundary_steiner_mesh()
+        h5_path = tmp_path / "steiner.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            vert = grp["vert"][:]
+            idxevert = grp["idxevert"][:].reshape(-1).astype(np.int64)
+            rbc = grp["Rbc"][:].reshape(-1)
+            zbc = grp["Zbc"][:].reshape(-1)
+            nvert_ex = int(round(float(grp["nvert_ex"][()][0, 0])))
+            nbcRZ = int(round(float(grp["nbcRZ"][()][0, 0])))
+
+        # 节点 4（0-based）即 (1,0)，1-based 为 5，应在 idxevert 中
+        # 通过坐标定位该节点的 1-based 全局编号
+        target = np.array([1.0, 0.0], dtype=np.float64)
+        matches = np.where(np.all(np.isclose(vert, target), axis=1))[0]
+        assert matches.size == 1, "网格应恰含一个 (1,0) 节点"
+        steiner_1based = int(matches[0]) + 1
+        assert steiner_1based in idxevert.tolist(), (
+            "(1,0) 应属于拓扑外边界节点 idxevert"
+        )
+
+        # (1,0) 不应出现在 Rbc/Zbc（几何 outer boundary 只有四角）
+        bc_pts = set(zip(rbc.tolist(), zbc.tolist()))
+        assert (1.0, 0.0) not in bc_pts, (
+            "boundary Steiner 点 (1,0) 不得进入 Rbc/Zbc"
+        )
+
+        assert nvert_ex == 5, f"nvert_ex 应为 5，实际={nvert_ex}"
+        assert nbcRZ == 4, f"nbcRZ 应为 4，实际={nbcRZ}"
+        assert nbcRZ < nvert_ex, "本用例应满足 nbcRZ < nvert_ex"
+
+    def test_rbc_zbc_are_four_corners(self, tmp_path):
+        import h5py
+        mesh = _make_boundary_steiner_mesh()
+        h5_path = tmp_path / "steiner2.h5"
+        write_hdf5(mesh, str(h5_path), verbose=False)
+
+        with h5py.File(str(h5_path), "r") as f:
+            grp = f["femmesh"]
+            rbc = grp["Rbc"][:].reshape(-1)
+            zbc = grp["Zbc"][:].reshape(-1)
+
+        expected = np.array([
+            [0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0],
+        ], dtype=np.float64)
+        np.testing.assert_array_almost_equal(rbc, expected[:, 0])
+        np.testing.assert_array_almost_equal(zbc, expected[:, 1])
+
+
+# ===========================================================================
+# M3-12：Writer outer_boundary 自交/共线重叠二次防线（构造后替换）
+# ===========================================================================
+
+class TestHDF5WriterSelfIntersectionSecondLine:
+    """Mesh2D.outer_boundary 构造后被外部替换为非法几何时，Writer 必须再次拒绝。
+
+    由于 outer_boundary 是公开可变 ndarray，构造后可被直接替换。Writer 复用
+    mesh.py 统一验证作为二次防线，在打开目标文件前拒绝自交/共线重叠轮廓。
+    """
+
+    def _assert_fail_no_file(self, mesh, tmp_path, match):
+        h5_path = tmp_path / "should_not_exist_si.h5"
+        assert not h5_path.exists()
+        with pytest.raises(ValueError, match=match):
+            write_hdf5(mesh, str(h5_path), verbose=False)
+        assert not h5_path.exists(), "验证失败时不得创建或截断目标文件"
+
+    def test_nonadjacent_strict_crossing_rejected_by_writer(self, tmp_path):
+        """构造后替换为非相邻边严格交叉（顺时针、非退化）的轮廓，Writer 拒绝。
+
+        点序 (0,0)->(2,3)->(0,2)->(3,0)：非相邻边 1 与边 3 严格交叉。
+        先核对带符号面积严格为负（顺时针）且非退化，错误只匹配自交，
+        不接受方向或面积作为替代原因。
+        """
+        # 先用合法顺时针轮廓构造合法 Mesh2D
+        mesh = _make_center_mesh(outer_boundary=_cw_outer_boundary())
+
+        # 构造后替换 outer_boundary 为自交轮廓（绕过 Mesh2D 构造期验证）
+        bad = np.array([
+            [0.0, 0.0],
+            [2.0, 3.0],
+            [0.0, 2.0],
+            [3.0, 0.0],
+        ], dtype=np.float64)
+        # 进入自交检查前必须已满足顺时针（signed area < 0）与非退化
+        assert _local_signed_area(bad) < 0
+        assert abs(_local_signed_area(bad)) > 1e-12
+        mesh.outer_boundary = bad
+
+        self._assert_fail_no_file(mesh, tmp_path, match="自交|self-intersection")
+
+    def test_nonadjacent_collinear_overlap_rejected_by_writer(self, tmp_path):
+        """构造后替换为非相邻边共线重叠（顺时针、非退化）的轮廓，Writer 拒绝。
+
+        点序（顺时针，末尾不重复首点、无相邻重复点）：
+          (0,0)->(0,3)->(4,3)->(4,0)->(1,0)->(1,1)->(3,1)->(3,0)->(2,0)->(2,2)
+        边 (4,0)->(1,0) 与边 (3,0)->(2,0) 非相邻、共线且重叠。
+        先核对带符号面积严格为负（顺时针）。
+        """
+        mesh = _make_center_mesh(outer_boundary=_cw_outer_boundary())
+
+        bad = np.array([
+            [0.0, 0.0],
+            [0.0, 3.0],
+            [4.0, 3.0],
+            [4.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [3.0, 1.0],
+            [3.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 2.0],
+        ], dtype=np.float64)
+        assert _local_signed_area(bad) < 0
+        mesh.outer_boundary = bad
+
+        self._assert_fail_no_file(mesh, tmp_path, match="自交|self-intersection")
+
+    def test_writer_second_line_not_relying_on_construction(self, tmp_path):
+        """确认拒绝来自 Writer 二次防线，而非仅 Mesh2D 构造期。
+
+        构造合法 Mesh2D 成功（无异常），随后替换为自交轮廓，再由 write_hdf5 拒绝。
+        """
+        # 合法构造：不抛异常
+        mesh = _make_center_mesh(outer_boundary=_cw_outer_boundary())
+        assert mesh.outer_boundary is not None
+
+        bad = np.array([
+            [0.0, 0.0],
+            [2.0, 3.0],
+            [0.0, 2.0],
+            [3.0, 0.0],
+        ], dtype=np.float64)
+        assert _local_signed_area(bad) < 0
+        mesh.outer_boundary = bad
+
+        # 此时 outer_boundary 已非法，写出应失败（二次防线生效）
+        self._assert_fail_no_file(mesh, tmp_path, match="自交|self-intersection")
+
+
+# ===========================================================================
+# M3-13：验证失败时既有目标文件不被截断（哨兵）
+# ===========================================================================
+
+class TestHDF5NoTruncateOnFailure:
+    """输入验证失败发生在打开文件前，既有文件内容保持不变（未被截断）。"""
+
+    def test_existing_file_not_truncated_on_invalid_input(self, tmp_path):
+        h5_path = tmp_path / "sentinel.h5"
+        sentinel = b"LINKMESH_SENTINEL_BYTES_DO_NOT_TRUNCATE"
+        h5_path.write_bytes(sentinel)
+        assert h5_path.read_bytes() == sentinel
+
+        # 非法输入（outer_boundary=None）应在打开文件前失败
+        mesh = Mesh2D(
+            nodes=np.array([
+                [0.10, 0.20], [2.30, 0.15], [2.45, 1.90],
+                [0.05, 1.75], [1.20, 0.95],
+            ], dtype=np.float64),
+            triangles=np.array([
+                [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4],
+            ], dtype=np.int32),
+            region_ids=np.array([7, 7, 9, 9], dtype=np.int32),
+            # outer_boundary 默认 None
+        )
+        with pytest.raises(ValueError):
+            write_hdf5(mesh, str(h5_path), verbose=False)
+
+        # 既有哨兵文件内容保持不变（未被 h5py 'w' 截断）
+        assert h5_path.read_bytes() == sentinel, (
+            "验证失败时不得截断既有目标文件内容"
+        )
+
+    def test_existing_file_not_truncated_on_self_intersection(self, tmp_path):
+        h5_path = tmp_path / "sentinel_si.h5"
+        sentinel = b"LINKMESH_SENTINEL_SI"
+        h5_path.write_bytes(sentinel)
+
+        mesh = _make_center_mesh(outer_boundary=_cw_outer_boundary())
+        bad = np.array([
+            [0.0, 0.0],
+            [2.0, 3.0],
+            [0.0, 2.0],
+            [3.0, 0.0],
+        ], dtype=np.float64)
+        assert _local_signed_area(bad) < 0
+        mesh.outer_boundary = bad
+
+        with pytest.raises(ValueError, match="自交|self-intersection"):
+            write_hdf5(mesh, str(h5_path), verbose=False)
+
+        assert h5_path.read_bytes() == sentinel, (
+            "Writer 二次防线拒绝时不得截断既有目标文件"
+        )

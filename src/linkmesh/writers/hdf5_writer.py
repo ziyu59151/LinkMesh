@@ -34,11 +34,22 @@ v2.0 M3 complete-11 契约（依据 loadfemmesh_h5.m 与两个真实样例，均
       不由升序 idxevert 反推，不含生成器后插入的 Steiner 边界点；
       nbcRZ 可等于或小于 nvert_ex（不要求相等）。
 
+outer_boundary 验证统一化（v2.2 M3 complete-11 第三轮）：
+    Writer 不再维护自己那套不完整的 outer_boundary 几何验证（缺少非相邻边自交检查），
+    而是复用 linkmesh.mesh 中 Mesh2D 使用的同一个统一验证实现
+    _validate_outer_boundary（含 shape/有限性/相邻重复/首尾/方向/退化面积/完整
+    非相邻边自交检查：严格交叉、端点接触、共线重叠）。该 helper 是仓库内部统一
+    验证实现，不是对外公共 API；Writer 直接在运行时导入它，避免两处验证逻辑分叉。
+    Writer 侧仅保留一层很薄的 wrapper，用于对 outer_boundary=None 给出 Writer 专用
+    错误信息；复杂几何验证（含自交算法）一律委托给 mesh.py 的统一实现，Writer 不
+    复制自交算法。统一 helper 返回独立 float64 副本，Writer 后续只使用该副本，
+    不修改 mesh.outer_boundary，不重采样、不排序、不循环移位、不添加闭合点。
+
 关于 MATLAB 中的 h5read(...).' ：那是 MATLAB/HDF5 维度解释（列优先）问题，
 不能反向推导 Python Writer 必须转置。h5py 磁盘 shape 直接按上表写出。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v2.0 第 5、9、10.1 节
+    LinkMesh_Architecture_Plan.md v2.2 第 3.2、5、9、10.1 节
     docs/trimeg/loadfemmesh_h5.m（黄金标尺，只读）
 """
 
@@ -47,6 +58,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+
+# 复用 Mesh2D 使用的同一个统一 outer_boundary 验证实现（仓库内部统一验证，
+# 非对外公共 API）。Writer 直接在运行时导入该内部 helper，确保 Writer 与
+# Mesh2D 使用完全一致的几何契约（含完整非相邻边自交检查），避免验证逻辑分叉。
+from linkmesh.mesh import _validate_outer_boundary as _mesh_validate_outer_boundary
 
 if TYPE_CHECKING:
     from linkmesh.mesh import Mesh2D
@@ -156,82 +172,37 @@ def _validate_triangle_areas(nodes: np.ndarray, triangles: np.ndarray) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 内部辅助：outer_boundary 验证（用于 nbcRZ/Rbc/Zbc）                           #
+# 内部辅助：outer_boundary 验证（用于 nbcRZ/Rbc/Zbc）—— 复用 mesh.py 统一实现   #
 # --------------------------------------------------------------------------- #
 
-def _signed_area_closed(boundary: np.ndarray) -> float:
-    """对隐式闭合（末尾不重复首点）的轮廓计算带符号闭合面积（鞋带公式）。
-
-    正值为逆时针，负值为顺时针。
-    """
-    r = boundary[:, 0]
-    z = boundary[:, 1]
-    r_next = np.roll(r, -1)
-    z_next = np.roll(z, -1)
-    return 0.5 * float(np.sum(r * z_next - r_next * z))
-
-
 def _validate_outer_boundary(outer_boundary_in) -> np.ndarray:
-    """验证并返回 (B,2) float64 outer_boundary（顺时针、隐式闭合、不重复首点）。
+    """Writer 侧薄 wrapper：对 None 给出 Writer 专用错误，其余委托统一验证。
 
-    该验证与 Mesh2D 集中验证同义，作为 Writer 侧独立防线（Writer 不得依赖
-    上游是否已验证，也不修改输入）。
+    复杂几何验证（shape/有限性/相邻重复/首尾/方向/退化面积/完整非相邻边自交：
+    严格交叉、端点接触、共线重叠）全部委托给 linkmesh.mesh 的统一实现
+    _mesh_validate_outer_boundary（即 Mesh2D 使用的同一个 helper），Writer 不复制
+    自交算法、不维护第二套几何验证。
 
-    要求：
-        - outer_boundary 不为 None；
-        - 二维 (B,2)；
-        - B >= 3；
-        - float64 可转换、全有限；
-        - 至少 3 个互异点；
-        - 相邻点不重复；
-        - 首点与末点不同（末尾不重复首点）；
-        - 带符号闭合面积严格为负（顺时针）且非退化。
+    该 wrapper 仅负责：
+        - outer_boundary 缺失（None）时给出面向 TRIMEG 写出的 Writer 专用错误信息
+          （便于定位是“未提供 outer boundary”而非几何非法）；
+        - 非 None 时调用统一 helper 完成全部几何验证并返回其独立 float64 副本。
+
+    由于 Mesh2D.outer_boundary 是公开可变 ndarray，构造后可能被外部直接修改，
+    Writer 在打开目标文件前重新执行该统一验证，作为二次防线。
 
     返回：
-        (B,2) float64 数组
+        (B,2) float64 独立副本（由统一 helper 生成）
 
     异常：
-        ValueError: 缺失或不满足上述任一约束
+        ValueError: outer_boundary 为 None，或统一验证判定其非法（含自交）
     """
     if outer_boundary_in is None:
         raise ValueError(
             "mesh.outer_boundary 缺失（None）：写出完整 11 数据集需要有序 outer boundary"
         )
-
-    ob = np.asarray(outer_boundary_in, dtype=np.float64)
-    if ob.ndim != 2:
-        raise ValueError(f"outer_boundary 必须是二维数组，实际 ndim={ob.ndim}")
-    if ob.shape[1] != 2:
-        raise ValueError(f"outer_boundary 必须为 (B,2)，实际 shape={ob.shape}")
-    b = ob.shape[0]
-    if b < 3:
-        raise ValueError(f"outer_boundary 至少需要 3 个点（B>=3），实际 B={b}")
-    if not np.all(np.isfinite(ob)):
-        raise ValueError("outer_boundary 含非有限值（NaN/Inf）")
-    if np.array_equal(ob[0], ob[-1]):
-        raise ValueError(
-            "outer_boundary 首点与末点相同：应隐式闭合，末尾不得重复首点"
-        )
-    diffs = np.diff(ob, axis=0)
-    seg_len_sq = np.sum(diffs * diffs, axis=1)
-    if np.any(seg_len_sq == 0.0):
-        raise ValueError("outer_boundary 存在相邻重复点（零长度边）")
-    unique_pts = np.unique(ob, axis=0)
-    if unique_pts.shape[0] < 3:
-        raise ValueError(
-            f"outer_boundary 互异点不足 3 个，实际互异点数={unique_pts.shape[0]}"
-        )
-    area = _signed_area_closed(ob)
-    if abs(area) <= 1e-12:
-        raise ValueError(
-            f"outer_boundary 面积退化（近零或共线）：signed_area={area}"
-        )
-    if area >= 0:
-        raise ValueError(
-            "outer_boundary 方向必须为顺时针（带符号闭合面积应严格为负），"
-            f"实际 signed_area={area}"
-        )
-    return ob
+    # 委托给 mesh.py 统一验证（含完整非相邻边自交检查），返回独立 float64 副本。
+    return _mesh_validate_outer_boundary(outer_boundary_in)
 
 
 # --------------------------------------------------------------------------- #
@@ -276,7 +247,7 @@ def _extract_boundary_indices(triangles: np.ndarray, n_nodes: int):
             continue
         else:
             raise ValueError(
-                f"检测到非流形边 {(a, b)}：被 {cnt} 个三角形共享（>2），"
+                f"检测到非流形边 {(a, b)}：被 {cnt} 个三角形共享(>2)，"
                 "网格非流形，拒绝写出"
             )
 
@@ -348,14 +319,18 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
         - 直接读 mesh.outer_boundary（有序、顺时针、隐式闭合、不重复首点）；
         - 不由升序 idxevert 反推；不含 Steiner 点；nbcRZ=B 可小于 nvert_ex。
 
-    重要：全部输入验证（含 outer_boundary）、面积检查、边统计、非流形检查、
-    拓扑索引派生与集合一致性检查均在打开/覆盖目标文件之前完成；任一失败时
+    outer_boundary 验证（v2.2）：
+        Writer 复用 linkmesh.mesh 的统一 _validate_outer_boundary（含完整非相邻边
+        自交检查），作为二次防线在打开目标文件前重新验证 mesh.outer_boundary。
+
+    重要：全部输入验证（含 outer_boundary 统一验证）、面积检查、边统计、非流形
+    检查、拓扑索引派生与集合一致性检查均在打开/覆盖目标文件之前完成；任一失败时
     不创建或截断目标文件。
 
     异常：
         ImportError: h5py 不可用（保留原始异常链）
         ValueError:  输入不满足 v2.0 契约（shape/有限值/整数语义/索引范围/退化/
-                     非流形/无拓扑外边界/集合一致性/outer_boundary 非法等）
+                     非流形/无拓扑外边界/集合一致性/outer_boundary 非法或自交等）
     """
     # ------------------------------------------------------------------ #
     # Step 1：全部验证与拓扑派生（在打开文件之前）                          #
@@ -372,7 +347,8 @@ def write_hdf5(mesh: "Mesh2D", filepath: str, verbose: bool = True) -> None:
     nvert_in = int(idxivert.shape[0])
     nvert_ex = int(idxevert.shape[0])
 
-    # outer_boundary 验证（在打开文件之前；Writer 独立防线，不修改输入）
+    # outer_boundary 统一验证（在打开文件之前；Writer 二次防线，不修改输入）。
+    # 复杂几何验证（含非相邻边自交）委托给 mesh.py 统一 helper，返回独立 float64 副本。
     outer_boundary = _validate_outer_boundary(getattr(mesh, "outer_boundary", None))
     n_bc = int(outer_boundary.shape[0])  # B
 
