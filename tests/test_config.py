@@ -49,6 +49,9 @@ def _overrides(**kw) -> CliOverrides:
     CliOverrides 每个字段默认即为 config.UNSET（表示“CLI 未显式提供”），
     因此仅把 kw 中显式给出的字段设值即可；不得把未提供字段设为 None，
     否则会被生产合并逻辑误判为“用户显式提供”，从而覆盖 TOML 值。
+
+    键名使用 CLI 短名（gfile/array_file/hdf5/plot/model/smb），与生产
+    CliOverrides 字段名一致，绝不能用 EffectiveConfig 长名（gfile_path 等）。
     """
     return CliOverrides(**kw)
 
@@ -58,6 +61,29 @@ _MINIMAL_GFILE_OVR = dict(
     boundary_source="artificial_outer",
     gfile="g.eqdsk",
 )
+
+
+# --------------------------------------------------------------------------- #
+# 0. sentinel 契约（固定 _overrides gfile 键与 config.UNSET 身份，防再次分叉） #
+# --------------------------------------------------------------------------- #
+
+class TestOverridesSentinelContract:
+    def test_overrides_gfile_key_defaults_to_config_unset(self):
+        # 未提供 gfile 时，CliOverrides.gfile 必须是同一个 config.UNSET 对象。
+        ovr = _overrides()
+        assert ovr.gfile is UNSET
+        assert ovr.gfile is cfgmod.UNSET
+
+    def test_overrides_uses_cli_short_key_gfile(self):
+        # 生产 CLI 载体字段名是短名 gfile（非 gfile_path）。
+        ovr = _overrides(gfile="x.eqdsk")
+        assert ovr.gfile == "x.eqdsk"
+        assert not hasattr(ovr, "gfile_path")
+
+    def test_all_path_fields_default_unset(self):
+        ovr = _overrides()
+        for key in ("gfile", "array_file", "hdf5", "plot", "model", "smb"):
+            assert getattr(ovr, key) is UNSET
 
 
 # --------------------------------------------------------------------------- #
@@ -313,6 +339,34 @@ class TestMerge:
         # TOML 中的 gfile 被采用（相对配置目录解析为绝对路径）
         assert cfg.gfile_path == (tmp_path / "g.eqdsk").resolve()
 
+    def test_toml_gfile_used_when_cli_gfile_unset(self, tmp_path):
+        # CLI gfile 保持 UNSET → 采用 TOML [input].gfile。
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n[input]\ngfile = 'from_toml.eqdsk'\n",
+        )
+        cfg = load_effective_config(
+            _overrides(profile="nested_three_region",
+                       boundary_source="artificial_outer"),
+            no_config=False, cwd=tmp_path,
+        )
+        assert cfg.gfile_path == (tmp_path / "from_toml.eqdsk").resolve()
+
+    def test_cli_gfile_overrides_toml_with_cwd_base(self, tmp_path):
+        # CLI 显式 gfile 覆盖 TOML，且相对路径以 cwd 为基准。
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n[input]\ngfile = 'from_toml.eqdsk'\n",
+        )
+        cfg = load_effective_config(
+            _overrides(profile="nested_three_region",
+                       boundary_source="artificial_outer",
+                       gfile="from_cli.eqdsk"),
+            no_config=False, cwd=tmp_path,
+        )
+        assert cfg.gfile_path == (tmp_path / "from_cli.eqdsk").resolve()
+        assert cfg.gfile_path != (tmp_path / "from_toml.eqdsk").resolve()
+
 
 # --------------------------------------------------------------------------- #
 # 6. 路径解析                                                                   #
@@ -328,7 +382,7 @@ class TestPathResolution:
             name="custom.in",
         )
         # CLI 不显式提供 gfile（保持 UNSET），使 TOML 的相对 gfile 生效；
-        # 该相对路径应相对配置文件所在目录（sub）解析。
+        # 该相对路径应相对配置文件所在目录（sub）解析，而非 cwd（tmp_path）。
         cfg = load_effective_config(
             _overrides(profile="nested_three_region",
                        boundary_source="artificial_outer"),
@@ -337,6 +391,8 @@ class TestPathResolution:
             cwd=tmp_path,
         )
         assert cfg.gfile_path == (sub / "eq.gfile").resolve()
+        # 明确不是相对 cwd 解析
+        assert cfg.gfile_path != (tmp_path / "eq.gfile").resolve()
 
     def test_cli_relative_path_based_on_cwd(self, tmp_path):
         cfg = load_effective_config(
@@ -381,6 +437,25 @@ class TestPathResolution:
         )
         assert cfg.config_path is not None
         assert cfg.config_path.is_absolute()
+
+    def test_toml_output_hdf5_relative_to_config_dir(self, tmp_path):
+        # 覆盖路径字段键名映射：TOML [output].hdf5 → hdf5_path，相对配置目录。
+        sub = tmp_path / "cfg"
+        sub.mkdir()
+        _write_toml(
+            sub,
+            "schema_version = 1\n[input]\ngfile = 'eq.gfile'\n"
+            "[output]\nhdf5 = 'out.h5'\n",
+            name="custom.in",
+        )
+        cfg = load_effective_config(
+            _overrides(profile="nested_three_region",
+                       boundary_source="artificial_outer"),
+            config_arg=str(sub / "custom.in"),
+            no_config=False,
+            cwd=tmp_path,
+        )
+        assert cfg.hdf5_path == (sub / "out.h5").resolve()
 
     def test_no_env_expansion(self, tmp_path, monkeypatch):
         monkeypatch.setenv("LINKMESH_TEST_VAR", "should_not_expand")

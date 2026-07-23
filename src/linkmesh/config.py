@@ -30,6 +30,14 @@ CLI 依赖契约（供 cli.py 导入）：
     - 合并入口：load_effective_config(overrides, config_arg=..., no_config=...)；
     - 只读结果：EffectiveConfig（15 字段）。
 
+键名约定（重要）：
+    - CliOverrides 使用 CLI 短键名：gfile/array_file/hdf5/plot/model/smb（与 argparse
+      dest 一致）；
+    - _load_toml 输出与 EffectiveConfig 字段名一致的长键名：gfile_path/array_file_path/
+      hdf5_path/plot_path/model_path/smb_path；
+    - 因此路径合并时必须分别用「CLI 键」查 CliOverrides、用「EffectiveConfig 键」查
+      TOML 映射，二者不可混用同一名称（标量字段两侧键名恰好相同，不受影响）。
+
 参考规范：
     LinkMesh_Architecture_Plan.md v2.3 第 6A.1–6A.13 节
 """
@@ -156,6 +164,9 @@ class CliOverrides:
 
     注意：cli.py 会在构造后对 verbose 字段赋值（overrides.verbose = True），
     因此本类必须为可变 dataclass（不加 frozen）。
+
+    路径字段键名使用 CLI 短名（gfile/array_file/hdf5/plot/model/smb），与
+    EffectiveConfig 的长名（gfile_path 等）不同，合并逻辑需分别映射。
     """
 
     target: Any = UNSET
@@ -222,7 +233,8 @@ def _check_str_path(value: Any, name: str, config_path: Optional[Path]) -> str:
 def _load_toml(config_path: Path) -> dict:
     """读取并严格校验 linkmesh.in，返回已按 EffectiveConfig 字段名归一的原始值字典。
 
-    返回的字典只包含 TOML 中实际出现的键（映射到 EffectiveConfig 字段名），
+    返回的字典只包含 TOML 中实际出现的键（映射到 EffectiveConfig 字段名，
+    路径字段用长名 gfile_path/array_file_path/hdf5_path/plot_path/model_path/smb_path），
     未出现的键不放入（表示未提供）。路径值保持字符串（相对配置目录解析在后续步骤）。
     """
     try:
@@ -433,7 +445,7 @@ def load_effective_config(
         config_arg=config_arg, no_config=no_config, cwd=base_cwd
     )
 
-    # Step 2：加载 TOML（若有）。
+    # Step 2：加载 TOML（若有）。toml_values 使用 EffectiveConfig 字段名（长名）。
     toml_values: dict = {}
     if config_path is not None:
         toml_values = _load_toml(config_path)
@@ -441,12 +453,14 @@ def load_effective_config(
     else:
         config_dir = None
 
-    def _explicit(field: str) -> Any:
-        val = getattr(overrides, field)
+    def _explicit(cli_key: str) -> Any:
+        """读取 CliOverrides 上的显式值；UNSET 归一为 None（表示未提供）。"""
+        val = getattr(overrides, cli_key)
         return val if val is not UNSET else None
 
     # ------------------------------------------------------------------ #
     # 标量字段合并：默认 < TOML < 显式 CLI                                  #
+    # 标量字段的 CLI 键名与 TOML/EffectiveConfig 键名相同，可共用一个名称。 #
     # ------------------------------------------------------------------ #
     def _merge_scalar(field: str, default: Any) -> Any:
         cli_val = _explicit(field)
@@ -479,13 +493,18 @@ def load_effective_config(
     # 路径字段合并 + 基准解析                                               #
     #   CLI 显式路径优先（相对 cwd）；否则 TOML 路径（相对配置目录）；        #
     #   否则内建默认（仅 hdf5 有默认名，且仅按需求处理）。                    #
+    #                                                                      #
+    # 关键：CLI 载体键名（cli_key，如 "gfile"）与 TOML/EffectiveConfig 键名  #
+    # （toml_key，如 "gfile_path"）不同，必须分别查询，不能共用同一名称，    #
+    # 否则 TOML 路径值会因 `cli_key in toml_values` 恒为 False 而被丢弃。    #
     # ------------------------------------------------------------------ #
-    def _merge_path(field: str, default_name: Optional[str]) -> Optional[Path]:
-        cli_val = _explicit(field)
+    def _merge_path(cli_key: str, toml_key: str,
+                    default_name: Optional[str]) -> Optional[Path]:
+        cli_val = _explicit(cli_key)
         if cli_val is not None:
             return _resolve_path(str(cli_val), base_cwd)
-        if field in toml_values and config_dir is not None:
-            return _resolve_path(str(toml_values[field]), config_dir)
+        if toml_key in toml_values and config_dir is not None:
+            return _resolve_path(str(toml_values[toml_key]), config_dir)
         if default_name is not None:
             # 内建默认路径相对当前工作目录。
             return _resolve_path(default_name, base_cwd)
@@ -493,14 +512,14 @@ def load_effective_config(
 
     # gfile/array_file/plot/model/smb 无内建默认；hdf5 默认名仅在 target=trimeg
     # 时作为默认输出，其它 target 不制造默认可执行路径。
-    gfile_path = _merge_path("gfile", None)
-    array_file_path = _merge_path("array_file", None)
-    plot_path = _merge_path("plot", None)
-    model_path = _merge_path("model", None)
-    smb_path = _merge_path("smb", None)
+    gfile_path = _merge_path("gfile", "gfile_path", None)
+    array_file_path = _merge_path("array_file", "array_file_path", None)
+    plot_path = _merge_path("plot", "plot_path", None)
+    model_path = _merge_path("model", "model_path", None)
+    smb_path = _merge_path("smb", "smb_path", None)
 
     hdf5_default_name = DEFAULT_HDF5_NAME if target == "trimeg" else None
-    hdf5_path = _merge_path("hdf5", hdf5_default_name)
+    hdf5_path = _merge_path("hdf5", "hdf5_path", hdf5_default_name)
 
     cfg = EffectiveConfig(
         schema_version=SCHEMA_VERSION,
@@ -520,6 +539,7 @@ def load_effective_config(
         verbose=verbose,
     )
 
+    # required-field 校验发生在路径合并完成之后。
     _validate_compatibility(cfg)
     _validate_required_fields(cfg)
     _validate_current_stage(cfg)
