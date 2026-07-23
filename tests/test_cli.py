@@ -204,34 +204,52 @@ class TestValidationFailures:
         self, monkeypatch, flag, expected_name, bad_value
     ):
         mocks = _install_cli_mocks(monkeypatch)
-        args = _parse(["--gfile", "dummy.eqdsk", flag, bad_value])
+
+        if bad_value.startswith("-"):
+            argv = [
+                "--gfile",
+                "dummy.eqdsk",
+                f"{flag}={bad_value}",
+            ]
+        else:
+            argv = [
+                "--gfile",
+                "dummy.eqdsk",
+                flag,
+                bad_value,
+            ]
+
+        args = _parse(argv)
 
         with pytest.raises(ValueError) as excinfo:
             cli._run(args)
 
         msg = str(excinfo.value)
-        # 错误文本包含对应参数名与稳定短语
         assert expected_name in msg
         assert "必须是有限正数" in msg
 
-        # 核心要求：generate_mesh() 未被调用（未进入 OFT 网格生成）
         assert mocks["generate_mesh"].call_count == 0
-        # Writer / Plotter 亦未被调用
         assert mocks["write_hdf5"].call_count == 0
         assert mocks["write_smb"].call_count == 0
         assert mocks["plot_mesh"].call_count == 0
 
     def test_valid_values_do_not_raise_validation(self, monkeypatch):
-        # 合法值不应触发验证错误，generate_mesh 正常被调用
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse([
-            "--gfile", "dummy.eqdsk",
-            "--plasma-dx", "0.05",
-            "--vacuum-dx", "0.08",
-            "--outer-dx", "0.16",
-            "--no-hdf5", "--no-smb",
+            "--gfile",
+            "dummy.eqdsk",
+            "--plasma-dx",
+            "0.05",
+            "--vacuum-dx",
+            "0.08",
+            "--outer-dx",
+            "0.16",
+            "--no-hdf5",
+            "--no-smb",
         ])
+
         cli._run(args)
+
         assert mocks["generate_mesh"].call_count == 1
 
 
