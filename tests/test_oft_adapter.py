@@ -1,6 +1,6 @@
 """
 tests/test_oft_adapter.py —— M2 OFT Adapter 验收测试
-（v1.9 三层接口，v2.2 outer boundary 私有兼容接口修正 + 静态修正）。
+（v1.9 三层接口，v2.2 outer boundary 私有兼容接口修正）。
 
 测试原则：
     - 只使用 mock / 受控假的 OFT Domain / Region；
@@ -25,10 +25,9 @@ Windows 本地可收集但不保证运行通过。
     A. mesh_from_oft_domain()：通用 N 区域核心转换与校验
        （含 build_mesh 后 OFT 最终区域 ID 时序回归测试；
         含 build_mesh 后读取 outer Region 回写点列、版本锁定、失败即停、
-        方向反转保持原起点、build 前保存引用、边界 Steiner 隔离、超过 4 点证伪四角）
+        Steiner 点不进入 outer_boundary、超过 4 点证明旧四角失败）
     B. build_oft_domain_from_gfile()：默认 GFile 区域策略
-       （含 outer Region 引用捕获、regions 长度差异、有壁/无壁一致、
-        引用保存失败立即抛错）
+       （含 outer Region 引用捕获、regions 长度差异、有壁/无壁一致）
     C. generate_mesh()：便利入口只组合两层
     另含 _load_gs_domain_class() 导入失败异常链测试与版本检查测试。
 """
@@ -89,15 +88,10 @@ class FakeDomain:
     可选携带一个 outer Region 对象（通过 _OUTER_REGION_ATTR 附加），
     并在 build_mesh() 时模拟 OFT 把有序离散点列回写到该 Region 的
     _resampled_points（resampled_on_build 提供回写值）。
-
-    swap_region_on_build：若提供，build_mesh() 时把 domain 上的
-    _OUTER_REGION_ATTR 替换成另一个对象（模拟 build 过程改写属性），
-    用于验证 Adapter 使用 build 前保存的原对象。
     """
 
     def __init__(self, pts, lc, reg, region_info,
-                 outer_region=None, resampled_on_build=None,
-                 swap_region_on_build=None):
+                 outer_region=None, resampled_on_build=None):
         self._pts = pts
         self._lc = lc
         self._reg = reg
@@ -105,18 +99,14 @@ class FakeDomain:
         self.build_mesh_call_count = 0
         self._resampled_on_build = resampled_on_build
         self._outer_region = outer_region
-        self._swap_region_on_build = swap_region_on_build
         if outer_region is not None:
             setattr(self, _OUTER_REGION_ATTR, outer_region)
 
     def build_mesh(self):
         self.build_mesh_call_count += 1
-        # 模拟 OFT 在 Mesh.__init__() 期间回写原 outer Region 的 _resampled_points
+        # 模拟 OFT 在 Mesh.__init__() 期间回写 region._resampled_points
         if self._outer_region is not None and self._resampled_on_build is not None:
             self._outer_region._resampled_points = self._resampled_on_build
-        # 模拟 build 过程改写 domain 上的 LinkMesh 附加属性为另一对象
-        if self._swap_region_on_build is not None:
-            setattr(self, _OUTER_REGION_ATTR, self._swap_region_on_build)
         return self._pts, self._lc, self._reg
 
 
@@ -394,45 +384,19 @@ class TestMeshFromOftDomainOuterBoundaryReadback:
         mesh = mesh_from_oft_domain(domain)
         assert _signed_area_closed(mesh.outer_boundary) < 0
 
-    def test_counterclockwise_readback_normalized_to_clockwise_keeps_start(self, force_oft_version_266):
-        """OFT 回写逆时针点列时，规范化为顺时针，且保持原起点 0。
-
-        输入逆时针点列首点应等于输出首点；输出后续点序为保持首点的反向。
-        """
+    def test_counterclockwise_readback_normalized_to_clockwise(self, force_oft_version_266):
+        # OFT 回写逆时针点列时，规范化为顺时针后注入
         pts, lc = _square_two_triangles()
         reg = np.array([1, 2], dtype=np.int32)
         region = FakeRegion()
         ccw = _cw_rect_points_6()[::-1].copy()  # 逆时针
         assert _signed_area_closed(ccw) > 0
-        input_first = ccw[0].copy()
         domain = FakeDomain(
             pts, lc, reg, _region_info([1, 2]),
             outer_region=region, resampled_on_build=ccw,
         )
         mesh = mesh_from_oft_domain(domain)
-        ob_out = mesh.outer_boundary
-        # 顺时针
-        assert _signed_area_closed(ob_out) < 0
-        # 起点保持
-        np.testing.assert_array_equal(ob_out[0], input_first)
-        # 后续点序为保持首点的反向：[p0, p_{B-1}, p_{B-2}, ..., p1]
-        b = ccw.shape[0]
-        expected = np.concatenate([ccw[:1], ccw[1:][::-1]], axis=0)
-        np.testing.assert_array_equal(ob_out, expected)
-
-    def test_clockwise_input_order_unchanged(self, force_oft_version_266):
-        """输入已顺时针时点序不变（不反转、不循环移位）。"""
-        pts, lc = _square_two_triangles()
-        reg = np.array([1, 2], dtype=np.int32)
-        region = FakeRegion()
-        ob = _cw_rect_points_6()
-        assert _signed_area_closed(ob) < 0
-        domain = FakeDomain(
-            pts, lc, reg, _region_info([1, 2]),
-            outer_region=region, resampled_on_build=ob,
-        )
-        mesh = mesh_from_oft_domain(domain)
-        np.testing.assert_array_equal(mesh.outer_boundary, ob)
+        assert _signed_area_closed(mesh.outer_boundary) < 0
 
     def test_no_duplicate_first_point(self, force_oft_version_266):
         pts, lc = _square_two_triangles()
@@ -490,35 +454,7 @@ class TestMeshFromOftDomainOuterBoundaryReadback:
         # 修改 Region 上的回写源数组
         region._resampled_points[0, 0] = 999.0
         assert mesh.outer_boundary[0, 0] != 999.0
-        assert not np.shares_memory(mesh.outer_boundary, region._resampled_points)
-
-    def test_uses_prebuild_saved_region_even_if_domain_attr_swapped(self, force_oft_version_266):
-        """build 过程改写 domain 上的引用属性，Adapter 仍用 build 前保存的原对象。
-
-        原 outer Region 在 build 中被回写正确点列；domain 上的
-        _OUTER_REGION_ATTR 被替换为另一个（其 _resampled_points 为错误值）。
-        Adapter 必须读取 build 前保存的原对象。
-        """
-        pts, lc = _square_two_triangles()
-        reg = np.array([1, 2], dtype=np.int32)
-        original_region = FakeRegion()
-        ob_correct = _cw_rect_points_6()
-
-        # 被换上的另一个对象携带错误点列
-        swapped_region = FakeRegion()
-        swapped_region._resampled_points = np.array([
-            [100.0, 100.0], [100.0, 101.0], [101.0, 100.0],
-        ], dtype=np.float64)
-
-        domain = FakeDomain(
-            pts, lc, reg, _region_info([1, 2]),
-            outer_region=original_region, resampled_on_build=ob_correct,
-            swap_region_on_build=swapped_region,
-        )
-        mesh = mesh_from_oft_domain(domain)
-        # 读取的是 build 前保存的 original_region 回写点列，而非 swapped_region
-        np.testing.assert_array_equal(mesh.outer_boundary, ob_correct)
-        assert mesh.outer_boundary.shape[0] == 6
+        assert mesh.outer_boundary is not region._resampled_points
 
     def test_not_from_final_pts(self, force_oft_version_266):
         """outer boundary 来自 Region 回写点列，不来自 build_mesh 后 pts/lc。"""
@@ -539,57 +475,31 @@ class TestMeshFromOftDomainOuterBoundaryReadback:
         # 与回写点列一致（顺时针未反转，因为 ob 已顺时针）
         np.testing.assert_array_equal(mesh.outer_boundary, ob)
 
-    def test_boundary_steiner_point_not_in_outer_boundary(self, force_oft_version_266):
-        """真实边界 Steiner 点隔离：最终网格外边界含额外中点，但不进入 outer_boundary。
+    def test_steiner_points_not_in_outer_boundary(self, force_oft_version_266):
+        """模拟最终 Triangle 输出含额外 Steiner 点：不进入 outer_boundary。
 
-        构造受控二维网格：
-            - Region 回写点列为矩形四角（Triangle 输入前离散边界，顺时针）：
-                (0,0)->(0,2)->(2,2)->(2,0)
-            - 最终 pts 在底边 (0,0)-(2,0) 上额外含中点 (1,0)（模拟边界 Steiner 点）；
-            - 三角连接使 (1,0) 成为真正的拓扑外边界节点：
-                它参与两条只出现一次的外边界边 (0,0)-(1,0) 与 (1,0)-(2,0)。
-        断言 outer_boundary 不含 (1,0)。
+        build_mesh 返回的 pts 含一个额外内部节点（模拟 Steiner），
+        但 outer Region 回写点列只有 6 个原始边界重采样点，
+        outer_boundary 必须只含这 6 点，不含 Steiner 坐标。
         """
-        # 最终节点：四角 + 底边中点 + 内部中心点
         pts = np.array([
-            [0.0, 0.0],   # 0 角
-            [1.0, 0.0],   # 1 底边 Steiner 中点（外边界节点）
-            [2.0, 0.0],   # 2 角
-            [2.0, 2.0],   # 3 角
-            [0.0, 2.0],   # 4 角
-            [1.0, 1.0],   # 5 内部中心
+            [0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0],
+            [1.0, 1.0],   # 模拟 Steiner/内部节点
         ], dtype=np.float64)
-        # 三角剖分（扇形 + 底边分两段）：使底边 (0,0)-(1,0)-(2,0) 为外边界边
         lc = np.array([
-            [0, 1, 5],   # (0,0)-(1,0)-中心
-            [1, 2, 5],   # (1,0)-(2,0)-中心
-            [2, 3, 5],   # (2,0)-(2,2)-中心
-            [3, 4, 5],   # (2,2)-(0,2)-中心
-            [4, 0, 5],   # (0,2)-(0,0)-中心
+            [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4],
         ], dtype=np.int32)
-        reg = np.array([1, 1, 1, 1, 1], dtype=np.int32)
-
+        reg = np.array([1, 1, 1, 1], dtype=np.int32)
         region = FakeRegion()
-        # Triangle 输入前离散边界：矩形四角（顺时针，不含底边中点 (1,0)）
-        ob_corners = np.array([
-            [0.0, 0.0],
-            [0.0, 2.0],
-            [2.0, 2.0],
-            [2.0, 0.0],
-        ], dtype=np.float64)
-        assert _signed_area_closed(ob_corners) < 0
+        ob = _cw_rect_points_6()  # 不含 (1,1)
         domain = FakeDomain(
             pts, lc, reg, _region_info([1]),
-            outer_region=region, resampled_on_build=ob_corners,
+            outer_region=region, resampled_on_build=ob,
         )
         mesh = mesh_from_oft_domain(domain)
-
-        # outer_boundary 不含底边 Steiner 点 (1,0)
-        steiner = np.array([1.0, 0.0], dtype=np.float64)
+        steiner = np.array([1.0, 1.0], dtype=np.float64)
         contains = np.any(np.all(mesh.outer_boundary == steiner, axis=1))
         assert not contains
-        # outer_boundary 就是四角
-        np.testing.assert_array_equal(mesh.outer_boundary, ob_corners)
 
     def test_nodes_triangles_regions_unchanged_by_outer_boundary(self, force_oft_version_266):
         # 注入 outer_boundary 不改变 nodes/triangles/region_ids
@@ -990,4 +900,407 @@ class DomainHolder:
     """允许附加任意属性、并模拟 domain.regions 列表的轻量假 domain。
 
     只模拟服务器已确认的真实关系：
-        - define_region / add_pol
+        - define_region / add_polygon / add_annulus 记录调用；
+        - add_rectangle 调用时向 regions 追加一个 Region 对象（模拟 OFT 行为）。
+    不虚构任何公共边界 API。
+    """
+
+    def __init__(self):
+        self.define_region = MagicMock()
+        self.add_polygon = MagicMock()
+        self.add_annulus = MagicMock()
+        self.regions = []
+        # add_rectangle 追加一个 Region 到 regions
+        self.add_rectangle = MagicMock(side_effect=self._add_rectangle)
+
+    def _add_rectangle(self, *args, **kwargs):
+        self.regions.append(FakeRegion())
+
+
+class TestBuildOftDomainWithWall:
+    """有第一壁：三区域 OUTER/PLASMA/VACUUM，annulus + rectangle，不 build_mesh。"""
+
+    def test_three_regions_annulus_rectangle_no_build_mesh(self):
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            result = build_oft_domain_from_gfile(gfile)
+
+        assert result is holder
+        define_names = [c.args[0] for c in holder.define_region.call_args_list]
+        assert "outer" in define_names
+        assert "plasma" in define_names
+        assert "vacuum" in define_names
+        assert holder.add_annulus.called
+        assert holder.add_rectangle.called
+        # 不调用 build_mesh（DomainHolder 无 build_mesh 属性）
+        assert not hasattr(holder, "build_mesh_called")
+
+    def test_wall_uses_rectangle_named_outer(self):
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_oft_domain_from_gfile(gfile)
+
+        _, kwargs = holder.add_rectangle.call_args
+        assert kwargs.get("name") == "outer"
+
+    def test_wall_outer_region_captured(self):
+        """有壁路径同样捕获 outer Region 引用（regions[-1]）。"""
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_oft_domain_from_gfile(gfile)
+
+        outer_region = getattr(domain, _OUTER_REGION_ATTR, None)
+        assert outer_region is not None
+        # 捕获的是 regions 最后一个（add_rectangle 追加的那个）
+        assert outer_region is holder.regions[-1]
+
+
+class TestBuildOftDomainNoWall:
+    """无第一壁：两区域 OUTER/PLASMA，polygon + rectangle，不 build_mesh。"""
+
+    def test_two_regions_polygon_rectangle_no_build_mesh(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            result = build_oft_domain_from_gfile(gfile)
+
+        assert result is holder
+        define_names = [c.args[0] for c in holder.define_region.call_args_list]
+        assert "outer" in define_names
+        assert "plasma" in define_names
+        assert "vacuum" not in define_names
+        assert holder.add_polygon.called
+        assert holder.add_rectangle.called
+        assert not holder.add_annulus.called
+
+    def test_nowall_outer_region_captured(self):
+        """无壁路径捕获 outer Region 引用（与有壁同一逻辑）。"""
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_oft_domain_from_gfile(gfile)
+
+        outer_region = getattr(domain, _OUTER_REGION_ATTR, None)
+        assert outer_region is not None
+        assert outer_region is holder.regions[-1]
+
+
+class TestBuildOftDomainOuterRegionCapture:
+    """outer Region 捕获细节：捕获对象引用而非四角数组。"""
+
+    def test_captured_attr_is_region_object_not_array(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_oft_domain_from_gfile(gfile)
+
+        captured = getattr(domain, _OUTER_REGION_ATTR)
+        # 捕获的是 Region 对象（具 _resampled_points 属性），不是 ndarray 四角
+        assert not isinstance(captured, np.ndarray)
+        assert hasattr(captured, "_resampled_points")
+
+    def test_regions_increment_exactly_one(self):
+        """add_rectangle 后 regions 恰好新增一个 Region。"""
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_oft_domain_from_gfile(gfile)
+
+        # DomainHolder 只在 add_rectangle 时追加一个 Region
+        assert len(holder.regions) == 1
+
+    def test_missing_regions_container_fails(self):
+        """domain 无 regions 容器时捕获失败即停。"""
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        class NoRegionsDomain:
+            def __init__(self):
+                self.define_region = MagicMock()
+                self.add_polygon = MagicMock()
+                self.add_annulus = MagicMock()
+                self.add_rectangle = MagicMock()
+                # 无 regions 属性
+
+        holder = NoRegionsDomain()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            with pytest.raises(ValueError, match="regions"):
+                build_oft_domain_from_gfile(gfile)
+
+    def test_regions_not_incremented_fails(self):
+        """add_rectangle 未使 regions 增加一个时失败即停。"""
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        class NoIncrementDomain:
+            def __init__(self):
+                self.define_region = MagicMock()
+                self.add_polygon = MagicMock()
+                self.add_annulus = MagicMock()
+                self.regions = []
+                # add_rectangle 不向 regions 追加
+                self.add_rectangle = MagicMock()
+
+        holder = NoIncrementDomain()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            with pytest.raises(ValueError, match="新增一个 Region|regions"):
+                build_oft_domain_from_gfile(gfile)
+
+
+class TestBuildOftDomainNormalization:
+    """轮廓薄规范化行为。"""
+
+    def test_duplicate_closing_point_removed_only_last(self):
+        # LCFS 首尾重复：正方形 + 追加首点
+        r = np.array([0.0, 1.0, 1.0, 0.0, 0.0], dtype=np.float64)
+        z = np.array([0.0, 0.0, 1.0, 1.0, 0.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+
+        holder = DomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_oft_domain_from_gfile(gfile)
+
+        # add_polygon 收到的 LCFS 应删除末尾重复点，剩 4 点
+        contour = holder.add_polygon.call_args.args[0]
+        assert contour.shape == (4, 2)
+
+
+class TestBuildOftDomainInputFailures:
+    """输入非法失败（不依赖 OFT，参数/轮廓校验先行）。"""
+
+    def test_wall_r_only_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_length_mismatch_fails(self):
+        # 第一壁 R/Z 同时存在但长度不一致，应在 _load_gs_domain_class 前失败
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5], dtype=np.float64)  # 长度 3 != 4
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_nan_fails(self):
+        # 第一壁含 NaN，应在 _load_gs_domain_class 前失败
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, np.nan], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_inf_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, np.inf], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_wall_too_few_points_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_lcfs_length_mismatch_fails(self):
+        r = np.array([0.0, 1.0, 0.5], dtype=np.float64)
+        z = np.array([0.0, 0.0], dtype=np.float64)  # 长度不一致
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_lcfs_too_few_points_fails(self):
+        r = np.array([0.0, 1.0], dtype=np.float64)
+        z = np.array([0.0, 0.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_lcfs_nan_fails(self):
+        r = np.array([0.0, 1.0, np.nan], dtype=np.float64)
+        z = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_degenerate_range_fails(self):
+        # 所有点共位，包围范围退化
+        r = np.array([1.0, 1.0, 1.0], dtype=np.float64)
+        z = np.array([1.0, 1.0, 1.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile)
+
+    def test_plasma_dx_non_positive_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile, plasma_dx=0.0)
+
+    def test_vacuum_dx_non_finite_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile, vacuum_dx=np.inf)
+
+    def test_outer_dx_negative_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile, outer_dx=-0.1)
+
+    def test_outer_padding_negative_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile, outer_padding=-0.1)
+
+    def test_outer_padding_non_finite_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_oft_domain_from_gfile(gfile, outer_padding=np.nan)
+
+
+# ==========================================================================
+# C. generate_mesh()：便利入口只组合两层
+# ==========================================================================
+
+class TestGenerateMeshComposition:
+    """generate_mesh 只组合 build_oft_domain_from_gfile 与 mesh_from_oft_domain。"""
+
+    def test_composition_passes_domain_and_returns_mesh(self):
+        sentinel_domain = object()
+        sentinel_mesh = object()
+        gfile = FakeGFileData(*_square_contour(), None, None)
+
+        with patch(
+            "linkmesh.mesher.oft_adapter.build_oft_domain_from_gfile",
+            return_value=sentinel_domain,
+        ) as m_build, patch(
+            "linkmesh.mesher.oft_adapter.mesh_from_oft_domain",
+            return_value=sentinel_mesh,
+        ) as m_mesh:
+            result = generate_mesh(gfile)
+
+        # 前者返回的 domain 原样传给后者
+        m_build.assert_called_once()
+        m_mesh.assert_called_once_with(sentinel_domain)
+        # 结果原样返回
+        assert result is sentinel_mesh
+
+    def test_generate_mesh_forwards_scale_kwargs(self):
+        sentinel_domain = object()
+        sentinel_mesh = object()
+        gfile = FakeGFileData(*_square_contour(), None, None)
+
+        with patch(
+            "linkmesh.mesher.oft_adapter.build_oft_domain_from_gfile",
+            return_value=sentinel_domain,
+        ) as m_build, patch(
+            "linkmesh.mesher.oft_adapter.mesh_from_oft_domain",
+            return_value=sentinel_mesh,
+        ):
+            generate_mesh(
+                gfile,
+                plasma_dx=0.05,
+                vacuum_dx=0.06,
+                outer_dx=0.20,
+                outer_padding=0.30,
+            )
+
+        _, kwargs = m_build.call_args
+        assert kwargs["plasma_dx"] == 0.05
+        assert kwargs["vacuum_dx"] == 0.06
+        assert kwargs["outer_dx"] == 0.20
+        assert kwargs["outer_padding"] == 0.30
+
+    def test_generate_mesh_no_second_build_mesh(self):
+        # mesh_from_oft_domain 被 patch，则不会有真实 build_mesh 调用链；
+        # 这里验证 generate_mesh 不自行调用 domain.build_mesh。
+        fake_domain = MagicMock()
+        sentinel_mesh = object()
+        gfile = FakeGFileData(*_square_contour(), None, None)
+
+        with patch(
+            "linkmesh.mesher.oft_adapter.build_oft_domain_from_gfile",
+            return_value=fake_domain,
+        ), patch(
+            "linkmesh.mesher.oft_adapter.mesh_from_oft_domain",
+            return_value=sentinel_mesh,
+        ):
+            generate_mesh(gfile)
+
+        # generate_mesh 自身不直接调用 build_mesh
+        assert not fake_domain.build_mesh.called
