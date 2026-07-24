@@ -1,6 +1,7 @@
 """
 tests/test_oft_adapter.py —— M2 OFT Adapter 验收测试
-（v1.9 三层接口，v2.2 outer boundary 私有兼容接口修正）。
+（v1.9 三层接口，v2.2 outer boundary 私有兼容接口修正，
+v2.3 输入层 II single_region + lcfs 追加测试）。
 
 测试原则：
     - 只使用 mock / 受控假的 OFT Domain / Region；
@@ -29,6 +30,9 @@ Windows 本地可收集但不保证运行通过。
     B. build_oft_domain_from_gfile()：默认 GFile 区域策略
        （含 outer Region 引用捕获、regions 长度差异、有壁/无壁一致）
     C. generate_mesh()：便利入口只组合两层
+    D. build_single_region_domain_from_lcfs()：single_region + lcfs 策略层
+       （v2.3 输入层 II：单 polygon Region、不 rectangle/annulus、plasma_dx、
+        回写点列非原始 LCFS、防御性失败、版本锁定）
     另含 _load_gs_domain_class() 导入失败异常链测试与版本检查测试。
 """
 
@@ -47,6 +51,7 @@ from linkmesh.mesher.oft_adapter import (
     _load_gs_domain_class,
     _signed_area_closed,
     build_oft_domain_from_gfile,
+    build_single_region_domain_from_lcfs,
     generate_mesh,
     mesh_from_oft_domain,
 )
@@ -1568,3 +1573,531 @@ class TestGenerateMeshComposition:
 
         # generate_mesh 自身不直接调用 build_mesh
         assert not fake_domain.build_mesh.called
+
+    def test_generate_mesh_single_region_lcfs_dispatch(self):
+        # profile=single_region + boundary_source=lcfs 走 single-region 策略层。
+        sentinel_domain = object()
+        sentinel_mesh = object()
+        gfile = FakeGFileData(*_square_contour(), None, None)
+
+        with patch(
+            "linkmesh.mesher.oft_adapter.build_single_region_domain_from_lcfs",
+            return_value=sentinel_domain,
+        ) as m_build_sr, patch(
+            "linkmesh.mesher.oft_adapter.mesh_from_oft_domain",
+            return_value=sentinel_mesh,
+        ) as m_mesh, patch(
+            "linkmesh.mesher.oft_adapter.build_oft_domain_from_gfile",
+        ) as m_build_nested:
+            result = generate_mesh(
+                gfile,
+                plasma_dx=0.07,
+                profile="single_region",
+                boundary_source="lcfs",
+            )
+
+        # 走 single-region 策略层，不走 nested 策略层
+        m_build_sr.assert_called_once()
+        _, kwargs = m_build_sr.call_args
+        assert kwargs["plasma_dx"] == 0.07
+        assert not m_build_nested.called
+        m_mesh.assert_called_once_with(sentinel_domain)
+        assert result is sentinel_mesh
+
+    def test_generate_mesh_unimplemented_combo_raises(self):
+        # 未实现的 profile/source 组合应抛 NotImplementedError（不回退 nested）。
+        gfile = FakeGFileData(*_square_contour(), None, None)
+        with pytest.raises(NotImplementedError):
+            generate_mesh(
+                gfile,
+                profile="single_region",
+                boundary_source="first_wall",
+            )
+
+
+# ==========================================================================
+# D. build_single_region_domain_from_lcfs()：single_region + lcfs 策略层
+#    （v2.3 输入层 II）
+# ==========================================================================
+
+class SingleRegionDomainHolder:
+    """single-region 策略层专用假 domain。
+
+    模拟服务器已确认关系：
+        - define_region 记录调用；
+        - add_polygon 调用时向 regions 追加恰好一个 Region（模拟 OFT 行为）；
+        - 不提供 add_rectangle / add_annulus，若被误调用会 AttributeError。
+    single-region 策略层不应调用 add_rectangle / add_annulus。
+    """
+
+    def __init__(self):
+        self.define_region = MagicMock()
+        self.regions = []
+        self.add_polygon = MagicMock(side_effect=self._add_polygon)
+
+    def _add_polygon(self, *args, **kwargs):
+        self.regions.append(FakeRegion())
+
+
+class TestBuildSingleRegionDomainFromLcfs:
+    """single_region + lcfs 策略层：单 polygon、不 rectangle/annulus、plasma_dx。"""
+
+    def test_single_polygon_region_created(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            result = build_single_region_domain_from_lcfs(gfile)
+
+        assert result is holder
+        # add_polygon 恰好调用一次
+        assert holder.add_polygon.call_count == 1
+        # Domain 只有一个 Region
+        assert len(holder.regions) == 1
+
+    def test_no_rectangle_no_annulus(self):
+        # single-region 策略层不创建人工矩形、不创建 annulus。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_single_region_domain_from_lcfs(gfile)
+
+        # holder 不提供 add_rectangle / add_annulus，若被调用会立即 AttributeError。
+        # 显式断言这两个属性未被生产代码添加/调用。
+        assert not hasattr(holder, "add_rectangle")
+        assert not hasattr(holder, "add_annulus")
+
+    def test_does_not_use_first_wall(self):
+        # 即便 GFile 提供第一壁，single-region + lcfs 也不消费第一壁。
+        lcfs_r, lcfs_z = _square_contour()
+        wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
+        wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
+        gfile = FakeGFileData(lcfs_r, lcfs_z, wall_r, wall_z)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_single_region_domain_from_lcfs(gfile)
+
+        # 只有一个 Region（未因第一壁额外建区）
+        assert len(holder.regions) == 1
+        # add_polygon 收到的轮廓是 LCFS（四点），不是 wall
+        contour = holder.add_polygon.call_args.args[0]
+        assert contour.shape == (4, 2)
+        # 轮廓 R 范围与 LCFS 一致（[0,1]），不含 wall 的 -0.5/1.5
+        assert contour[:, 0].min() == 0.0
+        assert contour[:, 0].max() == 1.0
+
+    def test_uses_plasma_dx_as_mesh_scale(self):
+        # single-region 网格尺度使用 plasma_dx，经 define_region 传入。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_single_region_domain_from_lcfs(gfile, plasma_dx=0.055)
+
+        # define_region 至少被调用一次，且 dx 参数为 plasma_dx（第二个位置参数）
+        assert holder.define_region.call_count >= 1
+        found_dx = False
+        for call in holder.define_region.call_args_list:
+            args = call.args
+            if len(args) >= 2 and args[1] == 0.055:
+                found_dx = True
+        assert found_dx
+
+    def test_captures_added_polygon_region(self):
+        # 捕获的是 add_polygon 新增的 Region 对象（regions[-1]），不写死 ID。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+
+        captured = getattr(domain, _OUTER_REGION_ATTR, None)
+        assert captured is not None
+        assert captured is holder.regions[-1]
+        # 捕获的是 Region 对象（具 _resampled_points），不是 ndarray
+        assert not isinstance(captured, np.ndarray)
+        assert hasattr(captured, "_resampled_points")
+
+    def test_does_not_call_build_mesh(self):
+        # Domain 构造阶段不调用 build_mesh（holder 无 build_mesh 属性即证明）。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_single_region_domain_from_lcfs(gfile)
+
+        assert not hasattr(holder, "build_mesh")
+
+    def test_duplicate_closing_point_removed_only_last(self):
+        # LCFS 首尾重复：add_polygon 收到删除末尾重复点后的 4 点轮廓。
+        r = np.array([0.0, 1.0, 1.0, 0.0, 0.0], dtype=np.float64)
+        z = np.array([0.0, 0.0, 1.0, 1.0, 0.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            build_single_region_domain_from_lcfs(gfile)
+
+        contour = holder.add_polygon.call_args.args[0]
+        assert contour.shape == (4, 2)
+
+
+class TestBuildSingleRegionDomainInputFailures:
+    """single-region 策略层输入非法失败（LCFS/参数校验先于 OFT）。"""
+
+    def test_lcfs_length_mismatch_fails(self):
+        r = np.array([0.0, 1.0, 0.5], dtype=np.float64)
+        z = np.array([0.0, 0.0], dtype=np.float64)  # 长度不一致
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_single_region_domain_from_lcfs(gfile)
+
+    def test_lcfs_too_few_points_fails(self):
+        r = np.array([0.0, 1.0], dtype=np.float64)
+        z = np.array([0.0, 0.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_single_region_domain_from_lcfs(gfile)
+
+    def test_lcfs_nan_fails(self):
+        r = np.array([0.0, 1.0, np.nan], dtype=np.float64)
+        z = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_single_region_domain_from_lcfs(gfile)
+
+    def test_lcfs_inf_fails(self):
+        r = np.array([0.0, 1.0, np.inf], dtype=np.float64)
+        z = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        gfile = FakeGFileData(r, z, None, None)
+        with pytest.raises(ValueError):
+            build_single_region_domain_from_lcfs(gfile)
+
+    def test_plasma_dx_non_positive_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_single_region_domain_from_lcfs(gfile, plasma_dx=0.0)
+
+    def test_plasma_dx_non_finite_fails(self):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        with pytest.raises(ValueError):
+            build_single_region_domain_from_lcfs(gfile, plasma_dx=np.inf)
+
+    def test_missing_regions_container_fails(self):
+        # domain 无 regions 容器时捕获失败即停。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        class NoRegionsDomain:
+            def __init__(self):
+                self.define_region = MagicMock()
+                self.add_polygon = MagicMock()
+                # 无 regions 属性
+
+        holder = NoRegionsDomain()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            with pytest.raises(ValueError, match="regions"):
+                build_single_region_domain_from_lcfs(gfile)
+
+    def test_add_polygon_not_incremented_fails(self):
+        # add_polygon 未使 regions 增加一个时失败即停。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        class NoIncrementDomain:
+            def __init__(self):
+                self.define_region = MagicMock()
+                self.regions = []
+                # add_polygon 不向 regions 追加
+                self.add_polygon = MagicMock()
+
+        holder = NoIncrementDomain()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            with pytest.raises(ValueError, match="新增一个 Region|regions"):
+                build_single_region_domain_from_lcfs(gfile)
+
+    def test_add_polygon_incremented_more_than_one_fails(self):
+        # add_polygon 新增超过一个 Region 时失败即停。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        class MultiIncrementDomain:
+            def __init__(self):
+                self.define_region = MagicMock()
+                self.regions = []
+                self.add_polygon = MagicMock(side_effect=self._add_two)
+
+            def _add_two(self, *args, **kwargs):
+                self.regions.append(FakeRegion())
+                self.regions.append(FakeRegion())
+
+        holder = MultiIncrementDomain()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            with pytest.raises(ValueError, match="新增一个 Region|regions"):
+                build_single_region_domain_from_lcfs(gfile)
+
+    def test_cannot_attach_private_attr_fails_with_cause(self):
+        # domain 拒绝附加 _linkmesh_outer_region 时立即失败并保留异常链。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        class RejectingDomain:
+            def __init__(self):
+                object.__setattr__(self, "define_region", MagicMock())
+                object.__setattr__(self, "regions", [])
+                object.__setattr__(
+                    self, "add_polygon", MagicMock(side_effect=self._add_polygon)
+                )
+
+            def _add_polygon(self, *args, **kwargs):
+                self.regions.append(FakeRegion())
+
+            def __setattr__(self, name, value):
+                if name == _OUTER_REGION_ATTR:
+                    raise AttributeError(
+                        f"该 domain 明确拒绝附加私有属性 {name}"
+                    )
+                object.__setattr__(self, name, value)
+
+        holder = RejectingDomain()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            with pytest.raises(RuntimeError) as ei:
+                build_single_region_domain_from_lcfs(gfile)
+
+        assert ei.value.__cause__ is not None
+        assert isinstance(ei.value.__cause__, AttributeError)
+        assert _OUTER_REGION_ATTR in str(ei.value)
+
+
+class TestSingleRegionLcfsEndToEndWithMesh:
+    """single-region 策略层 + mesh_from_oft_domain 端到端边界回写（版本锁定隔离）。
+
+    使用 SingleRegionBuildDomain：既能被 build_single_region_domain_from_lcfs
+    捕获 Region，又能在 build_mesh 后回写点列，验证完整数据链：
+        LCFS → add_polygon 捕获 Region → build_mesh 回写 _resampled_points
+             → Mesh2D.outer_boundary（非原始 LCFS 控制点）。
+    """
+
+    def _make_single_region_domain(self, resampled_on_build,
+                                    replace_attr_on_build=None):
+        """构造一个 single-region 假 domain，支持被策略层捕获并在 build 回写。"""
+        pts, lc = _square_two_triangles()
+        reg = np.array([1, 1], dtype=np.int32)
+
+        class SingleRegionBuildDomain:
+            def __init__(self):
+                self.define_region = MagicMock()
+                self.regions = []
+                self.add_polygon = MagicMock(side_effect=self._add_polygon)
+                self.region_info = _region_info([1])
+                self.build_mesh_call_count = 0
+                self._resampled_on_build = resampled_on_build
+                self._replace = replace_attr_on_build
+                self._captured_region = None
+
+            def _add_polygon(self, *args, **kwargs):
+                r = FakeRegion()
+                self._captured_region = r
+                self.regions.append(r)
+
+            def build_mesh(self):
+                self.build_mesh_call_count += 1
+                if self._captured_region is not None:
+                    self._captured_region._resampled_points = self._resampled_on_build
+                if self._replace is not None:
+                    setattr(self, _OUTER_REGION_ATTR, self._replace)
+                return pts, lc, reg
+
+        return SingleRegionBuildDomain()
+
+    def test_outer_boundary_from_readback_not_raw_lcfs(self, force_oft_version_266):
+        # LCFS 控制点为正方形（4 点，[0,1]×[0,1]）；OFT 回写点列为 6 点、坐标不同。
+        # outer_boundary 必须来自回写点列，与原始 LCFS 明显不同。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        ob = _cw_rect_points_6()  # 6 点，[0,2]×[0,2]
+        holder = self._make_single_region_domain(resampled_on_build=ob)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+
+        mesh = mesh_from_oft_domain(domain)
+
+        # build_mesh 只调用一次
+        assert holder.build_mesh_call_count == 1
+        # outer_boundary 来自回写点列（6 点），非原始 LCFS 控制点（4 点）
+        assert mesh.outer_boundary.shape == (6, 2)
+        assert mesh.outer_boundary.dtype == np.float64
+        # 与原始 LCFS 控制点明显不同：LCFS R 范围 [0,1]，回写 R 范围 [0,2]
+        raw_lcfs = np.column_stack([lcfs_r, lcfs_z])
+        assert mesh.outer_boundary.shape[0] != raw_lcfs.shape[0]
+        assert mesh.outer_boundary[:, 0].max() == 2.0
+        # 精确等于回写点列（顺时针未反转）
+        np.testing.assert_array_equal(mesh.outer_boundary, ob)
+
+    def test_outer_boundary_independent_of_region_array(self, force_oft_version_266):
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        ob = _cw_rect_points_6()
+        holder = self._make_single_region_domain(resampled_on_build=ob)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        mesh = mesh_from_oft_domain(domain)
+
+        captured = getattr(domain, _OUTER_REGION_ATTR)
+        # 修改 Region 回写源数组不影响已注入 Mesh2D 副本；不共享内存
+        captured._resampled_points[0, 0] = 999.0
+        assert mesh.outer_boundary[0, 0] != 999.0
+        assert not np.shares_memory(
+            mesh.outer_boundary, captured._resampled_points
+        )
+
+    def test_ccw_readback_normalized_keeps_start_point(self, force_oft_version_266):
+        # 逆时针回写点列转顺时针时保持点 0。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        ccw = _cw_rect_points_6()[::-1].copy()
+        assert _signed_area_closed(ccw) > 0
+        holder = self._make_single_region_domain(resampled_on_build=ccw)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        mesh = mesh_from_oft_domain(domain)
+
+        ob = mesh.outer_boundary
+        # 顺时针
+        assert _signed_area_closed(ob) < 0
+        # 输出点 0 == 输入点 0
+        np.testing.assert_array_equal(ob[0], ccw[0])
+
+    def test_reads_original_region_when_replaced_during_build(self, force_oft_version_266):
+        # build 中替换 domain 上保存的 Region 引用时，仍读 build 前保存的原对象。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        ob_original = _cw_rect_points_6()
+        replacement = FakeRegion()
+        replacement._resampled_points = _cw_rect_points_4()  # 4 点，明显不同
+        holder = self._make_single_region_domain(
+            resampled_on_build=ob_original,
+            replace_attr_on_build=replacement,
+        )
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        mesh = mesh_from_oft_domain(domain)
+
+        # 读原对象（6 点），非替换对象（4 点）
+        assert mesh.outer_boundary.shape[0] == 6
+        np.testing.assert_array_equal(mesh.outer_boundary, ob_original)
+
+    def test_resampled_none_after_build_fails(self, force_oft_version_266):
+        # build 后原 Region 未回写（_resampled_points 仍 None）→ 失败即停。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        holder = self._make_single_region_domain(resampled_on_build=None)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        with pytest.raises(ValueError, match="None"):
+            mesh_from_oft_domain(domain)
+
+    def test_resampled_bad_shape_fails(self, force_oft_version_266):
+        # 回写点列 shape 非法 → 失败即停。
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        bad = np.array([1.0, 2.0, 3.0], dtype=np.float64)  # 一维
+        holder = self._make_single_region_domain(resampled_on_build=bad)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        with pytest.raises(ValueError):
+            mesh_from_oft_domain(domain)
+
+    def test_version_mismatch_fails_when_reading(self, monkeypatch):
+        # OFT 版本不为 26.6 时，读取回写点列前明确失败。
+        monkeypatch.setattr(adapter, "_get_installed_oft_version", lambda: "27.0")
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+        ob = _cw_rect_points_6()
+        holder = self._make_single_region_domain(resampled_on_build=ob)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        with pytest.raises(ValueError, match="openfusiontoolkit"):
+            mesh_from_oft_domain(domain)

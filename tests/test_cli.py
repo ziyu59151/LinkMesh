@@ -772,6 +772,105 @@ class TestInputLayerIISingleRegionLcfs:
         assert kwargs["boundary_source"] == "lcfs"
 
     def test_single_region_lcfs_uses_plasma_dx(self, monkeypatch, tmp_path):
-        # single-region 网格尺度用 plasma_dx；vacuum_dx/outer_dx 仍随合并结果转发。
+        # single-region 网格尺度用 plasma_dx；vacuum_dx/outer_dx 仍随合并结果转发
+        # （generate_mesh 兼容签名接收三个 dx，single-region 分支只消费 plasma_dx，
+        # 但 CLI 转发契约仍原样传三个值，不删除、不换算）。
         monkeypatch.chdir(tmp_path)
-        mocks = _install_cli
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "mesh_only",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--plasma-dx", "0.04",
+            "--vacuum-dx", "0.11",
+            "--outer-dx", "0.19",
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        # generate_mesh 只调用一次
+        assert mocks["generate_mesh"].call_count == 1
+        _, kwargs = mocks["generate_mesh"].call_args
+        # single-region 网格尺度显式值经 plasma_dx 转发
+        assert kwargs["plasma_dx"] == 0.04
+        # profile / boundary_source 正确转发
+        assert kwargs["profile"] == "single_region"
+        assert kwargs["boundary_source"] == "lcfs"
+        # 其余两个 dx 仍按当前 generate_mesh 兼容签名原样转发（不虚构参数）
+        assert kwargs["vacuum_dx"] == 0.11
+        assert kwargs["outer_dx"] == 0.19
+
+    def test_trimeg_single_region_lcfs_calls_hdf5(self, monkeypatch, tmp_path):
+        # trimeg + single_region + lcfs：调用 Mesher 与 HDF5 Writer。
+        monkeypatch.chdir(tmp_path)
+        out_path = str(tmp_path / "single.h5")
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "trimeg",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--output", out_path,
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        assert mocks["generate_mesh"].call_count == 1
+        assert mocks["write_hdf5"].call_count == 1
+        _, kwargs = mocks["generate_mesh"].call_args
+        assert kwargs["profile"] == "single_region"
+        assert kwargs["boundary_source"] == "lcfs"
+
+    def test_trimeg_single_region_lcfs_hdf5_receives_same_mesh(self, monkeypatch, tmp_path):
+        # HDF5 Writer 接收 Mesher 返回的同一个 Mesh2D 对象。
+        monkeypatch.chdir(tmp_path)
+        mesh = _fake_mesh()
+        out_path = str(tmp_path / "single.h5")
+        mocks = _install_cli_mocks(monkeypatch, mesh=mesh)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "trimeg",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--output", out_path,
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        w_posargs, _ = mocks["write_hdf5"].call_args
+        assert w_posargs[0] is mesh
+
+    def test_single_region_lcfs_reads_gfile_once(self, monkeypatch, tmp_path):
+        # GFile Reader 只调用一次，且返回对象作为第一个位置参数传给 Mesher。
+        monkeypatch.chdir(tmp_path)
+        gfile_data = _fake_gfile_data()
+        mocks = _install_cli_mocks(monkeypatch, gfile_data=gfile_data)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "mesh_only",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        assert mocks["read_gfile"].call_count == 1
+        posargs, _ = mocks["generate_mesh"].call_args
+        assert posargs[0] is gfile_data
+
+    def test_single_region_lcfs_selected_via_toml(self, monkeypatch, tmp_path):
+        # 通过 linkmesh.in 选择 single_region + lcfs（CLI 不显式给 profile/source）。
+        (tmp_path / "linkmesh.in").write_text(
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[domain]\nprofile = 'single_region'\nboundary_source = 'lcfs'\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse(["--gfile", "dummy.eqdsk", "--no-smb"])
+        cli._run(args)
+
+        assert mocks["generate_mesh"].call_count == 1
+        _, kwargs = mocks["generate_mesh"].call_args
+        assert kwargs["profile"] == "single_region"
+        assert kwargs["boundary_source"] == "lcfs"
+        # mesh_only：不写 HDF5
+        assert mocks["write_hdf5"].call_count == 0
