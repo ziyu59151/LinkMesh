@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **2.4**（在 v2.3 输入层字段级契约基础上，依据真实 DIII-D GFile、LinkMesh PDB 运行时证据及 OFT 26.6 参考源码只读侦察，固化 `Region._resampled_points` 的区域 segment 有序重建语义、OFT 26.6 默认 `Mesh.__init__()` / `build_mesh()` 的 `merge_thresh=1e-4 m` 及局部控制点经全局点合并后可能在 Region 回写点列中重复同一坐标的事实；新增 single-region polygon 边界来源进入 `add_polygon()` 前的稳定相邻近重复点规范化规则，阈值与锁定的 OFT 默认 `merge_thresh` 一致；本轮规则仅对 `single_region + lcfs` 的后续源码修复生效，未来第一壁单区域来源与二维数组文件来源应复用，已通过真实验收的 `nested_three_region + artificial_outer` 行为保持不变；`Mesh2D`、`GFileData`、TRIMEG HDF5 11 数据集、CLI、EffectiveConfig 与 outer boundary 回写来源契约均不变。本轮只修改蓝图，未修改业务源码或测试；LCFS 单区域来源仍处于代码修复与真实 OFT 集成验收阶段，不得标记 PASSED；第一壁单区域来源、二维数组文件来源与 M4 均未开始）
+- 文档状态：正式版 **2.5**（归档 M1–M3 最新真实 CLI、TRIMEG HDF5 与 MATLAB 标准消费端验收：`nested_three_region + artificial_outer` 的 DIII-D/gNT 两条真实链路及 `single_region + lcfs` 的 DIII-D 真实链路均退出码 0，三份 HDF5 均包含完整 11 个 `/femmesh` 数据集；老师原始 `loadfemmesh_h5.m` 已完成标准样例与 LinkMesh LCFS 单区域输出的 A/B 读取和绘图验收，确认两者在“单一闭合计算域内部网格化”的拓扑形态上相容。`single_region + lcfs` 状态更新为真实 CLI 与 TRIMEG MATLAB 消费验收 PASSED；`single_region + first_wall`、`array_file`、`flux_surface` 保留正式规划但后置，不再阻塞 M4。两层输入架构保持不变，本阶段暂不创建面向用户的标准 `linkmesh.in` 示例，待 TRIMEG 与未来 M3DC1 TXT+SMB 均通过真实消费端验收后再形成双下游示例。项目主线获 User 授权切换至 M4 业务实现；M4 仍为 NOT IMPLEMENTED / NOT PASSED，既有目标版本 API、classification、单进程与 Level 1–3 验收门槛以及禁止手写 SMB 规则全部保持）
 - 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`（阶段证据，非本蓝图正文的长期正式依赖，蓝图正文自包含）
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -23,6 +23,24 @@ LinkMesh 是一个**独立命令行程序（CLI）**，用于打通「等离子�
 ```text
 GFile/EQDSK → Reader → OFT Adapter → Mesh2D → TRIMEG HDF5 / M3DC1 TXT model + PUMI SMB → PNG
 ```
+
+**当前阶段状态（v2.5）**：
+
+| 阶段 | 状态 |
+|---|---|
+| M1 Reader | **PASSED** |
+| M2 默认 `nested_three_region + artificial_outer` | **PASSED** |
+| M2 `single_region + lcfs` 真实 CLI | **PASSED** |
+| M3 core | **PASSED** |
+| M3 complete-11 | **PASSED** |
+| TRIMEG 标准 MATLAB 消费端 A/B 验收 | **PASSED** |
+| M4-0 只读侦察与架构契约 | **已完成** |
+| M4 业务实现 | **获 User 授权开始；NOT IMPLEMENTED / NOT PASSED** |
+
+项目当前主线正式切换到 M4 业务实现。M4 P0 使用已经验收的
+`single_region + lcfs` `Mesh2D` 作为第一份真实输入，限定 single-region +
+single-face；该阶段切换只表示允许开始实现，不表示 TXT model、SMB、PUMI 加载或
+M3D-C1 验收已经通过。
 
 **P0 范围**：
 
@@ -55,6 +73,34 @@ GFile/EQDSK → Reader → OFT Adapter → Mesh2D → TRIMEG HDF5 / M3DC1 TXT mo
 | `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`、`plot_mesh()`（支持区域着色、LCFS/第一壁闭合显示） | 修改任何数据对象 |
 
 M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对象 `M3DC1ModelSpec`（第 7 节）、TXT model Writer 与 PUMI/APF/MDS Adapter（第 7 节）。
+
+**M4 当前授权与实施入口（v2.5）**：
+
+1. 先实现或固化 `M3DC1ModelSpec` 与 TXT geometric model Writer。
+2. 在目标环境核对 SCOREC/PUMI/APF/MDS 精确版本、头文件、库、构建方式和官方 API。
+3. 实现 `Mesh2D + M3DC1ModelSpec` 到 classified APF/MDS mesh 的最小转换。
+4. 调用目标版本官方 `writeNative` 或等价官方接口输出 `.smb`。
+5. 完成 Level 1 TXT 静态验收、Level 2 SMB 轻量加载与 Level 3 TXT+SMB 配套加载；
+   三者全部通过后 M4 方可标记 PASSED。Level 4 完整 M3D-C1 属后续或导师验收。
+
+M4 P0 使用已验收的 `single_region + lcfs` `Mesh2D`，限定 single-region +
+single-face，输出必须是配套 TXT geometric model + PUMI `.smb`。Triangle 仍是唯一
+网格剖分底座；PUMI/APF/MDS 只承担目标格式构造与输出，不是第二网格生成器。禁止
+手写、拼接、修改、模板复制或逆向 `.smb` 字节流；`region_ids` 不自动等同于
+M3DC1 geometric face tag；C1 field、高阶节点、运行时 field 与
+adaptation/restart metadata 不属于初始静态网格输出要求。
+
+以下事项继续作为实现停止条件：
+
+- 目标版本的 `makeEmptyMdsMesh`、`createVertex`、`createEntity`、
+  `acceptChanges`、`verify`、`writeNative` 等精确签名与调用顺序未确认；
+- classification 本地判定未确认；
+- 单进程 residence、文件命名或 triangle 方向未确认；
+- TXT model 与 SMB geometric classification 无法证明相容；
+- 目标环境无法使用所需 PUMI/APF/MDS 官方库。
+
+现有调用点只属于【实现候选】，不得写成跨版本固定事实。User 授权开始 M4 不等于
+M4 已实现或已通过；当前准确状态仍为 **NOT IMPLEMENTED / NOT PASSED**。
 
 **不得规划**：`inputs/` 插件包；抽象基类；source 注册表；通用 source plugin 系统。
 
@@ -267,6 +313,39 @@ M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对�
 - TRIMEG target 下 `outer_boundary` 缺失（`None`）时，Writer 在打开输出文件前失败；Writer 不负责猜测 boundary source、不从 `idxevert` 恢复点序、不做边界重采样。
 - Writer 全部输入验证（shape/有限性/整数语义/索引范围/重复顶点/面积/非流形/`outer_boundary` 合法性含自交）在打开目标文件前完成，且不修改输入 `Mesh2D`；Writer 复用 `mesh.py` 统一 `_validate_outer_boundary`（含完整非相邻边自交检查）作为二次防线，不复制自交算法。
 
+**v2.5 最新真实 CLI 与消费端证据**：
+
+| 真实链路 | 结果 |
+|---|---|
+| DIII-D `g192185.02440`；`target=trimeg`、`profile=nested_three_region`、`boundary_source=artificial_outer` | CLI 退出码 0；972 节点、1872 三角形、3 区域、902 内部节点、70 拓扑外边界节点、`outer_boundary` 70 点；成功生成 HDF5、PNG 与运行日志 |
+| fixed-boundary `gNT_example`；`target=trimeg`、`profile=nested_three_region`、`boundary_source=artificial_outer` | CLI 退出码 0；3412 节点、6692 三角形、3 区域、3282 内部节点、130 拓扑外边界节点、`outer_boundary` 130 点；成功生成 HDF5、PNG 与运行日志 |
+| DIII-D `g192185.02440`；`target=trimeg`、`profile=single_region`、`boundary_source=lcfs`、`plasma_dx=0.08 m` | CLI 退出码 0；344 节点、631 三角形、1 区域、289 内部节点、55 拓扑外边界节点、`outer_boundary` 55 点；成功生成 HDF5、PNG 与运行日志；LCFS 相邻近重复控制点导致的 OFT 回写失败不再阻塞真实链路 |
+
+三份 LinkMesh HDF5 经 `h5ls` 确认均包含完整 11 个 `/femmesh` 数据集：
+`nvert`、`ntria`、`nvert_in`、`nvert_ex`、`vert`、`tria`、`idxivert`、
+`idxevert`、`nbcRZ`、`Rbc`、`Zbc`。实际布局继续遵守本节正式契约：
+`vert=(N,2)`、`tria=(T,3)`、文件端节点索引 1-based、无第四列、不写
+`region_ids`，`Rbc/Zbc` 来自 `Mesh2D.outer_boundary`，且不要求
+`nbcRZ == nvert_ex`。
+
+OFT 的 `Repeated points`、`Sliver` 与 `Small feature` 信息仍作为诊断 warning
+保留；上述 nested 网格、HDF5 与 PNG 均已成功生成，不得把这些 warning 表述为
+Triangle 失败。
+
+**MATLAB 标准消费端 A/B 验收（PASSED）**：使用老师原始
+`docs/trimeg/loadfemmesh_h5.m` 读取并绘制标准样例
+`femmesh_65402_t1_nr16core.h5` 与 LinkMesh `single_region + lcfs` 生成的
+`mesh.h5`。两者均成功读取并通过基础网格检查；标准样例约 981 节点、1847
+三角形，LinkMesh 文件为 344 节点、631 三角形且 `nbcRZ=55`。两幅 MATLAB
+图均表现为单一闭合计算域内部三角剖分，未发现节点索引错误、明显跨域错误连线或
+读取布局错误；验证脚本只读、检查并绘图，未修改、删除或写回 HDF5。
+
+该 A/B 证据确认 TRIMEG 接受“单一闭合计算域内部网格化”的静态网格，并确认当前
+`single_region + lcfs` 与标准样例在拓扑形态上相容；它不证明 TRIMEG 永久固定使用
+LCFS，也不固定 `Rbc/Zbc` 的物理来源。`Rbc/Zbc` 表示任务选定的有序计算域外边界。
+因此，`single_region + first_wall` 仍是有价值的后续来源，但“必须先实现第一壁内部
+全域网格”不再是启动 M4 的前置条件。
+
 **两个参考样例直接证据（User 提供，紧凑归档）**：
 
 | 样例 | Rbc/Zbc | nbcRZ | nvert_ex | 匹配 | 连续点对为拓扑边 | 方向/闭合 |
@@ -304,11 +383,34 @@ M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对�
 
 两层输入架构（`linkmesh.in` + CLI + `EffectiveConfig`）契约见第 6A 节。`outer_padding` 在 v2.4 仍**不暴露**为正式配置或 CLI 字段，保持内部默认策略。OFT `merge_thresh` 同样不暴露为 CLI 或配置字段，继续锁定使用 OFT 26.6 默认 `1e-4 m`。自适应细化、全局 `--mesh-size`、计算域选择参数在 v2.4 未在源码暴露。
 
+### 6.1 近期输入层优先级（v2.5 冻结）
+
+1. 保持并维护已有真实运行证据的 `nested_three_region + artificial_outer`。
+2. 保持并维护已通过真实 CLI 与 TRIMEG MATLAB 消费验收的
+   `single_region + lcfs`。
+3. `single_region + first_wall` 保留为有价值的后续边界来源，但不再阻塞 M4。
+4. `single_region + array_file` 保留为后续轻量外部轮廓输入，当前不实施。
+5. `single_region + flux_surface` 仍需真实磁面提取证据；禁止径向缩放 LCFS
+   伪造磁面，当前不实施。
+6. 不继续扩建大型 Fake OFT/Mock 测试体系。未来新增边界来源以少量关键单元测试，
+   配合真实 GFile、OFT 26.6、CLI、PNG/HDF5 验收为主。
+
+上述调整只冻结近期实施顺序，不删除未来 boundary source 的正式规划，也不表示
+`first_wall`、`array_file` 或 `flux_surface` 已实现。
+
 ---
 
 ## 6A. 输入架构（两层输入 + EffectiveConfig，字段级契约）
 
 以下为 User 已批准的字段级正式契约。保持轻量边界：不得建设通用配置 DSL、任意 N 区域语言或插件系统。
+
+**标准 `linkmesh.in` 示例决策（v2.5）**：两层输入架构、TOML
+`schema_version=1`、`EffectiveConfig`、优先级“内建默认值 < `linkmesh.in` <
+用户显式 CLI”、未知键严格报错、`--config/--no-config` 互斥及
+`target/profile/boundary_source` 兼容矩阵均保持正式有效。仓库当前尚无面向用户的
+标准化 `linkmesh.in` 示例，本阶段不创建示例；缺少示例文件不表示配置架构未实现。
+待 LinkMesh 的 TRIMEG HDF5 与未来 M3DC1 TXT+SMB 均通过各自真实消费端验收后，
+再构造能够覆盖或清晰表达两个下游目标的标准示例，避免现在只围绕 TRIMEG 提前固化。
 
 ### 6A.1 模块落点
 
