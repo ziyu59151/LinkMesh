@@ -1,0 +1,33 @@
+TRIMEG HDF5 MATLAB validation
+Reader: D:\project\LinkMesh\docs\trimeg\loadfemmesh_h5.m
+
+CASE: standard_femmesh
+FILE: D:\project\LinkMesh\docs\trimeg\femmesh_65402_t1_nr16core.h5
+nvert: 981
+ntria: 1847
+nvert_in: 868
+nvert_ex: 113
+triangle_index_min: 1
+triangle_index_max: 981
+minimum_triangle_area: 5.2134424958721328e-05
+maximum_triangle_area: 3.4799603698960077e-04
+has_Rbc_Zbc: 1
+nbcRZ: 112
+Rbc_Zbc_signed_area: -2.2163223507324981e-01
+PNG: D:\project\LinkMesh\docs\trimeg\validation_output\standard_femmesh.png
+
+CASE: linkmesh_mesh
+FILE: D:\project\LinkMesh\docs\trimeg\mesh.h5
+nvert: 344
+ntria: 631
+nvert_in: 289
+nvert_ex: 55
+triangle_index_min: 1
+triangle_index_max: 344
+minimum_triangle_area: 1.1075525741633405e-03
+maximum_triangle_area: 3.1862776276677073e-03
+has_Rbc_Zbc: 1
+nbcRZ: 55
+Rbc_Zbc_signed_area: -1.3235668155727109e+00
+PNG: D:\project\LinkMesh\docs\trimeg\validation_output\linkmesh_mesh.png
+
