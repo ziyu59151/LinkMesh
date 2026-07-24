@@ -11,12 +11,12 @@ v2.3 输入层 II 新增 single_region + lcfs 路径）。
           构造 OFT gs_Domain，不调用 build_mesh()。
           有壁三区域（PLASMA+VACUUM+OUTER），无壁两区域（PLASMA+OUTER）。
     - build_single_region_domain_from_lcfs(gfile_data, ...) -> gs_Domain
-          （v2.3 输入层 II）single_region + lcfs 策略层：以 LCFS 为唯一计算域边界，
+          （v2.3 输入层 II）LCFS 单区域来源策略层：以 LCFS 为唯一计算域边界，
           用一个 add_polygon() Region 构造 OFT gs_Domain，不创建第一壁/vacuum/
           人工 outer rectangle，不调用 build_mesh()。single-region 网格尺度用 plasma_dx。
     - generate_mesh(gfile_data, ...) -> Mesh2D
           CLI 便利入口：默认走 nested_three_region + artificial_outer；
-          profile="single_region" + boundary_source="lcfs" 时走 single-region LCFS。
+          profile="single_region" + boundary_source="lcfs" 时走 LCFS 单区域来源。
 
 正式数据流（nested_three_region）：
     GFileData → build_oft_domain_from_gfile → OFT gs_Domain
@@ -52,6 +52,16 @@ v2.2 M3 complete-11 outer boundary 正式数据链（版本锁定兼容接口，
     并原地更新 domain.region_info[name]["id"]。因此 Adapter 必须在 build_mesh()
     成功返回之后再读取 domain.region_info，得到 OFT 最终区域 ID 集合，
     并以该最终集合校验输出 reg。绝不能在 build_mesh() 之前提取区域 ID 集合。
+
+显式闭合末点容差（v2.3 LCFS 单区域来源真实回归修复）：
+    OFT 26.6 回写的 outer Region _resampled_points 在真实 DIII-D GFile 下可能包含
+    与首点在 Mesh2D 正式坐标尺度容差内重复的显式闭合末点。删除该末点的容差必须与
+    Mesh2D._validate_outer_boundary() 的正式坐标尺度语义一致——
+    length_scale = max(1.0, R 跨度, Z 跨度, 坐标绝对量级)，
+    coordinate_tol = 1e-12 * length_scale（长度量纲），
+    绝不使用 NumPy allclose/array_equal 的隐式默认容差，绝不用 Adapter 私有
+    的、比 Mesh2D 更窄或语义不同的尺度公式。只删除一个末点；若删除后首末点仍在
+    该容差内重复，不继续循环删除，交由 Mesh2D 拒绝。
 
 禁止事项：
     - 不复制 OFT 的区域拓扑、点合并、重采样、区域种子或 Triangle 调用逻辑；
@@ -214,6 +224,32 @@ def _signed_area_closed(boundary: np.ndarray) -> float:
     return 0.5 * float(np.sum(r * z_next - r_next * z))
 
 
+def _mesh2d_coordinate_tol(pts: np.ndarray) -> float:
+    """按 Mesh2D._validate_outer_boundary() 的正式坐标尺度语义计算坐标容差。
+
+    与 Mesh2D 统一验证保持一致的尺度语义（长度量纲）：
+        length_scale   = max(1.0, R 跨度, Z 跨度, 坐标绝对量级)
+        coordinate_tol = 1e-12 * length_scale
+
+    该函数只提供 Adapter 删除显式闭合重复末点所需的坐标容差，使其与 Mesh2D
+    的首末点/相邻点判据处于同一尺度语义，避免 Adapter 使用比 Mesh2D 更窄或
+    语义不同的私有容差（不使用 NumPy allclose/array_equal 隐式默认容差）。
+
+    参数：
+        pts: (B,2) float64 点列（至少 1 个点）
+
+    返回：
+        坐标容差（float，长度量纲）
+    """
+    r_span = float(pts[:, 0].max() - pts[:, 0].min())
+    z_span = float(pts[:, 1].max() - pts[:, 1].min())
+    abs_mag = float(np.max(np.abs(pts)))
+    length_scale = max(1.0, r_span, z_span, abs_mag)
+    if not (np.isfinite(length_scale) and length_scale > 0):
+        length_scale = 1.0
+    return 1e-12 * length_scale
+
+
 # --------------------------------------------------------------------------- #
 # outer Region 回写点列的读取与规范化（版本锁定兼容接口，见蓝图第 3.2A 节）      #
 # --------------------------------------------------------------------------- #
@@ -223,13 +259,21 @@ def _normalize_resampled_points(raw: Any) -> np.ndarray:
 
     仅做：
         - 转 (B,2) float64 独立副本；
-        - 删除可能存在的显式闭合重复末点（末点≈首点时只删一个）；
+        - 删除可能存在的显式闭合重复末点（末点在 Mesh2D 正式坐标尺度容差内
+          ≈首点时只删一个）；
         - 用带符号闭合面积判断方向，逆时针则反转为顺时针，且保持原点 0 为输出点 0：
               顺时针  → 保持全部点序不变；
               逆时针  → 输出为 [p0, p_(B-1), p_(B-2), ..., p1]
                         （不使用 pts[::-1]，因为那会把起点改成最后一点）。
-    不做任何新的边界插值/重采样，不循环移位、不排序、不静默修补自交/退化/重复点
-    （完整几何契约交由 Mesh2D 统一验证）。
+    不做任何新的边界插值/重采样，不循环移位、不排序、不删除内部点、不删除相邻
+    重复点、不静默修补自交/退化/重复点（完整几何契约交由 Mesh2D 统一验证）。
+
+    显式闭合末点判据（v2.3 真实回归修复）：
+        使用 _mesh2d_coordinate_tol()（length_scale = max(1.0, R 跨度, Z 跨度,
+        坐标绝对量级)，coordinate_tol = 1e-12 * length_scale），与 Mesh2D 正式
+        坐标尺度语义一致。逐位完全相等的首末点其欧氏距离为 0，天然落在该容差内，
+        亦被删除。只删除一个末点；删除后至少保留 3 个点；若删除一个末点后首末点
+        仍在该容差内重复，不继续循环删除，交由 Mesh2D 拒绝异常点列。
 
     参数：
         raw: outer_region._resampled_points（OFT 回写点列）
@@ -259,19 +303,13 @@ def _normalize_resampled_points(raw: Any) -> np.ndarray:
     if not np.all(np.isfinite(pts)):
         raise ValueError("outer_region._resampled_points 含非有限值（NaN/Inf）")
 
-    # 删除可能存在的显式闭合重复末点（末点与首点在容差内重复时只删一个）
+    # 删除可能存在的显式闭合重复末点（末点与首点在 Mesh2D 正式坐标尺度容差内
+    # 重复时只删一个）。容差语义与 Mesh2D._validate_outer_boundary() 一致，
+    # 逐位完全相等（距离 0）亦被覆盖。只删一个末点，不循环删除。
     if pts.shape[0] >= 2:
-        scale = float(
-            max(
-                pts[:, 0].max() - pts[:, 0].min(),
-                pts[:, 1].max() - pts[:, 1].min(),
-            )
-        )
-        if not (np.isfinite(scale) and scale > 0):
-            scale = 1.0
-        tol = 1e-9 * scale
+        coordinate_tol = _mesh2d_coordinate_tol(pts)
         gap = float(np.hypot(pts[0, 0] - pts[-1, 0], pts[0, 1] - pts[-1, 1]))
-        if gap <= tol:
+        if gap <= coordinate_tol:
             pts = pts[:-1]
 
     if pts.shape[0] < 3:
@@ -813,7 +851,7 @@ def build_oft_domain_from_gfile(
 
 
 # --------------------------------------------------------------------------- #
-# 2b. single_region + lcfs 策略层（v2.3 输入层 II）                             #
+# 2b. LCFS 单区域来源策略层（v2.3 输入层 II）                                   #
 # --------------------------------------------------------------------------- #
 
 def build_single_region_domain_from_lcfs(
@@ -821,7 +859,7 @@ def build_single_region_domain_from_lcfs(
     *,
     plasma_dx: float = 0.08,
 ) -> Any:
-    """single_region + lcfs 策略层：以 LCFS 为唯一计算域边界构造 OFT gs_Domain。
+    """LCFS 单区域来源策略层：以 LCFS 为唯一计算域边界构造 OFT gs_Domain。
 
     正式语义（蓝图第 6A.11 节，第 1 项）：
         - 从 GFileData 取 LCFS（lcfs_r/lcfs_z）；

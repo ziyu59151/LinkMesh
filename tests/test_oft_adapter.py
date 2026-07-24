@@ -26,11 +26,12 @@ Windows 本地可收集但不保证运行通过。
     A. mesh_from_oft_domain()：通用 N 区域核心转换与校验
        （含 build_mesh 后 OFT 最终区域 ID 时序回归测试；
         含 build_mesh 后读取 outer Region 回写点列、版本锁定、失败即停、
-        Steiner 点不进入 outer_boundary、超过 4 点证明旧四角失败）
+        Steiner 点不进入 outer_boundary、超过 4 点证明旧四角失败；
+        含近似重复闭合末点删除真实回归）
     B. build_oft_domain_from_gfile()：默认 GFile 区域策略
        （含 outer Region 引用捕获、regions 长度差异、有壁/无壁一致）
     C. generate_mesh()：便利入口只组合两层
-    D. build_single_region_domain_from_lcfs()：single_region + lcfs 策略层
+    D. build_single_region_domain_from_lcfs()：LCFS 单区域来源策略层
        （v2.3 输入层 II：单 polygon Region、不 rectangle/annulus、plasma_dx、
         回写点列非原始 LCFS、防御性失败、版本锁定）
     另含 _load_gs_domain_class() 导入失败异常链测试与版本检查测试。
@@ -486,6 +487,68 @@ class TestMeshFromOftDomainOuterBoundaryReadback:
         # 删除重复末点后仍是 6 点
         assert mesh.outer_boundary.shape[0] == 6
         assert not np.array_equal(mesh.outer_boundary[0], mesh.outer_boundary[-1])
+
+    def test_near_duplicate_closing_point_removed_realistic(self, force_oft_version_266):
+        """真实 DIII-D 回归：首末点在 Mesh2D 正式坐标尺度容差内近似重复但不逐位相等。
+
+        真实故障（服务器 openfusiontoolkit==26.6，DIII-D g192185.02440，
+        mesh_only + single_region + lcfs）：OFT 回写的 outer Region
+        _resampled_points 末点与首点在 Mesh2D 正式坐标尺度容差内重复，但不逐位
+        完全相等；旧实现（Adapter 容差比 Mesh2D 窄/尺度语义不同）保留了该末点，
+        导致 Mesh2D 报「首点与末点相同」。
+
+        本用例构造首末点差值小于 Mesh2D 正式坐标容差
+        （coordinate_tol = 1e-12 * max(1.0, 跨度, 坐标绝对量级)）、但大于 0 的
+        回写点列，断言修复后只删除一个末点、保留 >=3 点、独立副本、点 0 不变，
+        且 Mesh2D 构造成功。使用 DIII-D 量级坐标（R≈1–2.3），使 abs_mag 项主导
+        length_scale，从而暴露旧 Adapter 尺度差异。
+        """
+        pts, lc = _square_two_triangles()
+        reg = np.array([1, 2], dtype=np.int32)
+        region = FakeRegion()
+
+        # DIII-D 量级顺时针 6 点边界（不重复首点）
+        base = np.array([
+            [1.0, -1.2],
+            [1.0, 0.0],
+            [1.0, 1.2],
+            [2.3, 1.2],
+            [2.3, 0.0],
+            [2.3, -1.2],
+        ], dtype=np.float64)
+        # 追加一个与首点“近似重复”的显式闭合末点：
+        # 差值远小于 Mesh2D coordinate_tol = 1e-12 * max(1.0, 跨度≈2.4, abs_mag≈2.3)
+        # ≈ 2.4e-12，取 5e-13 保证 gap <= coordinate_tol 且 gap > 0。
+        near_first = base[0] + np.array([5e-13, -5e-13], dtype=np.float64)
+        ob_near_closed = np.vstack([base, near_first])
+        assert not np.array_equal(ob_near_closed[0], ob_near_closed[-1])  # 不逐位相等
+        gap = float(np.hypot(
+            ob_near_closed[0, 0] - ob_near_closed[-1, 0],
+            ob_near_closed[0, 1] - ob_near_closed[-1, 1],
+        ))
+        assert gap > 0.0
+
+        domain = FakeDomain(
+            pts, lc, reg, _region_info([1, 2]),
+            outer_region=region, resampled_on_build=ob_near_closed,
+        )
+        mesh = mesh_from_oft_domain(domain)
+
+        # 只删除一个末点：7 → 6
+        assert mesh.outer_boundary.shape[0] == 6
+        assert mesh.outer_boundary.shape[0] >= 3
+        # (B,2) float64
+        assert mesh.outer_boundary.ndim == 2
+        assert mesh.outer_boundary.shape[1] == 2
+        assert mesh.outer_boundary.dtype == np.float64
+        # 输出点 0 保持不变（等于原首点）
+        np.testing.assert_array_equal(mesh.outer_boundary[0], base[0])
+        # 独立副本：不与 Region 回写数组共享内存
+        assert not np.shares_memory(mesh.outer_boundary, region._resampled_points)
+        # 删除后首末点不再逐位相等（Mesh2D 已成功构造，未抛异常）
+        assert not np.array_equal(
+            mesh.outer_boundary[0], mesh.outer_boundary[-1]
+        )
 
     def test_output_bx2_float64(self, force_oft_version_266):
         pts, lc = _square_two_triangles()
@@ -1616,18 +1679,18 @@ class TestGenerateMeshComposition:
 
 
 # ==========================================================================
-# D. build_single_region_domain_from_lcfs()：single_region + lcfs 策略层
+# D. build_single_region_domain_from_lcfs()：LCFS 单区域来源策略层
 #    （v2.3 输入层 II）
 # ==========================================================================
 
 class SingleRegionDomainHolder:
-    """single-region 策略层专用假 domain。
+    """LCFS 单区域来源策略层专用假 domain。
 
     模拟服务器已确认关系：
         - define_region 记录调用；
         - add_polygon 调用时向 regions 追加恰好一个 Region（模拟 OFT 行为）；
         - 不提供 add_rectangle / add_annulus，若被误调用会 AttributeError。
-    single-region 策略层不应调用 add_rectangle / add_annulus。
+    LCFS 单区域来源策略层不应调用 add_rectangle / add_annulus。
     """
 
     def __init__(self):
@@ -1640,7 +1703,7 @@ class SingleRegionDomainHolder:
 
 
 class TestBuildSingleRegionDomainFromLcfs:
-    """single_region + lcfs 策略层：单 polygon、不 rectangle/annulus、plasma_dx。"""
+    """LCFS 单区域来源策略层：单 polygon、不 rectangle/annulus、plasma_dx。"""
 
     def test_single_polygon_region_created(self):
         lcfs_r, lcfs_z = _square_contour()
@@ -1661,7 +1724,7 @@ class TestBuildSingleRegionDomainFromLcfs:
         assert len(holder.regions) == 1
 
     def test_no_rectangle_no_annulus(self):
-        # single-region 策略层不创建人工矩形、不创建 annulus。
+        # LCFS 单区域来源策略层不创建人工矩形、不创建 annulus。
         lcfs_r, lcfs_z = _square_contour()
         gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
 
@@ -1679,7 +1742,7 @@ class TestBuildSingleRegionDomainFromLcfs:
         assert not hasattr(holder, "add_annulus")
 
     def test_does_not_use_first_wall(self):
-        # 即便 GFile 提供第一壁，single-region + lcfs 也不消费第一壁。
+        # 即便 GFile 提供第一壁，LCFS 单区域来源也不消费第一壁。
         lcfs_r, lcfs_z = _square_contour()
         wall_r = np.array([-0.5, 1.5, 1.5, -0.5], dtype=np.float64)
         wall_z = np.array([-0.5, -0.5, 1.5, 1.5], dtype=np.float64)
@@ -1778,7 +1841,7 @@ class TestBuildSingleRegionDomainFromLcfs:
 
 
 class TestBuildSingleRegionDomainInputFailures:
-    """single-region 策略层输入非法失败（LCFS/参数校验先于 OFT）。"""
+    """LCFS 单区域来源策略层输入非法失败（LCFS/参数校验先于 OFT）。"""
 
     def test_lcfs_length_mismatch_fails(self):
         r = np.array([0.0, 1.0, 0.5], dtype=np.float64)
@@ -1923,7 +1986,7 @@ class TestBuildSingleRegionDomainInputFailures:
 
 
 class TestSingleRegionLcfsEndToEndWithMesh:
-    """single-region 策略层 + mesh_from_oft_domain 端到端边界回写（版本锁定隔离）。
+    """LCFS 单区域来源策略层 + mesh_from_oft_domain 端到端边界回写（版本锁定隔离）。
 
     使用 SingleRegionBuildDomain：既能被 build_single_region_domain_from_lcfs
     捕获 Region，又能在 build_mesh 后回写点列，验证完整数据链：
@@ -2033,6 +2096,47 @@ class TestSingleRegionLcfsEndToEndWithMesh:
         assert _signed_area_closed(ob) < 0
         # 输出点 0 == 输入点 0
         np.testing.assert_array_equal(ob[0], ccw[0])
+
+    def test_near_duplicate_closing_point_removed_end_to_end(self, force_oft_version_266):
+        """端到端真实回归：LCFS 单区域 build 回写近似重复闭合末点被删除。
+
+        直接复现服务器真实故障链
+        （build_single_region_domain_from_lcfs → mesh_from_oft_domain → Mesh2D）：
+        OFT 回写点列末点与首点在 Mesh2D 正式坐标尺度容差内近似重复但不逐位相等。
+        修复后 Mesh2D 构造成功，只删除一个末点、保留点 0、独立副本。
+        """
+        lcfs_r, lcfs_z = _square_contour()
+        gfile = FakeGFileData(lcfs_r, lcfs_z, None, None)
+
+        base = np.array([
+            [1.0, -1.2],
+            [1.0, 0.0],
+            [1.0, 1.2],
+            [2.3, 1.2],
+            [2.3, 0.0],
+            [2.3, -1.2],
+        ], dtype=np.float64)
+        near_first = base[0] + np.array([5e-13, -5e-13], dtype=np.float64)
+        ob_near_closed = np.vstack([base, near_first])
+        assert not np.array_equal(ob_near_closed[0], ob_near_closed[-1])
+
+        holder = self._make_single_region_domain(resampled_on_build=ob_near_closed)
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(gfile)
+        mesh = mesh_from_oft_domain(domain)
+
+        # 只删除一个末点：7 → 6，且 Mesh2D 构造成功
+        assert mesh.outer_boundary.shape[0] == 6
+        assert mesh.outer_boundary.shape[0] >= 3
+        assert mesh.outer_boundary.dtype == np.float64
+        np.testing.assert_array_equal(mesh.outer_boundary[0], base[0])
+        assert not np.array_equal(
+            mesh.outer_boundary[0], mesh.outer_boundary[-1]
+        )
 
     def test_reads_original_region_when_replaced_during_build(self, force_oft_version_266):
         # build 中替换 domain 上保存的 Region 引用时，仍读 build 前保存的原对象。
