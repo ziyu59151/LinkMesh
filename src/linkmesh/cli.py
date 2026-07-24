@@ -4,20 +4,22 @@ cli.py —— LinkMesh 命令行入口。
 职责：
     - 解析命令行参数（argparse），标记用户显式输入
     - 调用 config.load_effective_config() 完成「内建默认值 < linkmesh.in < 显式 CLI」合并
-    - 按顺序调用 reader → mesher（OFT Adapter）→ writer → plotter
+    - 按 profile/boundary_source 选择已实现路径，调用 reader → mesher（OFT Adapter）
+      → writer → plotter
     - 捕获异常并打印友好错误信息
 
 禁止事项：
-    - 不得包含任何业务逻辑
+    - 不得包含任何业务逻辑（Domain/区域/边界/种子/数组转换）
     - 不得直接解析 TOML（交给 config.py）
     - 不得自行维护第二套配置默认值（默认值集中在 config.py）
-    - 不得在 CLI 中构造 OFT Domain、区域、边界、种子或转换数组
+    - 不得把 profile/source 判断放入 Reader 或 Writer
+    - 未实现组合不得回退到 nested_three_region
 
-数据流（v2.3 输入层 I 正式路径）：
+数据流（v2.3 输入层 I/II 正式路径）：
     CLI 参数 → CliOverrides（仅显式输入）→ load_effective_config() → EffectiveConfig
          → read_gfile() → GFileData
-         → oft_adapter.generate_mesh() → Mesh2D
-         → write_hdf5()（除非 --no-hdf5，且 target 需要）
+         → oft_adapter.generate_mesh(..., profile=, boundary_source=) → Mesh2D
+         → write_hdf5()（target=trimeg 且未 --no-hdf5）
          → write_smb()（除非 --no-smb）
          → plot_mesh()（若配置 plot_path）
 
@@ -28,8 +30,12 @@ CLI 分区域网格密度参数（v1.13 契约）：
 
 输入层 I（v2.3）新增参数（蓝图第 6A.5 节）：
     --config / --no-config（互斥）、--target、--profile、--boundary-source、--array-file。
-    旧参数（--gfile/--output/--smb/--plot/三个 dx/--no-hdf5/--no-smb/--verbose/
-    --min-angle/--max-area）全部保留，旧命令无配置时行为不变。
+    旧参数全部保留，旧命令无配置时行为不变。
+
+输入层 II（v2.3）新增业务分派：
+    - nested_three_region + artificial_outer：原路径（有壁三区域 / 无壁两区域）；
+    - single_region + lcfs：单 polygon Region，LCFS 为唯一计算域边界，
+      single-region 网格尺度用 plasma_dx；不消费 vacuum_dx/outer_dx。
 
 参见 LinkMesh_Architecture_Plan.md v2.3 第 6、6A 节。
 """
@@ -232,12 +238,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     """LinkMesh CLI 主入口函数。
 
-    执行顺序（v2.3 输入层 I）：
+    执行顺序（v2.3 输入层 I/II）：
         0. 解析 CLI，拦截历史参数
         1. 收集用户显式输入 → CliOverrides
         2. load_effective_config()（发现/读取/校验/合并 linkmesh.in 与 CLI）
         3. read_gfile() → GFileData
-        4. oft_adapter.generate_mesh() → Mesh2D
+        4. oft_adapter.generate_mesh(..., profile=, boundary_source=) → Mesh2D
         5. write_hdf5()（target=trimeg 且未 --no-hdf5）
         6. write_smb()（未 --no-smb）
         7. plot_mesh()（若配置 plot_path）
@@ -347,10 +353,11 @@ def _run(args: argparse.Namespace) -> None:
 
     # ------------------------------------------------------------------ #
     # Step 2：读取 GFile（M1）                                             #
-    # 当前阶段唯一进入业务执行的路径为                                       #
-    #   target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer #
-    # （single_region/flux_surface/m3dc1 已在 config 层报未实现）。          #
-    # 该路径需要 gfile_path（required fields 已保证非 None）。               #
+    # 当前阶段进入业务执行的组合（config 已保证其余组合报未实现/失败）：      #
+    #   - target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer #
+    #   - target ∈ {trimeg, mesh_only} + single_region + lcfs（输入层 II） #
+    # 上述两组均以 GFile 为输入，需要 gfile_path（required fields 已保证）。 #
+    # GFile 只读取一次。                                                    #
     # ------------------------------------------------------------------ #
     from linkmesh.readers.gfile_reader import read_gfile
 
@@ -369,22 +376,31 @@ def _run(args: argparse.Namespace) -> None:
             print("  第一壁: 无（GFile 不含 limiter 数据）")
 
     # ------------------------------------------------------------------ #
-    # Step 3：生成网格（M2 正式路径：OFT Adapter；nested_three_region）      #
+    # Step 3：生成网格（M2 正式路径：OFT Adapter）                          #
+    # 按 profile/boundary_source 分派已实现路径；Adapter 自身也校验组合。    #
+    # single_region + lcfs 只使用 plasma_dx；vacuum_dx/outer_dx 仍传入      #
+    # （Adapter 在 single-region 分支忽略之），配置字段不删除。              #
     # ------------------------------------------------------------------ #
     from linkmesh.mesher.oft_adapter import generate_mesh
 
     if verbose:
-        print("[LinkMesh] 调用 OFT gs_Domain 生成二维三角网格...")
-        print(
-            f"  网格尺度: plasma_dx={cfg.plasma_dx} m, "
-            f"vacuum_dx={cfg.vacuum_dx} m, outer_dx={cfg.outer_dx} m"
-        )
+        if cfg.profile == "single_region" and cfg.boundary_source == "lcfs":
+            print("[LinkMesh] 调用 OFT gs_Domain 生成 single-region LCFS 二维三角网格...")
+            print(f"  网格尺度: plasma_dx={cfg.plasma_dx} m（single-region 唯一尺度）")
+        else:
+            print("[LinkMesh] 调用 OFT gs_Domain 生成 nested-three-region 二维三角网格...")
+            print(
+                f"  网格尺度: plasma_dx={cfg.plasma_dx} m, "
+                f"vacuum_dx={cfg.vacuum_dx} m, outer_dx={cfg.outer_dx} m"
+            )
 
     mesh = generate_mesh(
         gfile_data,
         plasma_dx=cfg.plasma_dx,
         vacuum_dx=cfg.vacuum_dx,
         outer_dx=cfg.outer_dx,
+        profile=cfg.profile,
+        boundary_source=cfg.boundary_source,
     )
 
     if verbose:

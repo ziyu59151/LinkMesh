@@ -622,21 +622,28 @@ def _validate_required_fields(cfg: EffectiveConfig) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# 当前阶段实现边界（输入层 I）                                                  #
+# 当前阶段实现边界（输入层 I + 输入层 II）                                       #
 # --------------------------------------------------------------------------- #
 
+# 输入层 II 已实现的 single_region 组合：single_region + lcfs（mesh_only / trimeg）。
+# 只有这些 (target, boundary_source) 组合在 single_region 下允许进入业务执行；
+# 其余 single_region 组合（first_wall/array_file/flux_surface）仍明确未实现。
+_IMPLEMENTED_SINGLE_REGION_SOURCES = ("lcfs",)
+
+
 def _validate_current_stage(cfg: EffectiveConfig) -> None:
-    """当前阶段（输入层 I）业务能力边界校验。
+    """当前阶段（输入层 I + 输入层 II）业务能力边界校验。
 
     - flux_surface：首批明确未实现（第 6A.8 节，禁止缩放 LCFS 伪造磁面）；
     - target=m3dc1：M4 Writer 未实现，明确失败；
-    - single_region（lcfs/first_wall/array_file）：输入层 II–IV 才实现，
-      配置层可表达但当前明确报未实现，不回退 artificial_outer。
+    - single_region：输入层 II 已实现 single_region + lcfs（mesh_only / trimeg）；
+      其余 single_region 组合（first_wall/array_file）仍属输入层 III–IV，
+      明确报未实现，不回退 artificial_outer。
 
-    唯一进入业务执行的组合是已实现回归路径：
-        target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer
-    （mesh_only + nested_three_region + artificial_outer 属输入层首批目标；
-     其网格生成路径与现有一致，仅输出跳过 HDF5，不引入新业务。）
+    当前进入业务执行的组合：
+        - target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer
+          （已实现回归路径）；
+        - target ∈ {trimeg, mesh_only} + single_region + lcfs（输入层 II 新增）。
     """
     if cfg.boundary_source == "flux_surface":
         raise NotImplementedError(
@@ -651,8 +658,11 @@ def _validate_current_stage(cfg: EffectiveConfig) -> None:
         )
 
     if cfg.profile == "single_region":
-        raise NotImplementedError(
-            f"profile=single_region 尚未实现（{_combo(cfg)}）："
-            "single_region + lcfs/first_wall/array_file 属输入层 II–IV，"
-            "当前阶段（输入层 I）未实现，不回退 artificial_outer"
-        )
+        # 输入层 II 已实现 single_region + lcfs；其余 single_region 组合仍未实现。
+        if cfg.boundary_source not in _IMPLEMENTED_SINGLE_REGION_SOURCES:
+            raise NotImplementedError(
+                f"profile=single_region + boundary_source={cfg.boundary_source} "
+                f"尚未实现（{_combo(cfg)}）："
+                "single_region + first_wall/array_file 属输入层 III–IV，"
+                "当前阶段未实现，不回退 artificial_outer"
+            )

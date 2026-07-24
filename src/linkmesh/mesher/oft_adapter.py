@@ -1,32 +1,43 @@
 """
-oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口，v2.2 outer boundary 修正）。
+oft_adapter.py —— M2 正式网格生成适配层（v1.9 三层接口，v2.2 outer boundary 修正，
+v2.3 输入层 II 新增 single_region + lcfs 路径）。
 
-职责（严格对齐 LinkMesh_Architecture_Plan.md v2.2 第 2、3.2、3.2A 节）：
+职责（严格对齐 LinkMesh_Architecture_Plan.md v2.2/v2.3 第 2、3.2、3.2A、6A.11 节）：
     - mesh_from_oft_domain(domain) -> Mesh2D
           通用 N 区域核心：接收已构造的 OFT gs_Domain，调用一次 build_mesh()，
           将 pts/lc/reg 规范化并验证为 Mesh2D。对任意正区域数量 N 通用（含 N=1）。
     - build_oft_domain_from_gfile(gfile_data, ...) -> gs_Domain
-          当前 GFile 默认区域策略层：构造 OFT gs_Domain，不调用 build_mesh()，
-          不转换 pts/lc/reg。有壁三区域（PLASMA+VACUUM+OUTER），无壁两区域（PLASMA+OUTER）。
+          当前 GFile 默认（nested_three_region + artificial_outer）区域策略层：
+          构造 OFT gs_Domain，不调用 build_mesh()。
+          有壁三区域（PLASMA+VACUUM+OUTER），无壁两区域（PLASMA+OUTER）。
+    - build_single_region_domain_from_lcfs(gfile_data, ...) -> gs_Domain
+          （v2.3 输入层 II）single_region + lcfs 策略层：以 LCFS 为唯一计算域边界，
+          用一个 add_polygon() Region 构造 OFT gs_Domain，不创建第一壁/vacuum/
+          人工 outer rectangle，不调用 build_mesh()。single-region 网格尺度用 plasma_dx。
     - generate_mesh(gfile_data, ...) -> Mesh2D
-          CLI 便利入口：只组合前两者。
+          CLI 便利入口：默认走 nested_three_region + artificial_outer；
+          profile="single_region" + boundary_source="lcfs" 时走 single-region LCFS。
 
-正式数据流：
+正式数据流（nested_three_region）：
     GFileData → build_oft_domain_from_gfile → OFT gs_Domain
              → mesh_from_oft_domain/build_mesh → pts/lc/reg → Mesh2D
 
+正式数据流（single_region + lcfs，v2.3 输入层 II）：
+    GFileData(LCFS) → build_single_region_domain_from_lcfs → OFT gs_Domain
+             → mesh_from_oft_domain/build_mesh → pts/lc/reg → Mesh2D
+
 v2.2 M3 complete-11 outer boundary 正式数据链（版本锁定兼容接口，见蓝图第 3.2A 节）：
-    1. 策略层 build_oft_domain_from_gfile 创建 artificial outer Region
-       （add_rectangle(name="outer")）；
-    2. 策略层在 add_rectangle 前后用 domain.regions 长度差异捕获新增的 outer
-       Region 对象引用（不写死整数 region ID、不按名称猜测、不遍历私有 map），
-       作为 LinkMesh 私有属性 domain._linkmesh_outer_region 附加在返回的 domain
-       上（该属性不是 OFT 字段，OFT 不消费它）；捕获或保存失败即停，不静默 pass；
-    3. mesh_from_oft_domain 在 build_mesh() 之前把该 outer Region 引用保存到局部
-       变量；调用 domain.build_mesh()；OFT Mesh.__init__() 内部完成实际重采样、
-       共享边界处理、点合并、全局重编号与 segment 方向处理，并把该 Region 的有序
+    1. 策略层创建 outer Region（nested：add_rectangle(name="outer")；
+       single_region + lcfs：add_polygon() 的唯一 Region）；
+    2. 策略层在创建前后用 domain.regions 长度差异捕获新增的 Region 对象引用
+       （不写死整数 region ID、不按名称猜测、不遍历私有 map），作为 LinkMesh
+       私有属性 domain._linkmesh_outer_region 附加在返回的 domain 上（该属性
+       不是 OFT 字段，OFT 不消费它）；捕获或保存失败即停，不静默 pass；
+    3. mesh_from_oft_domain 在 build_mesh() 之前把该 Region 引用保存到局部变量；
+       调用 domain.build_mesh()；OFT Mesh.__init__() 内部完成实际重采样、共享
+       边界处理、点合并、全局重编号与 segment 方向处理，并把该 Region 的有序
        离散点列回写到 outer_region._resampled_points；
-    4. build_mesh() 完成后，受控读取 build 前保存的同一个 outer Region 对象的
+    4. build_mesh() 完成后，受控读取 build 前保存的同一个 Region 对象的
        _resampled_points（Triangle 输入前的真实有序离散点列，与最终 vert 同源
        同批），删除可能的显式闭合重复末点、规范化为顺时针（保持起点）、创建
        float64 独立副本；即使 build_mesh() 期间 domain 上的私有属性被替换，也使用
@@ -50,7 +61,8 @@ v2.2 M3 complete-11 outer boundary 正式数据链（版本锁定兼容接口，
     - 不重编号、不排序、不压缩、不执行 +1；
     - 不解析 domain.mesh._reg_seg_map / _resampled_segments / Mesh._resampled_points；
     - 不调用 Region.get_resampled_points() 作为 outer_boundary 来源；
-    - 不用 build_mesh() 后的 pts/lc、最终 idxevert 或人工矩形四角反推 outer boundary；
+    - 不用 build_mesh() 后的 pts/lc、最终 idxevert 或原始 LCFS 控制点反推 outer boundary；
+    - single_region + lcfs 不径向缩放 LCFS，不使用第一壁，不创建人工外框/annulus；
     - 不引入 Protocol、抽象基类、插件系统、通用区域配置类或额外模块。
 
 Mesh2D 兼容说明（v1.11 M2.5）：
@@ -60,7 +72,7 @@ Mesh2D 兼容说明（v1.11 M2.5）：
     空数组只是兼容占位，不表示已生成任何边界语义。
 
 参考规范：
-    LinkMesh_Architecture_Plan.md v2.2 第 2、3.2、3.2A、4、10.1 节；
+    LinkMesh_Architecture_Plan.md v2.2/v2.3 第 2、3.2、3.2A、4、6A.8、6A.11、10.1 节；
     v1.9 第 5、7 节；v1.11 第 2.2、16 节（Mesh2D 解耦）
 """
 
@@ -79,7 +91,7 @@ if TYPE_CHECKING:
 # LinkMesh 私有属性名：附加在 domain 上的、策略层捕获的 outer Region 对象引用。
 # 该属性不是 OFT gs_Domain 的字段，OFT 不读取、不消费它。
 # 注意：它保存的是 outer Region 对象引用（供 build_mesh() 后读取回写点列），
-# 绝不保存人工矩形四角数组。
+# 绝不保存人工矩形四角数组或原始 LCFS 控制点。
 _OUTER_REGION_ATTR = "_linkmesh_outer_region"
 
 # 版本锁定兼容接口绑定的 OFT 版本（见蓝图第 3.2A 节）。
@@ -302,7 +314,7 @@ def _extract_outer_boundary_from_region(
         - 不读取 domain.mesh._resampled_points；
         - 不调用 outer_region.get_resampled_points()；
         - 不从最终 pts/lc/idxevert 反推；
-        - 不使用人工矩形四角。
+        - 不使用人工矩形四角或原始 LCFS 控制点。
 
     在读取私有属性前执行集中的 OFT 版本锁定检查。
 
@@ -332,6 +344,64 @@ def _extract_outer_boundary_from_region(
 
     raw = getattr(outer_region, "_resampled_points")
     return _normalize_resampled_points(raw)
+
+
+# --------------------------------------------------------------------------- #
+# outer Region 引用捕获（集中 helper，供 nested / single_region 策略层复用）      #
+# --------------------------------------------------------------------------- #
+
+def _capture_and_attach_outer_region(domain: Any, n_before: int) -> Any:
+    """在 domain.regions 恰好新增一个 Region 后，捕获该 Region 并附加到 domain。
+
+    要求策略层在创建 outer/唯一 Region 之前先记录 len(domain.regions) 为 n_before，
+    创建之后调用本 helper 完成：
+        - 校验 domain.regions 存在且是可计数容器；
+        - 校验恰好新增一个 Region（len == n_before + 1）；
+        - 取 regions[-1] 作为捕获的 Region 对象引用（不写死整数 region ID、
+          不按名称猜测、不遍历私有 map）；
+        - 通过 setattr 附加为 LinkMesh 私有属性 _linkmesh_outer_region；
+        - 捕获或保存失败即停，不静默 pass，保留原始异常链。
+
+    参数：
+        domain:   OFT gs_Domain 对象（策略层已创建 Region）
+        n_before: 创建 Region 之前的 len(domain.regions)
+
+    返回：
+        捕获的 Region 对象引用
+
+    异常：
+        ValueError:   regions 缺失/非计数容器，或未恰好新增一个 Region
+        RuntimeError: 无法把私有属性附加到 domain（保留原始异常链）
+    """
+    regions_after = getattr(domain, "regions", None)
+    if regions_after is None or not hasattr(regions_after, "__len__"):
+        raise ValueError(
+            "创建 Region 后 domain.regions 不存在或不是预期容器，无法捕获 outer Region"
+        )
+    n_after = len(regions_after)
+    if n_after != n_before + 1:
+        raise ValueError(
+            "创建 Region 后 domain.regions 未恰好新增一个 Region："
+            f"新增前={n_before}，新增后={n_after}；无法可靠捕获 outer Region 引用，"
+            "失败即停，不回退四角/idxevert/自行重采样"
+        )
+    outer_region = regions_after[-1]
+
+    # 将捕获的 outer Region 对象引用作为 LinkMesh 私有属性附加在 domain 上。
+    # OFT 不消费该属性；仅供 mesh_from_oft_domain 在 build_mesh() 之后读取回写点列。
+    # 保存失败即停：绝不静默 pass，绝不回退四角/idxevert/自行重采样。
+    try:
+        setattr(domain, _OUTER_REGION_ATTR, outer_region)
+    except (AttributeError, TypeError) as e:
+        raise RuntimeError(
+            "无法将捕获的 outer Region 引用保存到 domain."
+            f"{_OUTER_REGION_ATTR}："
+            "domain 不允许附加该私有属性，无法建立 outer boundary 数据链，"
+            "失败即停，禁止回退四角/idxevert/自行重采样。"
+            f"\n原始错误：{e}"
+        ) from e
+
+    return outer_region
 
 
 # --------------------------------------------------------------------------- #
@@ -590,7 +660,7 @@ def _coerce_region_id(info: Any) -> int:
 
 
 # --------------------------------------------------------------------------- #
-# 2. 当前 GFile 默认区域策略层                                                  #
+# 2. 当前 GFile 默认区域策略层（nested_three_region + artificial_outer）         #
 # --------------------------------------------------------------------------- #
 
 def build_oft_domain_from_gfile(
@@ -736,33 +806,93 @@ def build_oft_domain_from_gfile(
     # 人工 outer rectangle（形状/尺寸/名称/outer_dx 不变）
     domain.add_rectangle(rect_rc, rect_zc, rect_w, rect_h, name="outer")
 
-    regions_after = getattr(domain, "regions", None)
-    if regions_after is None or not hasattr(regions_after, "__len__"):
-        raise ValueError(
-            "add_rectangle 后 domain.regions 不存在或不是预期容器，无法捕获 outer Region"
-        )
-    n_after = len(regions_after)
-    if n_after != n_before + 1:
-        raise ValueError(
-            "add_rectangle 后 domain.regions 未恰好新增一个 Region："
-            f"新增前={n_before}，新增后={n_after}；无法可靠捕获 outer Region 引用，"
-            "失败即停，不回退四角/idxevert/自行重采样"
-        )
-    outer_region = regions_after[-1]
+    # 捕获并附加 outer Region 引用（集中 helper，失败即停并保留异常链）
+    _capture_and_attach_outer_region(domain, n_before)
 
-    # 将捕获的 outer Region 对象引用作为 LinkMesh 私有属性附加在 domain 上。
-    # OFT 不消费该属性；仅供 mesh_from_oft_domain 在 build_mesh() 之后读取回写点列。
-    # 保存失败即停：绝不静默 pass，绝不回退四角/idxevert/自行重采样。
-    try:
-        setattr(domain, _OUTER_REGION_ATTR, outer_region)
-    except (AttributeError, TypeError) as e:
-        raise RuntimeError(
-            "无法将捕获的 outer Region 引用保存到 domain."
-            f"{_OUTER_REGION_ATTR}："
-            "domain 不允许附加该私有属性，无法建立 outer boundary 数据链，"
-            "失败即停，禁止回退四角/idxevert/自行重采样。"
-            f"\n原始错误：{e}"
-        ) from e
+    return domain
+
+
+# --------------------------------------------------------------------------- #
+# 2b. single_region + lcfs 策略层（v2.3 输入层 II）                             #
+# --------------------------------------------------------------------------- #
+
+def build_single_region_domain_from_lcfs(
+    gfile_data: "GFileData",
+    *,
+    plasma_dx: float = 0.08,
+) -> Any:
+    """single_region + lcfs 策略层：以 LCFS 为唯一计算域边界构造 OFT gs_Domain。
+
+    正式语义（蓝图第 6A.11 节，第 1 项）：
+        - 从 GFileData 取 LCFS（lcfs_r/lcfs_z）；
+        - LCFS 是唯一计算域边界，也是唯一区域边界；
+        - 使用一个 add_polygon() Region；
+        - single-region 网格尺度使用 plasma_dx（不新增泛化 mesh_size 参数）；
+        - 不使用第一壁；
+        - 不创建 vacuum 区域；
+        - 不创建人工 outer rectangle；
+        - 不创建 annulus；
+        - 不径向缩放 LCFS，不使用输入控制点冒充实际离散边界。
+
+    本函数不调用 build_mesh()，不转换 pts/lc/reg，不复制 OFT 的重采样/点合并/
+    种子搜索/Triangle 算法。
+
+    outer Region 捕获（复用与 nested 相同的集中 helper，见蓝图第 3.2A 节）：
+        唯一 Region 由 add_polygon() 创建。策略层在 add_polygon 前后用
+        domain.regions 长度差异捕获新增的 Region 对象引用（不写死整数 region ID、
+        不按名称猜测、不遍历私有 map），作为 LinkMesh 私有属性附加在返回 domain 上。
+        该引用供 mesh_from_oft_domain 在 build_mesh() 之后受控读取
+        _resampled_points，得到 Triangle 输入前的真实有序离散边界。
+        本函数不读取任何 _resampled_points（build_mesh() 之前 OFT 尚未回写），
+        不使用原始 LCFS 控制点作为 outer_boundary。
+        捕获或保存引用失败即停，绝不静默 pass，绝不回退控制点/idxevert/自行重采样。
+
+    参数：
+        gfile_data: GFileData 对象（含 lcfs_r/lcfs_z）
+        plasma_dx:  single-region 网格尺度（有限正数）
+
+    返回：
+        已构造但尚未 build_mesh() 的 OFT gs_Domain 对象，
+        并附加 LinkMesh 私有属性（捕获的唯一 Region 对象引用）
+
+    异常：
+        ValueError: 参数或 LCFS 轮廓非法，或 Region 捕获失败（regions 缺失/
+                    非预期容器/未恰好新增一个 Region）
+        RuntimeError: 无法将 Region 引用保存到 domain（保留原始异常链）
+        ImportError: OFT 不可用
+    """
+    # --- 参数校验 ---
+    if not (np.isfinite(plasma_dx) and plasma_dx > 0):
+        raise ValueError(f"plasma_dx 必须是有限正数，实际={plasma_dx}")
+
+    # --- LCFS 轮廓校验与薄规范化（长度一致、点数>=3、有限、删一个重复闭合末点）---
+    lcfs = _prepare_contour(
+        getattr(gfile_data, "lcfs_r", None),
+        getattr(gfile_data, "lcfs_z", None),
+        name="LCFS",
+    )
+
+    # --- 构造 OFT Domain（延迟导入）---
+    gs_Domain = _load_gs_domain_class()
+    domain = gs_Domain()
+
+    # single-region：唯一 plasma 区域，网格尺度使用 plasma_dx。
+    domain.define_region("plasma", plasma_dx, "plasma")
+
+    # --- 捕获唯一 Region 对象引用（add_polygon 前后 domain.regions 长度差异）---
+    regions = getattr(domain, "regions", None)
+    if regions is None or not hasattr(regions, "__len__"):
+        raise ValueError(
+            "domain.regions 不存在或不是预期容器：无法捕获 single-region Region 引用，"
+            "失败即停，不回退控制点/idxevert/自行重采样"
+        )
+    n_before = len(regions)
+
+    # LCFS 作为唯一计算域边界与唯一区域边界（无 parent_name，无人工外框）。
+    domain.add_polygon(lcfs, "plasma")
+
+    # 捕获并附加唯一 Region 引用（复用集中 helper，失败即停并保留异常链）
+    _capture_and_attach_outer_region(domain, n_before)
 
     return domain
 
@@ -829,29 +959,64 @@ def generate_mesh(
     vacuum_dx: float = 0.10,
     outer_dx: float = 0.15,
     outer_padding: float = 0.12,
+    profile: str = "nested_three_region",
+    boundary_source: str = "artificial_outer",
 ) -> Mesh2D:
-    """CLI 便利入口：只组合 build_oft_domain_from_gfile 与 mesh_from_oft_domain。
+    """CLI 便利入口：按 profile/boundary_source 组合已实现的策略层与通用核心。
+
+    默认（向后兼容）：
+        profile="nested_three_region", boundary_source="artificial_outer"
+        → build_oft_domain_from_gfile + mesh_from_oft_domain
+        旧调用 generate_mesh(gfile_data, plasma_dx=..., vacuum_dx=..., outer_dx=...)
+        行为不变。
+
+    v2.3 输入层 II 新增：
+        profile="single_region", boundary_source="lcfs"
+        → build_single_region_domain_from_lcfs + mesh_from_oft_domain
+        single-region 网格尺度使用 plasma_dx；vacuum_dx/outer_dx/outer_padding
+        不参与 single-region 构造（保留为可选关键字参数以保持签名兼容）。
 
     本函数不包含第二套输入规范化、输出验证、区域判断或网格算法。
-    outer Region 引用由 build_oft_domain_from_gfile 捕获并附加在 domain 上，
+    outer/唯一 Region 引用由对应策略层捕获并附加在 domain 上，
     mesh_from_oft_domain 在 build_mesh() 之前保存该引用、之后受控读取回写点列并
     注入最终 Mesh2D.outer_boundary。
 
     参数：
-        gfile_data:    GFileData 对象
-        plasma_dx:     plasma 区域网格尺度
-        vacuum_dx:     vacuum 区域网格尺度
-        outer_dx:      outer 区域网格尺度
-        outer_padding: 人工 outer 矩形扩展比例
+        gfile_data:      GFileData 对象
+        plasma_dx:       plasma / single-region 网格尺度
+        vacuum_dx:       vacuum 区域网格尺度（仅 nested_three_region 使用）
+        outer_dx:        outer 区域网格尺度（仅 nested_three_region 使用）
+        outer_padding:   人工 outer 矩形扩展比例（仅 nested_three_region 使用）
+        profile:         区域策略（"nested_three_region" 或 "single_region"）
+        boundary_source: 外边界来源（"artificial_outer" 或 "lcfs"）
 
     返回：
         Mesh2D 对象
+
+    异常：
+        NotImplementedError: profile/boundary_source 组合尚未在 Adapter 实现
+        ValueError/ImportError/RuntimeError: 由对应策略层与核心抛出
     """
-    domain = build_oft_domain_from_gfile(
-        gfile_data,
-        plasma_dx=plasma_dx,
-        vacuum_dx=vacuum_dx,
-        outer_dx=outer_dx,
-        outer_padding=outer_padding,
+    if profile == "single_region" and boundary_source == "lcfs":
+        domain = build_single_region_domain_from_lcfs(
+            gfile_data,
+            plasma_dx=plasma_dx,
+        )
+        return mesh_from_oft_domain(domain)
+
+    if profile == "nested_three_region" and boundary_source == "artificial_outer":
+        domain = build_oft_domain_from_gfile(
+            gfile_data,
+            plasma_dx=plasma_dx,
+            vacuum_dx=vacuum_dx,
+            outer_dx=outer_dx,
+            outer_padding=outer_padding,
+        )
+        return mesh_from_oft_domain(domain)
+
+    raise NotImplementedError(
+        "generate_mesh 尚未实现该 profile/boundary_source 组合："
+        f"profile={profile!r}, boundary_source={boundary_source!r}。"
+        "当前 Adapter 仅支持 nested_three_region+artificial_outer 与 "
+        "single_region+lcfs。"
     )
-    return mesh_from_oft_domain(domain)

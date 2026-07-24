@@ -1,10 +1,10 @@
 """
-tests/test_config.py —— LinkMesh 输入层 I：config.py（EffectiveConfig + linkmesh.in）验收测试。
+tests/test_config.py —— LinkMesh 输入层 I/II：config.py（EffectiveConfig + linkmesh.in）验收测试。
 
 测试状态：AUTHORED_NOT_RUN
 整体状态：PENDING_MANUAL_REVIEW
 
-本文件所有测试均未执行，不能据此宣布输入层 I 验收通过。最终真实回归在
+本文件所有测试均未执行，不能据此宣布输入层验收通过。最终真实回归在
 Linux 服务器执行。
 
 测试原则（蓝图 v2.3 第 6A 节）：
@@ -13,6 +13,10 @@ Linux 服务器执行。
     - 不导入 OFT/h5py，不读取 GFile/CSV 内容，不构造 Mesh2D/Domain；
     - 使用 tmp_path，不写真实用户目录，不修改仓库配置文件；
     - 通过公开 API load_effective_config / discover_config / EffectiveConfig / CliOverrides。
+
+输入层 II 状态变化：
+    - single_region + lcfs（mesh_only / trimeg）现已实现，合法通过；
+    - single_region + first_wall/array_file、flux_surface、m3dc1 仍未实现。
 """
 
 from __future__ import annotations
@@ -367,6 +371,19 @@ class TestMerge:
         assert cfg.gfile_path == (tmp_path / "from_cli.eqdsk").resolve()
         assert cfg.gfile_path != (tmp_path / "from_toml.eqdsk").resolve()
 
+    def test_toml_selects_single_region_lcfs(self, tmp_path):
+        # 输入层 II：配置文件可选择 single_region + lcfs。
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n[task]\ntarget = 'trimeg'\n"
+            "[domain]\nprofile = 'single_region'\nboundary_source = 'lcfs'\n"
+            "[input]\ngfile = 'g.eqdsk'\n",
+        )
+        cfg = load_effective_config(_overrides(), no_config=False, cwd=tmp_path)
+        assert cfg.profile == "single_region"
+        assert cfg.boundary_source == "lcfs"
+        assert cfg.gfile_path == (tmp_path / "g.eqdsk").resolve()
+
 
 # --------------------------------------------------------------------------- #
 # 6. 路径解析                                                                   #
@@ -488,7 +505,7 @@ class TestPathResolution:
 
 class TestRequiredFields:
     def test_lcfs_requires_gfile(self, tmp_path):
-        # single_region 未实现，但 required 校验先执行：缺 gfile 应报 required 错误。
+        # single_region + lcfs 现已实现；缺 gfile 应报 required 错误（先于业务）。
         with pytest.raises(ConfigError, match="gfile"):
             load_effective_config(
                 _overrides(profile="single_region", boundary_source="lcfs"),
@@ -609,14 +626,6 @@ class TestCurrentStage:
                 no_config=True, cwd=tmp_path,
             )
 
-    def test_single_region_lcfs_not_implemented(self, tmp_path):
-        with pytest.raises(NotImplementedError, match="single_region"):
-            load_effective_config(
-                _overrides(profile="single_region",
-                           boundary_source="lcfs", gfile="g.eqdsk"),
-                no_config=True, cwd=tmp_path,
-            )
-
     def test_single_region_first_wall_not_implemented(self, tmp_path):
         with pytest.raises(NotImplementedError, match="single_region"):
             load_effective_config(
@@ -643,6 +652,55 @@ class TestCurrentStage:
         assert cfg.target == "mesh_only"
         # mesh_only 不强制 hdf5，hdf5_path 默认 None
         assert cfg.hdf5_path is None
+
+
+# --------------------------------------------------------------------------- #
+# 9b. 输入层 II：single_region + lcfs 现在合法                                  #
+# --------------------------------------------------------------------------- #
+
+class TestSingleRegionLcfsImplemented:
+    def test_mesh_only_single_region_lcfs_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(target="mesh_only", profile="single_region",
+                       boundary_source="lcfs", gfile="g.eqdsk"),
+            no_config=True, cwd=tmp_path,
+        )
+        assert cfg.target == "mesh_only"
+        assert cfg.profile == "single_region"
+        assert cfg.boundary_source == "lcfs"
+        assert cfg.gfile_path == (tmp_path / "g.eqdsk").resolve()
+        # mesh_only 不强制 hdf5
+        assert cfg.hdf5_path is None
+
+    def test_trimeg_single_region_lcfs_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(target="trimeg", profile="single_region",
+                       boundary_source="lcfs", gfile="g.eqdsk"),
+            no_config=True, cwd=tmp_path,
+        )
+        assert cfg.target == "trimeg"
+        assert cfg.profile == "single_region"
+        assert cfg.boundary_source == "lcfs"
+        # trimeg 需要 hdf5_path（默认 mesh.h5）
+        assert cfg.hdf5_path is not None
+        assert cfg.hdf5_path.name == "mesh.h5"
+
+    def test_single_region_lcfs_requires_gfile(self, tmp_path):
+        with pytest.raises(ConfigError, match="gfile"):
+            load_effective_config(
+                _overrides(target="trimeg", profile="single_region",
+                           boundary_source="lcfs"),
+                no_config=True, cwd=tmp_path,
+            )
+
+    def test_single_region_lcfs_forbids_array_file(self, tmp_path):
+        with pytest.raises(ConfigError):
+            load_effective_config(
+                _overrides(target="trimeg", profile="single_region",
+                           boundary_source="lcfs",
+                           gfile="g.eqdsk", array_file="b.csv"),
+                no_config=True, cwd=tmp_path,
+            )
 
 
 # --------------------------------------------------------------------------- #

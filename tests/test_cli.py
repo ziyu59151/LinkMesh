@@ -1,5 +1,5 @@
 """
-tests/test_cli.py —— LinkMesh CLI 分区域网格密度参数（v1.13）+ 输入层 I（v2.3）验收测试。
+tests/test_cli.py —— LinkMesh CLI 分区域网格密度参数（v1.13）+ 输入层 I/II（v2.3）验收测试。
 
 测试状态：AUTHORED_NOT_RUN
 整体状态：PENDING_MANUAL_REVIEW
@@ -9,7 +9,7 @@ Linux 服务器执行。
 
 测试原则：
     - 只针对 CLI 编排（linkmesh.cli）：参数解析、显式输入收集、配置合并转发、
-      关键字转发与既有 CLI 组合行为；
+      profile/boundary_source 分派、关键字转发与既有 CLI 组合行为；
     - 通过 monkeypatch 隔离 Reader / OFT Adapter / HDF5 Writer / SMB Writer /
       Plotter，绝不调用真实 OFT、Triangle、h5py、MATLAB 或 matplotlib；
     - 不读取真实 GFile，不写真实网格文件，不依赖本地 OFT 动态库；
@@ -23,6 +23,10 @@ Linux 服务器执行。
     linkmesh.writers.hdf5_writer.write_hdf5
     linkmesh.writers.smb_writer.write_smb
     linkmesh.utils.plotter.plot_mesh
+
+输入层 II 状态变化：
+    - single_region + lcfs 不再因阶段性 NotImplementedError 失败，进入业务执行；
+    - CLI 将 profile/boundary_source 转发给 generate_mesh()。
 """
 
 from __future__ import annotations
@@ -307,6 +311,16 @@ class TestForwarding:
         assert kwargs["vacuum_dx"] == 0.16
         assert kwargs["outer_dx"] == 0.24
 
+    def test_default_profile_and_source_forwarded(self, monkeypatch):
+        # 默认路径应把 nested_three_region + artificial_outer 转发给 Adapter。
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse(["--gfile", "dummy.eqdsk", "--no-config",
+                       "--no-hdf5", "--no-smb"])
+        cli._run(args)
+        _, kwargs = mocks["generate_mesh"].call_args
+        assert kwargs["profile"] == "nested_three_region"
+        assert kwargs["boundary_source"] == "artificial_outer"
+
     def test_generate_mesh_receives_same_gfile_data_object(self, monkeypatch):
         gfile_data = _fake_gfile_data()
         mocks = _install_cli_mocks(monkeypatch, gfile_data=gfile_data)
@@ -322,6 +336,12 @@ class TestForwarding:
         args = _parse(["--gfile", "dummy.eqdsk", "--no-hdf5", "--no-smb"])
         cli._run(args)
         assert mocks["generate_mesh"].call_count == 1
+
+    def test_gfile_read_once(self, monkeypatch):
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse(["--gfile", "dummy.eqdsk", "--no-hdf5", "--no-smb"])
+        cli._run(args)
+        assert mocks["read_gfile"].call_count == 1
 
     def test_scale_params_not_passed_to_reader(self, monkeypatch):
         mocks = _install_cli_mocks(monkeypatch)
@@ -611,18 +631,6 @@ class TestInputLayerIRunIntegration:
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
 
-    def test_single_region_not_implemented_before_oft(self, monkeypatch, tmp_path):
-        monkeypatch.chdir(tmp_path)
-        mocks = _install_cli_mocks(monkeypatch)
-        args = _parse([
-            "--gfile", "dummy.eqdsk", "--no-config",
-            "--profile", "single_region", "--boundary-source", "lcfs",
-        ])
-        with pytest.raises(NotImplementedError):
-            cli._run(args)
-        assert mocks["generate_mesh"].call_count == 0
-        assert mocks["read_gfile"].call_count == 0
-
     def test_flux_surface_not_implemented_before_oft(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
         mocks = _install_cli_mocks(monkeypatch)
@@ -641,6 +649,29 @@ class TestInputLayerIRunIntegration:
             "--gfile", "dummy.eqdsk", "--no-config",
             "--target", "m3dc1",
             "--profile", "single_region", "--boundary-source", "lcfs",
+        ])
+        with pytest.raises(NotImplementedError):
+            cli._run(args)
+        assert mocks["generate_mesh"].call_count == 0
+
+    def test_single_region_first_wall_not_implemented_before_oft(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--profile", "single_region", "--boundary-source", "first_wall",
+        ])
+        with pytest.raises(NotImplementedError):
+            cli._run(args)
+        assert mocks["generate_mesh"].call_count == 0
+
+    def test_single_region_array_file_not_implemented_before_oft(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--no-config",
+            "--profile", "single_region", "--boundary-source", "array_file",
+            "--array-file", "b.csv",
         ])
         with pytest.raises(NotImplementedError):
             cli._run(args)
@@ -681,8 +712,9 @@ class TestInputLayerIRunIntegration:
             "--array-file", "b.csv",
         ])
         from linkmesh.config import ConfigError
-        # single_region 未实现（NotImplementedError）或 required 冲突（ConfigError）
-        # 均须在业务前失败；此处 required 校验先于当前阶段校验，故为 ConfigError。
+        # single_region + array_file 未实现（NotImplementedError）或 required 冲突
+        # （ConfigError，array_file 禁止同时提供 gfile）均须在业务前失败；
+        # required 校验先于当前阶段校验，故为 ConfigError。
         with pytest.raises((ConfigError, NotImplementedError)):
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
@@ -696,3 +728,50 @@ class TestInputLayerIRunIntegration:
         out = capsys.readouterr().out
         assert "未加载配置文件" in out
         assert "target=trimeg" in out
+
+
+# ==========================================================================
+# F. 输入层 II（v2.3）：single_region + lcfs 分派
+# ==========================================================================
+
+class TestInputLayerIISingleRegionLcfs:
+    """single_region + lcfs 走新 Adapter 路径，profile/source 正确转发。"""
+
+    def test_mesh_only_single_region_lcfs_plot(self, monkeypatch, tmp_path):
+        # mesh_only + single_region + lcfs + plot：调用 Mesher 与 Plotter，
+        # 不调用 HDF5 与 SMB Writer。
+        plot_path = str(tmp_path / "check.png")
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "mesh_only",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--no-smb",
+            "--plot", plot_path,
+        ])
+        cli._run(args)
+
+        assert mocks["generate_mesh"].call_count == 1
+        assert mocks["plot_mesh"].call_count == 1
+        assert mocks["write_hdf5"].call_count == 0
+        assert mocks["write_smb"].call_count == 0
+
+    def test_single_region_lcfs_profile_source_forwarded(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "mesh_only",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--no-smb",
+        ])
+        cli._run(args)
+        _, kwargs = mocks["generate_mesh"].call_args
+        assert kwargs["profile"] == "single_region"
+        assert kwargs["boundary_source"] == "lcfs"
+
+    def test_single_region_lcfs_uses_plasma_dx(self, monkeypatch, tmp_path):
+        # single-region 网格尺度用 plasma_dx；vacuum_dx/outer_dx 仍随合并结果转发。
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli
