@@ -107,6 +107,10 @@ _OUTER_REGION_ATTR = "_linkmesh_outer_region"
 # 版本锁定兼容接口绑定的 OFT 版本（见蓝图第 3.2A 节）。
 _REQUIRED_OFT_VERSION = "26.6"
 
+# OFT 26.6 Mesh.__init__()/gs_Domain.build_mesh() 的锁定默认点合并阈值。
+# 仅用于 single-region polygon 输入的相邻近重复控制点规范化，不向公共 API 暴露。
+_SINGLE_REGION_POLYGON_MERGE_THRESH = 1e-4
+
 
 # --------------------------------------------------------------------------- #
 # OFT 延迟导入                                                                  #
@@ -851,7 +855,63 @@ def build_oft_domain_from_gfile(
 
 
 # --------------------------------------------------------------------------- #
-# 2b. LCFS 单区域来源策略层（v2.3 输入层 II）                                   #
+# 2b. single-region polygon 输入规范化（OFT 26.6 版本锁定行为）                 #
+# --------------------------------------------------------------------------- #
+
+def _normalize_single_region_polygon(contour_in: Any) -> np.ndarray:
+    """稳定删除会被 OFT 26.6 默认 merge_thresh 合并的相邻控制点。
+
+    输入应为已经过基础轮廓处理的 (B,2) 有限 float64 点列。本函数仍执行
+    防御性 shape、有限性和最低点数检查，并始终生成独立 float64 副本。
+
+    从点 0 开始稳定遍历：保留第一个点；候选点与最后一个已接受点的欧氏距离
+    严格小于 1e-4 m 时删除候选点，否则保留。算法只处理相邻近重复点，不排序、
+    不循环移位、不插值、不重采样、不修改保留坐标，也不执行全局去重或几何修补。
+
+    过滤后首末点若相距小于 1e-4 m，则明确失败。首末显式闭合属于基础轮廓处理
+    的职责，不在此处继续静默删除，以免改变隐式闭合拓扑语义。
+    """
+    contour = np.array(contour_in, dtype=np.float64, copy=True)
+    if contour.ndim != 2 or contour.shape[1] != 2:
+        raise ValueError(
+            "single-region polygon 必须为 (B,2)，"
+            f"实际 shape={contour.shape}"
+        )
+    if contour.shape[0] < 3:
+        raise ValueError(
+            "single-region polygon 至少需要 3 个点，"
+            f"实际={contour.shape[0]}"
+        )
+    if not np.all(np.isfinite(contour)):
+        raise ValueError("single-region polygon 含非有限值（NaN/Inf）")
+
+    accepted = [contour[0].copy()]
+    for candidate in contour[1:]:
+        distance = float(np.linalg.norm(candidate - accepted[-1]))
+        if distance < _SINGLE_REGION_POLYGON_MERGE_THRESH:
+            continue
+        accepted.append(candidate.copy())
+
+    normalized = np.asarray(accepted, dtype=np.float64)
+    if normalized.shape[0] < 3:
+        raise ValueError(
+            "single-region polygon 删除相邻近重复控制点后不足 3 个点，"
+            f"实际={normalized.shape[0]}"
+        )
+
+    closing_distance = float(np.linalg.norm(normalized[-1] - normalized[0]))
+    if closing_distance < _SINGLE_REGION_POLYGON_MERGE_THRESH:
+        raise ValueError(
+            "single-region polygon 过滤后首末点距离小于 OFT 26.6 默认 "
+            f"merge_thresh={_SINGLE_REGION_POLYGON_MERGE_THRESH} m；"
+            "基础轮廓处理后仍存在近重复闭合点，拒绝静默修补"
+        )
+
+    return np.array(normalized, dtype=np.float64, copy=True)
+
+
+# --------------------------------------------------------------------------- #
+# 2c. LCFS 单区域来源策略层（v2.3 输入层 II）                                   #
 # --------------------------------------------------------------------------- #
 
 def build_single_region_domain_from_lcfs(
@@ -864,6 +924,8 @@ def build_single_region_domain_from_lcfs(
     正式语义（蓝图第 6A.11 节，第 1 项）：
         - 从 GFileData 取 LCFS（lcfs_r/lcfs_z）；
         - LCFS 是唯一计算域边界，也是唯一区域边界；
+        - 进入 add_polygon() 前，按 OFT 26.6 默认 merge_thresh=1e-4 m
+          稳定删除相邻近重复控制点的后一个点；
         - 使用一个 add_polygon() Region；
         - single-region 网格尺度使用 plasma_dx（不新增泛化 mesh_size 参数）；
         - 不使用第一壁；
@@ -903,12 +965,18 @@ def build_single_region_domain_from_lcfs(
     if not (np.isfinite(plasma_dx) and plasma_dx > 0):
         raise ValueError(f"plasma_dx 必须是有限正数，实际={plasma_dx}")
 
-    # --- LCFS 轮廓校验与薄规范化（长度一致、点数>=3、有限、删一个重复闭合末点）---
+    # --- LCFS 基础校验与薄规范化（长度一致、点数>=3、有限、删一个闭合末点）---
     lcfs = _prepare_contour(
         getattr(gfile_data, "lcfs_r", None),
         getattr(gfile_data, "lcfs_z", None),
         name="LCFS",
     )
+
+    # OFT 26.6 默认 merge_thresh=1e-4 m。进入 add_polygon() 前稳定删除
+    # 相邻距离严格小于该阈值的后一个控制点，避免多个局部点映射到同一全局点后
+    # 在 Region._resampled_points 有序回写点列中产生重复坐标。
+    # 该规则仅作用于 single-region polygon，不改变 nested 路径。
+    lcfs = _normalize_single_region_polygon(lcfs)
 
     # --- 构造 OFT Domain（延迟导入）---
     gs_Domain = _load_gs_domain_class()

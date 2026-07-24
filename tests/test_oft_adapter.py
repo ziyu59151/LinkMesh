@@ -50,6 +50,7 @@ from linkmesh.mesher.oft_adapter import (
     _REQUIRED_OFT_VERSION,
     _check_oft_version_locked,
     _load_gs_domain_class,
+    _normalize_single_region_polygon,
     _signed_area_closed,
     build_oft_domain_from_gfile,
     build_single_region_domain_from_lcfs,
@@ -1702,6 +1703,117 @@ class SingleRegionDomainHolder:
         self.regions.append(FakeRegion())
 
 
+class TestSingleRegionPolygonNormalization:
+    """single-region polygon 相邻近重复控制点的稳定过滤。"""
+
+    def test_removes_realistic_near_duplicate_and_preserves_input(self):
+        original = np.array([
+            [1.0, 0.0],
+            [1.0 + 3e-9, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+        ], dtype=np.float64)
+        snapshot = original.copy()
+
+        result = _normalize_single_region_polygon(original)
+
+        expected = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+        ], dtype=np.float64)
+        np.testing.assert_array_equal(result, expected)
+        np.testing.assert_array_equal(original, snapshot)
+        assert result.shape[0] == original.shape[0] - 1
+        assert result.dtype == np.float64
+        assert not np.shares_memory(result, original)
+
+    def test_threshold_is_strict_and_not_numpy_allclose(self):
+        # 5e-5 m 大于 Mesh2D 的 1e-12 尺度容差，但小于 OFT merge_thresh，
+        # 因此必须删除。
+        below = np.array([
+            [1.0, 0.0],
+            [1.0 + 5e-5, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+        ], dtype=np.float64)
+        below_result = _normalize_single_region_polygon(below)
+        assert below_result.shape[0] == 4
+        np.testing.assert_array_equal(below_result[0], below[0])
+        np.testing.assert_array_equal(below_result[1], below[2])
+
+        # 坐标绝对量级很大时 np.allclose 默认相对容差会把相距 1e-4 m 的点
+        # 判断为接近；正式规则使用显式欧氏距离且仅删除严格小于阈值的点。
+        at_threshold = np.array([
+            [1.0e6, 0.0],
+            [1.0e6 + 1e-4, 0.0],
+            [1.0e6 + 1.0, 0.0],
+            [1.0e6 + 1.0, 1.0],
+            [1.0e6, 1.0],
+        ], dtype=np.float64)
+        assert np.allclose(at_threshold[0], at_threshold[1])
+        threshold_result = _normalize_single_region_polygon(at_threshold)
+        assert threshold_result.shape[0] == at_threshold.shape[0]
+        np.testing.assert_array_equal(threshold_result, at_threshold)
+
+    def test_stable_filter_uses_last_accepted_and_not_global_dedup(self):
+        points = np.array([
+            [0.0, 0.0],
+            [3e-9, 0.0],
+            [6e-9, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [1.0, 0.0],  # 与较早的非相邻点重复，helper 不做全局去重
+        ], dtype=np.float64)
+
+        result = _normalize_single_region_polygon(points)
+
+        expected = np.array([
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [1.0, 0.0],
+        ], dtype=np.float64)
+        np.testing.assert_array_equal(result, expected)
+
+    def test_fails_when_fewer_than_three_points_remain(self):
+        points = np.array([
+            [0.0, 0.0],
+            [3e-9, 0.0],
+            [6e-9, 0.0],
+            [1.0, 0.0],
+        ], dtype=np.float64)
+        with pytest.raises(ValueError, match="不足 3 个点"):
+            _normalize_single_region_polygon(points)
+
+    def test_fails_when_filter_leaves_near_duplicate_closing_edge(self):
+        points = np.array([
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 5e-5],
+        ], dtype=np.float64)
+        with pytest.raises(ValueError, match="首末点距离"):
+            _normalize_single_region_polygon(points)
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            np.array([0.0, 1.0, 2.0], dtype=np.float64),
+            np.array([[0.0, 0.0], [1.0, np.nan], [1.0, 1.0]], dtype=np.float64),
+            np.array([[0.0, 0.0], [1.0, np.inf], [1.0, 1.0]], dtype=np.float64),
+        ],
+    )
+    def test_rejects_invalid_shape_or_non_finite_input(self, bad):
+        with pytest.raises(ValueError):
+            _normalize_single_region_polygon(bad)
+
+
 class TestBuildSingleRegionDomainFromLcfs:
     """LCFS 单区域来源策略层：单 polygon、不 rectangle/annulus、plasma_dx。"""
 
@@ -1820,6 +1932,44 @@ class TestBuildSingleRegionDomainFromLcfs:
         ):
             build_single_region_domain_from_lcfs(gfile)
 
+        assert not hasattr(holder, "build_mesh")
+
+    def test_near_duplicate_control_point_removed_before_add_polygon(self):
+        # 复现真实根因：point 1 与 point 0 相距约 3e-9 m，会被 OFT 默认
+        # merge_thresh=1e-4 m 合并。策略层必须保留 point 0、删除 point 1。
+        r = np.array([1.0, 1.0 + 3e-9, 2.0, 2.0, 1.0], dtype=np.float64)
+        z = np.array([0.0, 0.0, 0.0, 1.0, 1.0], dtype=np.float64)
+        r_snapshot = r.copy()
+        z_snapshot = z.copy()
+        gfile = FakeGFileData(r, z, None, None)
+
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_lcfs(
+                gfile, plasma_dx=0.055
+            )
+
+        assert holder.add_polygon.call_count == 1
+        contour = holder.add_polygon.call_args.args[0]
+        expected = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+        ], dtype=np.float64)
+        np.testing.assert_array_equal(contour, expected)
+        np.testing.assert_array_equal(r, r_snapshot)
+        np.testing.assert_array_equal(z, z_snapshot)
+        assert contour.dtype == np.float64
+        assert getattr(domain, _OUTER_REGION_ATTR) is holder.regions[-1]
+        define_call = holder.define_region.call_args
+        assert define_call.args[1] == 0.055
+        assert not hasattr(holder, "add_rectangle")
+        assert not hasattr(holder, "add_annulus")
         assert not hasattr(holder, "build_mesh")
 
     def test_duplicate_closing_point_removed_only_last(self):
