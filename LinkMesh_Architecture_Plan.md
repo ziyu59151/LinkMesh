@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **2.5**（归档 M1–M3 最新真实 CLI、TRIMEG HDF5 与 MATLAB 标准消费端验收：`nested_three_region + artificial_outer` 的 DIII-D/gNT 两条真实链路及 `single_region + lcfs` 的 DIII-D 真实链路均退出码 0，三份 HDF5 均包含完整 11 个 `/femmesh` 数据集；老师原始 `loadfemmesh_h5.m` 已完成标准样例与 LinkMesh LCFS 单区域输出的 A/B 读取和绘图验收，确认两者在“单一闭合计算域内部网格化”的拓扑形态上相容。`single_region + lcfs` 状态更新为真实 CLI 与 TRIMEG MATLAB 消费验收 PASSED；`single_region + first_wall`、`array_file`、`flux_surface` 保留正式规划但后置，不再阻塞 M4。两层输入架构保持不变，本阶段暂不创建面向用户的标准 `linkmesh.in` 示例，待 TRIMEG 与未来 M3DC1 TXT+SMB 均通过真实消费端验收后再形成双下游示例。项目主线获 User 授权切换至 M4 业务实现；M4 仍为 NOT IMPLEMENTED / NOT PASSED，既有目标版本 API、classification、单进程与 Level 1–3 验收门槛以及禁止手写 SMB 规则全部保持）
+- 文档状态：正式版 **2.6**（保持 M1–M3 与 TRIMEG 真实消费端验收结论；固化 M4 P0 替代旧 Simmetrix geometric model + meshing 生成链的生产边界：LinkMesh 独立生成 M3D-C1 analytic geometric model TXT，并从同一 `M3DC1ModelSpec` 经目标版本 SCOREC/PUMI/APF/MDS 官方 API 构造 classified mesh、输出分区前串行 native SMB。Simmetrix/SimModeler/MeshSim、`make_model`、`.smd`、`.sms` 不属于正式依赖；`split_smb`、`part*.smb`、环向切分与并行分区由既有组内流程负责，不属于 LinkMesh P0。保留 SCOREC/PUMI 目标版本、精确 API、classification、单进程行为和 Level 1–3 验收停止条件；本次仅固化蓝图，M4 仍为 NOT IMPLEMENTED / NOT PASSED）
 - 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`（阶段证据，非本蓝图正文的长期正式依赖，蓝图正文自包含）
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -24,7 +24,49 @@ LinkMesh 是一个**独立命令行程序（CLI）**，用于打通「等离子�
 GFile/EQDSK → Reader → OFT Adapter → Mesh2D → TRIMEG HDF5 / M3DC1 TXT model + PUMI SMB → PNG
 ```
 
-**当前阶段状态（v2.5）**：
+**M4 P0 正式生产链（v2.6）**：
+
+```text
+GFile
+  → OFT/Triangle
+  → Mesh2D
+  → single-face M3DC1 model Adapter
+  → M3DC1ModelSpec
+      ├── LinkMesh TXT model Writer
+      │     └── <base>.txt
+      └── LinkMesh SCOREC/PUMI Adapter
+            └── classified APF/MDS mesh
+                  └── 目标版本官方 writeNative（或等价官方接口）
+                        └── 分区前串行 native SMB
+```
+
+该生产链的目标是替代旧流程中由 Simmetrix 完成的 geometric model 创建与二维
+meshing 链，而不是复制旧工具或把旧中间格式纳入 LinkMesh。正式链中禁止引入
+Simmetrix、SimModeler、MeshSim、`make_model`、`.smd`、`.sms`、`split_smb`、
+`part*.smb`、三维环向拉伸、并行分区、MPI ownership 持久化或手写 SMB。
+OFT/Triangle 仍是唯一三角剖分底座；SCOREC/PUMI/APF/MDS 只承担 geometric
+classification、APF/MDS mesh 构造和 native SMB 写出。
+
+TXT Writer 与 SCOREC/PUMI Adapter 必须由**同一个** `M3DC1ModelSpec` 驱动，
+共享一致的 geometric vertex tags、geometric edge tags、loop tags、face tags、
+edge endpoint order、face↔loop topology 与 geometric classification 语义；
+禁止两条输出路径各自独立编号。
+
+**证据环境边界**：
+
+- 本地 LinkMesh 仓库是开发与蓝图维护工作区；服务器外部样例目录
+  `/data/liuchang/east_fishbone_1/` 不属于本地仓库，也不是 LinkMesh 运行时依赖。
+- User 对服务器样例的只读调查仅作为外部直接证据。`east.txt` 的 1 loop、104
+  geometric vertices、104 geometric edges、闭合末边与 1 face 只能辅证既有
+  `save_model`/`save_multi_rgn_model` ↔ `load_model` 双向契约；104、固定坐标、
+  文件大小和校验摘要均不是格式常量或测试期望。
+- 服务器日志确认旧流程使用 Simmetrix 创建 geometric model、写 `.smd`、生成并写
+  `.sms` 后重新加载；现有证据未确认 `.sms` 到 `.smb` 的具体命令，也未确认
+  SCOREC/PUMI 精确版本，不得补写为事实。
+- 未来 SCOREC/PUMI/APF/MDS 的编译、链接和运行属于后续确认的目标环境。本地开发
+  环境、服务器外部样例目录与未来目标运行环境不得混为一体。
+
+**当前阶段状态（v2.6）**：
 
 | 阶段 | 状态 |
 |---|---|
@@ -48,8 +90,8 @@ M3D-C1 验收已经通过。
 |---|---|---|
 | 输入 | 通过 OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；`array_file` 两列 CSV 边界（PLANNED） | 在 LinkMesh 侧手写 GFile 文本解析；复杂 CAD；多维输入；Python ndarray 公共边界 API |
 | 网格生成 | 调用 OFT `gs_Domain` / `build_mesh()` | 引入第二网格引擎；复制 OFT 通用几何算法；三维网格；自适应细化；修改/维护 OFT 分支 |
-| 并行切分 | 不涉及 | 生成 `**1.smb`~`**16.smb` 并行分区 |
-| 输出 | TRIMEG HDF5；M3DC1 配套 TXT model file + PUMI .smb（M4，经 PUMI/APF/MDS 官方 API） | 三维输出；手写、拼接、修改或逆向 `.smb` 二进制字节流 |
+| 并行切分 | 不涉及；LinkMesh M4 P0 终点为分区前串行 native SMB | 开发、复制或替代 `split_smb`；生成 `part*.smb` 或任何环向/并行分区；生成 `**1.smb`~`**16.smb` 等分区文件 |
+| 输出 | TRIMEG HDF5；M3DC1 配套 analytic model TXT + 分区前串行 PUMI native SMB（M4，经 PUMI/APF/MDS 官方 API） | 三维输出；Simmetrix/`make_model`/`.smd`/`.sms` 正式依赖；手写、拼接、修改、模板复制或逆向 `.smb` 二进制字节流 |
 | 可视化 | matplotlib 自检 PNG | 交互式/三维渲染 |
 | 配置 | 当前 CLI 参数；两层输入架构（`linkmesh.in` + CLI，见第 6A 节，PLANNED） | 通用配置 DSL / 任意 N 区域语言 / 插件系统 |
 
@@ -69,19 +111,70 @@ M3D-C1 验收已经通过。
 | `src/linkmesh/readers/boundary_reader.py`（PLANNED，未实现） | 轻量边界输入：读取 `array_file`（两列 CSV），输出 `(B,2) float64` 边界点列，执行文件语法/shape/有限性/基础点列检查，完整简单闭环几何验证委托 `mesh.py` 统一边界验证入口 | 创建 `Mesh2D`；调用 OFT；读取 GFile；引入 pandas |
 | `src/linkmesh/mesher/oft_adapter.py` | 三层接口：`mesh_from_oft_domain(domain)` 通用 N 区域核心（含 N=1）、`build_oft_domain_from_gfile(gfile_data, plasma_dx, vacuum_dx, outer_dx, ...)` 默认策略层、`generate_mesh(...)` 便利入口；single-region polygon 来源在进入 `add_polygon()` 前按第 6A.11 节执行稳定相邻近重复点规范化；将 `pts/lc/reg` 规范化为 `Mesh2D`；在锁定的 OFT 26.6 环境中，由策略层受控捕获 outer Region 引用并于 `build_mesh()` 后读取 `outer_region._resampled_points` 得到 `outer_boundary`（版本锁定兼容接口，见第 3.2A 节）。所有 OFT 私有属性依赖集中封装于本模块内 | 解析 TOML；复制 OFT 通用几何/种子/重采样/segment 拼接/方向/全局重编号/Triangle 算法；写死区域数量/名称/类型/ID；无依据再次偏置 0-based 连接表；解析 `_reg_seg_map`/`_resampled_segments`/`Mesh._resampled_points`；调用 `Region.get_resampled_points()` 作为 `outer_boundary` 来源；回退四角/`idxevert`/最终 `pts/lc` 反推/自行重采样；把 OFT 私有依赖泄漏到 `Mesh2D`/Writer/CLI/Plotter；修改 OFT 源码或依赖 `TOKAMAKER/` 快照；把 OFT `merge_thresh` 暴露为 P0 公共配置 |
 | `src/linkmesh/writers/hdf5_writer.py` | 接收 `Mesh2D`，按 TRIMEG HDF5 契约写出（见第 5 节） | 修改 `Mesh2D`；写 `region_ids`；转置 `vert/tria`；给 `tria` 加第四列；从 `idxevert` 反推 `Rbc/Zbc`；网格生成逻辑；判断配置来源 |
-| `src/linkmesh/writers/smb_writer.py` | M4 占位；侦察与蓝图确认前保持 `NotImplementedError`；未来经 PUMI/APF/MDS 官方 API 输出 | 手写/拼接/修改/逆向 `.smb` 字节流 |
+| `src/linkmesh/writers/m3dc1_model_writer.py`（M4-1A PLANNED） | 独立接收 `M3DC1ModelSpec`，按 `save_model()`/`save_multi_rgn_model()` ↔ `load_model()` 双向契约写出 M3D-C1 analytic geometric model TXT；可不依赖 SCOREC/PUMI 独立完成 Level 1 | 读取或复制 `east.txt` 固定坐标；把 104 写成常量；输出两列 CSV；调用 Simmetrix/`make_model`；写 `.smd`/`.sms`；自行分配一套与 PUMI Adapter 不一致的 tag |
+| `src/linkmesh/writers/smb_writer.py` | M4-2 输出入口；接收 `Mesh2D` 与同一 `M3DC1ModelSpec`，委托目标版本 SCOREC/PUMI Adapter 构造 classified APF/MDS mesh，并经官方 `writeNative` 或等价官方接口输出分区前串行 native SMB | 手写/拼接/修改/模板复制/逆向 `.smb` 字节流；调用 Simmetrix；调用或替代 `split_smb`；生成 `part*.smb`；执行环向或并行分区 |
 | `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`、`plot_mesh()`（支持区域着色、LCFS/第一壁闭合显示） | 修改任何数据对象 |
 
-M4 规划新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对象 `M3DC1ModelSpec`（第 7 节）、TXT model Writer 与 PUMI/APF/MDS Adapter（第 7 节）。
+M4 正式新增模块（PLANNED，本轮不建源码）：M3DC1 目标专用对象
+`M3DC1ModelSpec`、single-face model Adapter、独立 TXT model Writer 与
+SCOREC/PUMI/APF/MDS Adapter（第 7 节）。首版只实现 single-region +
+single-face，不在 M4 P0 提前设计多 face Writer；未来多 face 规划保留。
 
-**M4 当前授权与实施入口（v2.5）**：
+**M4 当前授权与实施顺序（v2.6）**：
 
-1. 先实现或固化 `M3DC1ModelSpec` 与 TXT geometric model Writer。
-2. 在目标环境核对 SCOREC/PUMI/APF/MDS 精确版本、头文件、库、构建方式和官方 API。
-3. 实现 `Mesh2D + M3DC1ModelSpec` 到 classified APF/MDS mesh 的最小转换。
-4. 调用目标版本官方 `writeNative` 或等价官方接口输出 `.smb`。
-5. 完成 Level 1 TXT 静态验收、Level 2 SMB 轻量加载与 Level 3 TXT+SMB 配套加载；
-   三者全部通过后 M4 方可标记 PASSED。Level 4 完整 M3D-C1 属后续或导师验收。
+**M4-1A：ModelSpec 与独立 TXT Writer**
+
+1. 实现 `M3DC1ModelSpec`。
+2. 实现 single-face model Adapter。
+3. 实现独立 TXT geometric model Writer。
+4. 完成 Level 1 TXT 静态验收。
+
+TXT Writer 输入仅为 `M3DC1ModelSpec`，不依赖 SCOREC/PUMI 即可完成写出。它必须：
+
+- 严格按 `save_model()`/`save_multi_rgn_model()` ↔ `load_model()` 双向契约写出；
+- 写出含 5 个整数的完整头部、loop ID 与 edge 数；
+- 写出唯一的 geometric vertex ID 及 `x/y/z`（P0 `z=0`）；
+- 写出唯一的 geometric edge ID、begin/end vertex ID；
+- 写出已确认的 curve type 及对应参数；
+- 写出完整 `numFaces>0` face 段；
+- 保证全部 ID 唯一、引用存在、edge endpoint order 正确且 loop 闭合；
+- 从当前 `Mesh2D` 对应的 `M3DC1ModelSpec` 动态写出，不读取或复制
+  `east.txt` 的固定坐标，不调用 Simmetrix 或 `make_model`。
+
+**M4-1B：目标环境与最小 single-process probe**
+
+1. 锁定组内 SCOREC/PUMI/APF/MDS 版本或兼容 commit。
+2. 确认 include/library 路径、MPI、编译器和构建方式。
+3. 核对目标版本最小官方 API 与类型转换。
+4. 编译最小 single-process probe。
+5. 运行验证 classification、实体创建、`acceptChanges`、`verify`、
+   `writeNative` 与串行文件命名行为。
+
+不再申请大范围源码侦察；目标版本确认后只进行完成实现所需的最小 API、编译与运行
+验证。
+
+**M4-2：classified mesh 与串行 SMB**
+
+1. 实现 `Mesh2D + M3DC1ModelSpec` 到 classified APF/MDS mesh 的 Adapter。
+2. 录入全量 mesh vertices、mesh edges/triangles 与 geometric classification。
+3. 调用目标版本官方 `writeNative` 或等价官方接口生成分区前串行 native SMB。
+4. 形成 TXT + SMB + PNG + 统计日志交接包。
+
+SMB 文件名的 base/rank 插入规则必须由目标环境最小运行验证确认，不得仅根据外部
+样例 `east-5K0.smb` 固化为跨版本规则。验收不要求输出与该样例具有相同文件大小、
+SHA-256、内部实体编号或字节布局，只比较 topology、坐标、classification、计数、
+`verify` 与 TXT+SMB 配套加载语义。
+
+**M4 验收**：
+
+- Level 1：LinkMesh 完成 TXT 静态契约检查；
+- Level 2：同门使用轻量 PUMI/APF loader 验证串行 SMB；
+- Level 3：同门验证 TXT+SMB 配套加载与 classification 相容；
+- Level 1–3 全部通过后 M4 方可标记 PASSED；
+- Level 4 完整 M3D-C1 或超算并行运行属于后续/导师验收。
+
+`split_smb`、`part*.smb`、环向切分与并行分区不属于任何 LinkMesh M4 P0
+实现里程碑，由既有组内超算流程负责。
 
 M4 P0 使用已验收的 `single_region + lcfs` `Mesh2D`，限定 single-region +
 single-face，输出必须是配套 TXT geometric model + PUMI `.smb`。Triangle 仍是唯一
@@ -90,17 +183,24 @@ single-face，输出必须是配套 TXT geometric model + PUMI `.smb`。Triangle
 M3DC1 geometric face tag；C1 field、高阶节点、运行时 field 与
 adaptation/restart metadata 不属于初始静态网格输出要求。
 
-以下事项继续作为实现停止条件：
+以下事项继续作为 PUMI Adapter 正式完成的实现停止条件：
 
+- SCOREC/PUMI/APF/MDS 目标版本或兼容 commit 尚未确认；
 - 目标版本的 `makeEmptyMdsMesh`、`createVertex`、`createEntity`、
   `acceptChanges`、`verify`、`writeNative` 等精确签名与调用顺序未确认；
-- classification 本地判定未确认；
-- 单进程 residence、文件命名或 triangle 方向未确认；
-- TXT model 与 SMB geometric classification 无法证明相容；
-- 目标环境无法使用所需 PUMI/APF/MDS 官方库。
+- `ModelEntity` / GMI entity 的目标版本类型转换尚未确认；
+- local corner/boundary/interior classification 判定与实体分配尚未确认；
+- 单进程 residence、triangle 方向、`z=0`、`acceptChanges`/`verify` 必需性
+  尚未运行确认；
+- 串行 SMB 实际文件名及 loader rank 展开规则尚未运行确认；
+- TXT model 与 SMB geometric classification 尚未通过 Level 3 相容性验收；
+- 目标环境无法使用所需 PUMI/APF/MDS 官方库；此时必须停止，不得回退手写 SMB。
 
-现有调用点只属于【实现候选】，不得写成跨版本固定事实。User 授权开始 M4 不等于
-M4 已实现或已通过；当前准确状态仍为 **NOT IMPLEMENTED / NOT PASSED**。
+这些事项不阻塞本轮蓝图固化，也不阻塞 M4-1A 的 `M3DC1ModelSpec`、single-face
+model Adapter 与独立 TXT Writer 实现；它们阻塞 M4-1B 完成以及 M4-2 PUMI
+Adapter 的正式完成。现有调用点只属于【实现候选】，不得写成跨版本固定事实。
+User 授权开始 M4 不等于 M4 已实现或已通过；当前准确状态仍为
+**NOT IMPLEMENTED / NOT PASSED**。
 
 **不得规划**：`inputs/` 插件包；抽象基类；source 注册表；通用 source plugin 系统。
 
