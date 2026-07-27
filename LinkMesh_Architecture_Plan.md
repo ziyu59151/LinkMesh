@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **2.8**（保持 M1–M3 与 TRIMEG 真实消费端验收结论及 M4 P0 替代旧 Simmetrix 生成链的生产边界；依据 User 提供的服务器直接运行证据，M4-1A `M3DC1ModelSpec`、single-face Adapter、独立 TXT Writer 与 Level 1 已实现并通过，状态为 PASSED；M4-1B 实现入口 probe 已在锁定的 PUMI 2.2.9、Git commit `f87525cae7597322edfb2ccf1c7d4437402d948`、Spack hash `333b2ut`、GCC 13.3.0、`/usr/bin/mpicxx` 目标环境中完成并通过，已消除 M4-2 入口处的构建接入与核心 API 不确定性。人工 analytic-cell probe 的 `writeNative` 成功，但同进程重载未通过且不作为正式 Level 2/3；正式加载、classification 相容性、计数、坐标与 verify 验收转入 M4-2 产生真实 LinkMesh TXT+SMB 候选之后执行。M4-2 状态更新为 READY，但尚未实现、尚未通过；Level 2/3 尚未执行，M4 总体仍为 NOT PASSED。Simmetrix、并行 split 与手写 SMB 仍严格排除在 LinkMesh P0 外）
+- 文档状态：正式版 **2.9**（保持 M1–M3、TRIMEG 真实消费端、M4-1A、Level 1 与 M4-1B 的既有验收结论不变；补齐 M4-2 Python Writer → 独立 C++ helper → SCOREC/PUMI 官方 API 的唯一跨语言集成边界，固化原生组件落点、版本化内部交换契约、classification 唯一责任层、helper 构建与运行时定位、生命周期、错误传播、最小测试分层及停止条件。本版未实现 M4-2 代码，未执行 Level 2/3；M4-2 仍为 READY / NOT IMPLEMENTED / NOT PASSED，M4 总体仍为 NOT PASSED。Simmetrix、并行 split、Python ABI 扩展与手写 SMB 仍严格排除在 LinkMesh P0 外）
 - 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`（阶段证据，非本蓝图正文的长期正式依赖，蓝图正文自包含）
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -139,7 +139,9 @@ single-face。M4-1A TXT model 与 Level 1 已通过，M4-1B 实现入口 probe �
 | `src/linkmesh/writers/hdf5_writer.py` | 接收 `Mesh2D`，按 TRIMEG HDF5 契约写出（见第 5 节） | 修改 `Mesh2D`；写 `region_ids`；转置 `vert/tria`；给 `tria` 加第四列；从 `idxevert` 反推 `Rbc/Zbc`；网格生成逻辑；判断配置来源 |
 | `src/linkmesh/m3dc1_model.py`（M4-1A 已实现） | 定义 single-region、single-face、single-loop `M3DC1ModelSpec` 及从 `Mesh2D.outer_boundary` 构造 geometric vertices、directed LIN edges、loop 与 face 的 Adapter | 依赖 PUMI/SCOREC/MPI/Simmetrix；保存 PUMI 句柄；固定 104 个点；把 `region_ids` 自动当 face tag |
 | `src/linkmesh/writers/m3dc1_model_writer.py`（M4-1A 已实现） | 独立接收 `M3DC1ModelSpec`，按 `save_model()`/`save_multi_rgn_model()` ↔ `load_model()` 双向契约写出 M3D-C1 analytic geometric model TXT；已独立完成 Level 1 | 读取或复制 `east.txt` 固定坐标；把 104 写成常量；输出两列 CSV；调用 Simmetrix/`make_model`；写 `.smd`/`.sms`；自行分配一套与 PUMI Adapter 不一致的 tag |
-| `src/linkmesh/writers/smb_writer.py` | M4-2 输出入口；接收 `Mesh2D` 与同一 `M3DC1ModelSpec`，委托目标版本 SCOREC/PUMI Adapter 构造 classified APF/MDS mesh，并经官方 `writeNative` 或等价官方接口输出分区前串行 native SMB | 手写/拼接/修改/模板复制/逆向 `.smb` 字节流；调用 Simmetrix；调用或替代 `split_smb`；生成 `part*.smb`；执行环向或并行分区 |
+| `src/linkmesh/writers/smb_writer.py` | M4-2 Python 公开 Writer 与编排入口；接收已验证的 `Mesh2D`、同一 `M3DC1ModelSpec`、SMB 基础路径及可选 helper 路径，确定性生成 classification 与版本化内部交换文件，调用独立 C++ helper，捕获退出码/stdout/stderr，并确认 rank-0 native SMB 存在且非空 | 创建 GMI/APF/MDS entity；读取、解析、修改或实现 SMB 字节；硬编码服务器 PUMI 前缀；实现 Level 2/3 loader；修改输入对象 |
+| `native/m3dc1_smb_helper/main.cc`（M4-2 PLANNED，未实现） | 唯一 M4-2 原生 helper 源文件；读取内部交换契约，初始化并管理 MPI/PCU/GMI/APF/MDS 生命周期，创建完整 analytic model 与 classified 2D MDS mesh，执行 `acceptChanges()`、`verify()`、`writeNative()`，并以结构化阶段错误和非零退出码报告失败 | GFile/OFT/Triangle 网格生成；Python CLI/配置；TXT Writer；Level 2/3 loader；多区域、多 face、三维、分区、Simmetrix 或 SMB 字节实现 |
+| `native/m3dc1_smb_helper/CMakeLists.txt`（M4-2 PLANNED，未实现） | 仅构建 `linkmesh-m3dc1-smb-helper` 的最小独立 CMake target；锁定 SCOREC 2.2.9 imported targets 与相容 MPI C++ target | 通用 native/plugin 框架；Python 扩展打包；运行时编译；硬编码服务器安装前缀 |
 | `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`、`plot_mesh()`（支持区域着色、LCFS/第一壁闭合显示） | 修改任何数据对象 |
 
 M4-1A 已实现 M3DC1 目标专用对象 `M3DC1ModelSpec`、single-face model Adapter
@@ -302,6 +304,291 @@ M4-2 实现职责：
 或人工 probe 具有相同文件大小、SHA-256、内部实体编号或字节布局，只比较 topology、
 坐标、connectivity、classification、计数、`verify`、可视化与 TXT+SMB 配套加载
 语义。
+
+### M4-2 Python/C++ 集成边界（v2.9 正式契约）
+
+#### 唯一集成链
+
+M4-2 P0 的唯一正式跨语言调用链为：
+
+```text
+src/linkmesh/writers/smb_writer.py
+  → 独立进程 linkmesh-m3dc1-smb-helper
+  → SCOREC/PUMI 2.2.9 的 GMI/APF/MDS/PCU 官方 API
+  → 分区前串行 rank-0 native SMB
+```
+
+选择独立 helper 的原因：
+
+- 首要兼容的 PUMI 2.2.9 实例提供静态库，不能把 `ctypes` 直接加载静态库作为可靠
+  集成方案；
+- helper 进程隔离 MPI、PCU、GMI、APF、MDS 的初始化、资源所有权和释放顺序，
+  避免污染 Python 进程生命周期；
+- P0 不引入 pybind11、scikit-build-core 或其他 Python ABI 扩展打包体系；
+- helper 是 LinkMesh M4-2 的正式目标格式 Adapter，不执行剖分，不是第二网格
+  生成器。
+
+P0 明确禁止：`ctypes` 直接加载静态 PUMI；pybind11/scikit-build-core 扩展；
+运行时生成或编译 C++；通用 native plugin/adapter 注册框架；复制 probe 可执行文件；
+复制 319 字节 probe SMB；手写、拼接、解析或修改 SMB。
+
+#### 原生组件唯一落点
+
+```text
+native/
+└── m3dc1_smb_helper/
+    ├── CMakeLists.txt
+    └── main.cc
+```
+
+该目录只承载 M4-2 专用 helper，不扩展为通用 `native/adapter/plugin` 抽象体系。
+正式构建产物名称固定为：
+
+```text
+linkmesh-m3dc1-smb-helper
+```
+
+Python 公开 Writer 落点保持：
+
+```text
+src/linkmesh/writers/smb_writer.py
+```
+
+计划中的 P0 Python 接口为：
+
+```text
+write_smb(
+    mesh: Mesh2D,
+    spec: M3DC1ModelSpec,
+    filepath: str | os.PathLike[str],
+    *,
+    helper_path: str | os.PathLike[str] | None = None,
+) -> None
+```
+
+本节只定义后续实现契约，不表示上述源文件、构建文件或接口已经实现。
+
+#### Python Writer 职责
+
+`write_smb()` 必须：
+
+1. 接受已经验证的 `Mesh2D`、同一个 `M3DC1ModelSpec`、目标 SMB 基础路径和可选
+   helper 路径。
+2. 启动 helper 前验证类型、shape、dtype、有限值、0-based 索引范围、无退化
+   triangle、single-region、single-face、输出父目录及输出路径冲突。
+3. 保持 `Mesh2D` 的节点与连接表为 0-based，不修改输入对象或任何 NumPy 数组。
+4. 由离散拓扑与 `M3DC1ModelSpec` 确定性生成全部 mesh entity classification。
+5. 创建并完整关闭一次调用所需的版本化内部交换文件。
+6. 以独立子进程调用 helper，并同时捕获退出码、标准输出和标准错误。
+7. 按目标 PUMI 2.2.9 rank-0 命名规则，由 `<base>.smb` 定位实际
+   `<base>0.smb`，确认其为普通文件且非空。
+8. helper 失败时抛出明确异常，至少包含失败阶段、退出码、原生错误摘要和保留的
+   交换文件路径。
+9. 成功后删除交换文件；失败后保留交换文件用于诊断，不静默清理。
+10. 不在 Python 中创建 GMI/APF/MDS entity，不读取、解析或修改 SMB 字节。
+11. 不硬编码服务器 PUMI 安装前缀，不实现 Level 2/3 loader。
+
+#### Classification 唯一责任层与确定性规则
+
+classification 的唯一责任层固定为 **Python Writer 内部的 M4-2 离散拓扑
+Adapter**。C++ helper 只消费并严格执行交换契约中的 classification，不再次根据
+坐标或拓扑猜测分类。
+
+P0 规则：
+
+1. 从 `triangles` 生成规范无向 mesh edge `(min(node0,node1), max(node0,node1))`，
+   去重后按端点二元组字典序确定交换文件中的 edge 顺序。
+2. triangle 无向边只出现一次时属于拓扑外边界；所有边必须只出现一次或两次，
+   出现次数大于 2 立即失败。
+3. 拓扑外边界必须形成唯一简单环：每个 boundary node 的 boundary degree 必须为
+   2，且一次遍历必须覆盖全部 boundary edges。
+4. `M3DC1ModelSpec` 的每个 geometric vertex 坐标必须与 `Mesh2D.nodes` 中恰好一个
+   boundary node **逐分量精确相等**；不得使用最近邻、距离最小化或容差吸附。
+   找不到或找到多个候选时立即停止。
+5. 以 loop 中 directed geometric edge 的起点 corner 顺序作为方向锚点。拓扑边界
+   环必须存在唯一方向，使 corner node 顺序与 geometric loop 的 directed vertex
+   顺序完全一致；两个方向都不成立或不能唯一确定时立即停止。
+6. corner mesh vertex 分类到对应 geometric vertex `(dim=0, tag=vertex.tag)`。
+7. 同一对相邻 corner 之间沿已定向拓扑边界环出现的非 corner mesh vertices 分类到
+   对应 directed geometric edge `(dim=1, tag=edge.tag)`。
+8. 该边界链中的 mesh edges 分类到同一 geometric edge。
+9. 非边界 mesh vertices、非边界 mesh edges 和全部 triangles 分类到唯一
+   geometric face `(dim=2, tag=face.tag)`。
+10. 不从 `region_ids` 推导 face tag；`region_ids` 只用于确认输入确为单一区域。
+11. 禁止按最近坐标距离、几何投影或启发式容差猜测 classification。
+
+以上规则依赖 geometric corner 在最终 `Mesh2D.nodes` 中具有唯一精确对应。若正式
+真实输入不能满足该条件，属于 M4-2 实现停止条件；必须先报告并修订蓝图或上游正式
+数据契约，不得静默改用容差最近邻。
+
+#### 内部交换契约
+
+内部交换文件仅用于一次 `write_smb()` 调用，schema 名称为
+`LinkMesh M4 Exchange`，首版 schema version 为 `1`。它不是用户输入格式、不是
+新网格格式、不是长期归档格式，也不是 SMB 替代品。
+
+编码固定为单个 little-endian 二进制文件，以避免新增 JSON/TOML/HDF5 C++ 解析依赖。
+所有整数使用明确宽度；字符串使用 UTF-8；浮点使用 IEEE-754 binary64。文件按以下
+顺序写入：
+
+1. 8 字节 magic：ASCII `LM4XCHG` 后跟一个 NUL 字节。
+2. `uint32 schema_version`，值固定为 `1`。
+3. `uint32 endian_marker`，值固定为 `0x01020304`。
+4. 计数区，依次为 `uint64 N`、`T`、`E`、`GV`、`GE`、`GL`、`GF`。
+5. special loop tags，依次为四个 `int32`：
+   `separatrix_loop`、`inner_wall_loop`、`outer_wall_loop`、`vacuum_loop`。
+6. 输出 SMB 基础路径：`uint64 byte_length`，随后为不含 NUL 的 UTF-8 字节。
+7. `nodes`：`N×2 float64`，C-order，每行 `[R,Z]`，单位 m。
+8. `triangles`：`T×3 uint64`，C-order，Python 0-based。
+9. geometric vertices：`GV` 条记录，每条为
+   `int32 tag + float64 r + float64 z + float64 y`。
+10. geometric edges：`GE` 条记录，每条为
+    `int32 tag + int32 begin_vertex_tag + int32 end_vertex_tag +
+    int32 curve_type`。Schema v1 只接受 `LIN=1`，不含曲线 payload。
+11. geometric loops：每个 loop 先写
+    `int32 tag + uint64 edge_count`，随后写 `edge_count` 个 `int32 edge_tag`。
+12. geometric faces：每个 face 先写
+    `int32 tag + uint64 loop_count`，随后写 `loop_count` 个 `int32 loop_tag`。
+13. mesh vertex classification：`N` 条
+    `int32 geometric_dimension + int32 geometric_tag`。
+14. mesh edges：`E` 条
+    `uint64 node0 + uint64 node1 + int32 geometric_dimension +
+    int32 geometric_tag`；端点满足 `node0 < node1`，记录按端点字典序排列。
+15. triangle classification：`T` 条
+    `int32 geometric_dimension + int32 geometric_tag`。
+16. 文件必须在最后一条记录后立即结束；helper 拒绝截断数据和任何尾随字节。
+
+Schema v1 的 P0 约束固定为：`GL=1`、`GF=1`、所有 geometric curves 为 LIN、
+所有 triangle class 为唯一 face、全部节点与边索引为 0-based。Python 和 helper
+必须分别进行独立的边界、计数、溢出、引用完整性、tag、classification dimension、
+classification tag、索引范围和文件长度校验。
+
+交换契约不得承载 PUMI 指针或句柄、SMB 字节、MPI ownership、C1 field、高阶节点、
+adaptation metadata、运行时 field、numbering、partition residence 或 ghost 信息。
+
+Python Writer 在目标输出目录内创建唯一隐藏临时交换文件，写完并 flush、fsync、
+关闭后才启动 helper。helper 只读打开该文件且不删除它。成功时 Python Writer 删除
+交换文件；任何 Python 校验、子进程、helper 或输出确认失败时保留交换文件，并在
+异常中报告其路径。
+
+helper 调用参数语义固定为：
+
+```text
+linkmesh-m3dc1-smb-helper --input <exchange-file>
+```
+
+输出 SMB 基础路径由交换文件承载，不通过第二套参数重复传入。helper 成功返回 `0`；
+交换契约错误、模型构造错误、mesh 构造错误、`acceptChanges`、`verify`、
+`writeNative` 或清理错误均返回非零。标准错误必须输出一行结构化阶段信息：
+
+```text
+LINKMESH_M4_ERROR stage=<stage> message=<summary>
+```
+
+成功时标准输出必须包含：
+
+```text
+LINKMESH_M4_OK base=<base-path> rank0=<actual-rank0-path>
+```
+
+路径和摘要的具体转义由实现时严格定义；不得依赖解析任意 PUMI 日志来判断成功。
+
+#### C++ Helper 职责与生命周期
+
+`linkmesh-m3dc1-smb-helper` 只负责：
+
+1. 初始化锁定目标环境所需的 MPI、PCU 和 GMI 运行环境。
+2. 读取并严格校验 schema v1 交换文件。
+3. 按交换数据中的同一个 `M3DC1ModelSpec` 语义建立完整 geometric vertices、
+   directed edges、loop 与 face 拓扑。
+4. 通过 `findModelEntity`、`toModel` 或目标版本确认的等价正式方式取得
+   classification entities，并校验 dimension/tag。
+5. 调用 `apf::makeEmptyMdsMesh(model, 2, false)`。
+6. 按 node index 创建 classified mesh vertices。
+7. 按交换文件 edge 顺序创建 classified mesh edges。
+8. 按 triangle index 创建 classified mesh triangles，并在创建前执行目标版本要求的
+   orientation 规范化。
+9. 设置且仅设置目标 PUMI 2.2.9 源码确认必需的串行 residence/ownership。
+10. 依次执行 `acceptChanges()`、`verify()`、`writeNative()`。
+11. 记录输入基础路径与实际 rank-0 文件路径。
+12. 按目标版本已确认的所有权顺序释放 mesh、model、PCU 和 MPI。
+13. 以非零退出码和 `LINKMESH_M4_ERROR` 报告任何失败。
+
+helper 不负责 GFile、OFT、Triangle、网格生成、Python CLI/配置、TXT model Writer、
+classification 推断、Level 2/3 loader、多区域、多 face、三维、分区、split、
+Simmetrix、`.smd`、`.sms`、`.dmg` 或 SMB 字节实现。
+
+成功和失败路径都必须遵守单一所有权与逆序释放。实现时若目标 API 需要不同的
+mesh/model/PCU/MPI 释放顺序，必须以锁定版本源码和最小运行证据为准；在确认前不得
+用重复释放、进程异常终止或资源泄漏掩盖生命周期问题。
+
+#### 构建和运行时定位
+
+helper 使用 `native/m3dc1_smb_helper/CMakeLists.txt` 中的单一最小 target：
+
+```text
+linkmesh-m3dc1-smb-helper
+```
+
+构建契约：
+
+- `find_package(SCOREC 2.2.9 EXACT CONFIG REQUIRED ...)`；
+- 链接 `SCOREC::mds`、`SCOREC::apf`、`SCOREC::gmi`、`SCOREC::pcu`；
+- 链接与 `/usr/bin/mpicxx` 首要目标工具链 ABI 相容的 MPI C++ imported target；
+- 禁止使用目标配置不存在的 `SCOREC_INCLUDE_DIRS` 或 `SCOREC_LIBRARIES`；
+- 禁止在源码或 CMake 文件中硬编码服务器 PUMI 绝对安装前缀；
+- 依赖定位只通过 SCOREC CMake config、Spack 加载环境、标准 CMake prefix
+  配置或明确构建参数完成；
+- 本版不实施 `pyproject.toml` 与 CMake 的自动集成，不允许 Python 运行时编译。
+
+Python Writer 查找 helper 的唯一优先级为：
+
+1. `write_smb(..., helper_path=...)` 显式参数；
+2. 环境变量 `LINKMESH_M3DC1_SMB_HELPER`；
+3. 当前进程 `PATH` 中的 `linkmesh-m3dc1-smb-helper`。
+
+第一个被指定或找到的候选必须是普通可执行文件，并通过 helper 启动时的 schema 与
+目标版本自检；候选缺失、不可执行或版本不相容时立即失败，不继续猜测仓库 build
+目录或服务器安装路径。显式参数或环境变量已设置但无效时不得降级到下一层。
+
+更换 PUMI 版本、编译器或 MPI ABI 后，必须重新执行入口 probe，并重新执行正式
+Level 2/3；不得仅复用旧 helper 二进制。
+
+#### 最小测试边界
+
+后续 M4-2 测试按以下最小分层实施：
+
+- Python 静态测试只覆盖输入验证、schema v1 交换读写契约、helper 缺失/不可执行、
+  helper 非零退出码、结构化错误传播、rank-0 输出定位、成功/失败临时文件清理策略
+  和输入对象/NumPy 数组不变性。
+- 不使用 Mock/Fake PUMI 模拟 entity 生命周期、MPI/PCU 释放顺序、`verify` 或
+  `writeNative`，也不以 Mock 证明 SMB 正确。
+- helper 的 geometric model、classified entity 创建、orientation、串行
+  residence/ownership、`acceptChanges`、`verify`、`writeNative` 和生命周期，
+  必须在锁定的目标服务器 PUMI 2.2.9 环境真实验证。
+- 正式 LinkMesh `single_region + lcfs` 候选必须同时生成 TXT、SMB、PNG 和统计日志，
+  并进入 Level 2/3。
+- 不建设大型 Fake SCOREC/PUMI 或通用原生测试框架。
+
+#### M4-2 实现停止条件
+
+后续实现遇到以下任一情况必须停止并报告：
+
+- 无法无歧义映射 `Mesh2D` node/edge 与 `M3DC1ModelSpec` geometric entities；
+- classification 必须依赖最近距离、容差最近邻、投影猜测或其他启发式；
+- 必须修改 `Mesh2D` 或 `M3DC1ModelSpec` 字段才能继续；
+- 必须新增用户可见格式、CLI 参数或配置字段，但蓝图尚未定义；
+- 目标 PUMI 官方 API 与 v2.8 已确认的调用契约冲突；
+- helper 只能通过手工 SMB 字节操作完成；
+- 必须引入多 face、多区域、Simmetrix、三维或并行分区；
+- Python/C++ 交换契约无法严格验证；
+- 目标环境无法链接锁定的 SCOREC imported targets；
+- helper、PUMI、编译器或 MPI ABI 版本无法确认相容；
+- 不能在成功和失败路径上明确 mesh/model/PCU/MPI 所有权与释放顺序。
+
+本节只补齐 M4-2 编码前跨语言边界。M4-1A 仍为 **PASSED**，M4-1B 仍为
+**COMPLETED / PASSED**，M4-2 仍为 **READY / NOT IMPLEMENTED / NOT PASSED**，
+Level 1 仍为 **PASSED**，Level 2/3 仍未执行，M4 总体仍为 **NOT PASSED**。
 
 **M4 验收**：
 
