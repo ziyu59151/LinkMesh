@@ -3,7 +3,14 @@ cmake_minimum_required(VERSION 3.20)
 project(linkmesh_m3dc1_smb_helper LANGUAGES CXX)
 
 find_package(MPI REQUIRED COMPONENTS CXX)
-find_package(SCOREC 2.2.9 EXACT CONFIG REQUIRED)
+find_package(
+  SCOREC 2.2.9 EXACT CONFIG REQUIRED
+  COMPONENTS
+    mds
+    apf
+    gmi
+    pcu
+)
 
 add_executable(
   linkmesh-m3dc1-smb-helper

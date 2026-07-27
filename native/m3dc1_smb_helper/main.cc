@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <exception>
@@ -24,6 +25,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -730,7 +732,14 @@ void line_function(
   }
 }
 
-void face_function(const double[2], double[3], void*) {}
+void face_function(
+    const double parameter[2],
+    double xyz[3],
+    void*) {
+  xyz[0] = parameter[0];
+  xyz[1] = parameter[1];
+  xyz[2] = 0.0;
+}
 
 void reparam_zero(const double[2], double to[2], void*) {
   to[0] = 0.0;
@@ -742,9 +751,18 @@ void reparam_one(const double[2], double to[2], void*) {
   to[1] = 0.0;
 }
 
-void face_reparam(const double[2], double to[2], void*) {
-  to[0] = 0.0;
-  to[1] = 0.0;
+void edge_to_face_reparam(
+    const double from[2],
+    double to[2],
+    void* data) {
+  const auto* line = static_cast<const LineData*>(data);
+  const double t = from[0];
+  to[0] =
+      line->begin[0] +
+      t * (line->end[0] - line->begin[0]);
+  to[1] =
+      line->begin[1] +
+      t * (line->end[1] - line->begin[1]);
 }
 
 agm_bdry add_boundary(gmi_model* model, gmi_ent* entity) {
@@ -792,12 +810,24 @@ void add_edge_topology(
 void add_face_topology(
     gmi_model* model,
     gmi_ent* face,
-    const std::vector<std::int32_t>& edge_tags) {
+    const std::vector<std::int32_t>& edge_tags,
+    const std::map<std::int32_t, LineData*>& line_data_by_tag) {
   const agm_bdry boundary = add_boundary(model, face);
   for (const auto edge_tag : edge_tags) {
+    const auto line_data_it = line_data_by_tag.find(edge_tag);
+    require(
+        line_data_it != line_data_by_tag.end() &&
+            line_data_it->second != nullptr,
+        "model_create",
+        "cannot find callback data for geometric edge tag=" +
+            std::to_string(edge_tag));
+
     const agm_use edge_use = add_use(model, boundary, edge_tag);
     gmi_add_analytic_reparam(
-        model, edge_use, face_reparam, nullptr);
+        model,
+        edge_use,
+        edge_to_face_reparam,
+        line_data_it->second);
   }
 }
 
@@ -805,16 +835,32 @@ struct NativeModel {
   gmi_model* model = nullptr;
   std::vector<PointData> point_data;
   std::vector<LineData> line_data;
+
+  NativeModel() = default;
+  NativeModel(const NativeModel&) = delete;
+  NativeModel& operator=(const NativeModel&) = delete;
+  NativeModel(NativeModel&&) = delete;
+  NativeModel& operator=(NativeModel&&) = delete;
+
+  ~NativeModel() {
+    if (model != nullptr) {
+      gmi_destroy(model);
+    }
+  }
 };
 
-NativeModel create_model(const Exchange& exchange) {
-  NativeModel native;
+void create_model(
+    const Exchange& exchange,
+    NativeModel& native) {
   native.model = gmi_make_analytic();
   require(
       native.model != nullptr,
       "model_create",
       "gmi_make_analytic returned null");
 
+  // Resize once before registering callbacks. No subsequent operation changes
+  // these vector capacities, so every callback data address remains stable
+  // until NativeModel destroys the GMI model after APF/MDS mesh destruction.
   native.point_data.resize(exchange.geometric_vertices.size());
   native.line_data.resize(exchange.geometric_edges.size());
 
@@ -823,12 +869,22 @@ NativeModel create_model(const Exchange& exchange) {
     vertex_by_tag.emplace(vertex.tag, &vertex);
   }
 
+  double r_min = std::numeric_limits<double>::infinity();
+  double r_max = -std::numeric_limits<double>::infinity();
+  double z_min = std::numeric_limits<double>::infinity();
+  double z_max = -std::numeric_limits<double>::infinity();
+
   for (std::size_t index = 0;
        index < exchange.geometric_vertices.size();
        ++index) {
     const auto& source = exchange.geometric_vertices[index];
     auto& data = native.point_data[index];
     data.coordinates = {source.r, source.z, source.y};
+
+    r_min = std::min(r_min, source.r);
+    r_max = std::max(r_max, source.r);
+    z_min = std::min(z_min, source.z);
+    z_max = std::max(z_max, source.z);
 
     gmi_ent* entity = gmi_add_analytic(
         native.model,
@@ -845,8 +901,25 @@ NativeModel create_model(const Exchange& exchange) {
             std::to_string(source.tag));
   }
 
+  require(
+      std::isfinite(r_min) &&
+          std::isfinite(r_max) &&
+          std::isfinite(z_min) &&
+          std::isfinite(z_max),
+      "model_create",
+      "geometric face parameter ranges contain non-finite values");
+  require(
+      r_max > r_min,
+      "model_create",
+      "geometric face R parameter range is degenerate");
+  require(
+      z_max > z_min,
+      "model_create",
+      "geometric face Z parameter range is degenerate");
+
   int edge_periodic = 0;
   double edge_range[2] = {0.0, 1.0};
+  std::map<std::int32_t, LineData*> line_data_by_tag;
 
   for (std::size_t index = 0;
        index < exchange.geometric_edges.size();
@@ -859,6 +932,14 @@ NativeModel create_model(const Exchange& exchange) {
     auto& data = native.line_data[index];
     data.begin = {begin->r, begin->z, begin->y};
     data.end = {end->r, end->z, end->y};
+
+    const bool inserted =
+        line_data_by_tag.emplace(source.tag, &data).second;
+    require(
+        inserted,
+        "model_create",
+        "duplicate callback data for geometric edge tag=" +
+            std::to_string(source.tag));
 
     gmi_ent* entity = gmi_add_analytic(
         native.model,
@@ -883,8 +964,8 @@ NativeModel create_model(const Exchange& exchange) {
 
   int face_periodic[2] = {0, 0};
   double face_ranges[2][2] = {
-      {0.0, 0.0},
-      {0.0, 0.0},
+      {r_min, r_max},
+      {z_min, z_max},
   };
 
   const auto& face = exchange.geometric_faces.front();
@@ -903,9 +984,11 @@ NativeModel create_model(const Exchange& exchange) {
           std::to_string(face.tag));
 
   const auto& loop = exchange.geometric_loops.front();
-  add_face_topology(native.model, face_entity, loop.edge_tags);
-
-  return native;
+  add_face_topology(
+      native.model,
+      face_entity,
+      loop.edge_tags,
+      line_data_by_tag);
 }
 
 apf::ModelEntity* find_model_entity(
@@ -996,6 +1079,9 @@ void create_and_write_mesh(
             edge_by_tag.at(classification.tag);
         parameter[0] =
             edge_parameter(exchange, *geometric_edge, node);
+      } else if (classification.dimension == 2) {
+        parameter[0] = node.r;
+        parameter[1] = node.z;
       }
 
       mesh_vertices[index] = mesh->createVertex(
@@ -1126,7 +1212,6 @@ std::filesystem::path parse_arguments(int argc, char** argv) {
 int main(int argc, char** argv) {
   bool mpi_initialized = false;
   bool pcu_initialized = false;
-  gmi_model* model = nullptr;
 
   try {
     const auto input_path = parse_arguments(argc, argv);
@@ -1150,21 +1235,19 @@ int main(int argc, char** argv) {
 
     gmi_register_analytic();
 
-    NativeModel native_model = create_model(exchange);
-    model = native_model.model;
-
-    create_and_write_mesh(exchange, model);
-
     const auto output_rank0 = rank0_path(exchange.output_base);
-    std::cout
-        << "LINKMESH_M4_OK base="
-        << percent_encode(exchange.output_base.string())
-        << " rank0="
-        << percent_encode(output_rank0.string())
-        << '\n';
+    {
+      NativeModel native_model;
+      create_model(exchange, native_model);
+      create_and_write_mesh(exchange, native_model.model);
 
-    gmi_destroy(model);
-    model = nullptr;
+      std::cout
+          << "LINKMESH_M4_OK base="
+          << percent_encode(exchange.output_base.string())
+          << " rank0="
+          << percent_encode(output_rank0.string())
+          << '\n';
+    }
 
     PCU_Comm_Free();
     pcu_initialized = false;
@@ -1191,10 +1274,6 @@ int main(int argc, char** argv) {
         << " message=unknown_native_exception\n";
   }
 
-  if (model != nullptr) {
-    gmi_destroy(model);
-    model = nullptr;
-  }
   if (pcu_initialized) {
     PCU_Comm_Free();
   }
