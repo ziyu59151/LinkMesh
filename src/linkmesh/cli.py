@@ -245,8 +245,8 @@ def main() -> None:
         2. load_effective_config()（发现/读取/校验/合并 linkmesh.in 与 CLI）
         3. read_gfile() → GFileData
         4. oft_adapter.generate_mesh(..., profile=, boundary_source=) → Mesh2D
-        5. write_hdf5()（target=trimeg 且未 --no-hdf5）
-        6. write_smb()（未 --no-smb）
+        5. target=trimeg 时写出 HDF5
+        6. target=m3dc1 时构造一次 M3DC1ModelSpec，并写出 TXT 与可选 SMB
         7. plot_mesh()（若配置 plot_path）
     """
     parser = build_parser()
