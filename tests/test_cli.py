@@ -37,6 +37,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from linkmesh import cli
+from linkmesh.config import UNSET
 
 
 # --------------------------------------------------------------------------- #
@@ -80,6 +81,10 @@ def _install_cli_mocks(monkeypatch, gfile_data=None, mesh=None):
     m_read = MagicMock(return_value=gfile_data)
     m_generate = MagicMock(return_value=mesh)
     m_write_hdf5 = MagicMock(return_value=None)
+    m_build_spec = MagicMock(name="build_single_face_model_spec")
+    m_spec = SimpleNamespace()
+    m_build_spec.return_value = m_spec
+    m_write_model = MagicMock(return_value=None)
     m_write_smb = MagicMock(return_value=None)
     m_plot = MagicMock(return_value=None)
 
@@ -91,6 +96,16 @@ def _install_cli_mocks(monkeypatch, gfile_data=None, mesh=None):
     )
     monkeypatch.setattr(
         "linkmesh.writers.hdf5_writer.write_hdf5", m_write_hdf5, raising=True
+    )
+    monkeypatch.setattr(
+        "linkmesh.m3dc1_model.build_single_face_model_spec",
+        m_build_spec,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "linkmesh.writers.m3dc1_model_writer.write_m3dc1_model",
+        m_write_model,
+        raising=True,
     )
     monkeypatch.setattr(
         "linkmesh.writers.smb_writer.write_smb", m_write_smb, raising=True
@@ -105,6 +120,9 @@ def _install_cli_mocks(monkeypatch, gfile_data=None, mesh=None):
         "read_gfile": m_read,
         "generate_mesh": m_generate,
         "write_hdf5": m_write_hdf5,
+        "build_spec": m_build_spec,
+        "write_model": m_write_model,
+        "spec": m_spec,
         "write_smb": m_write_smb,
         "plot_mesh": m_plot,
     }
@@ -642,17 +660,54 @@ class TestInputLayerIRunIntegration:
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
 
-    def test_m3dc1_not_implemented_before_oft(self, monkeypatch, tmp_path):
+    def test_m3dc1_single_region_lcfs_runs_without_hdf5(
+        self, monkeypatch, tmp_path
+    ):
         monkeypatch.chdir(tmp_path)
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse([
             "--gfile", "dummy.eqdsk", "--no-config",
             "--target", "m3dc1",
             "--profile", "single_region", "--boundary-source", "lcfs",
+            "--model", "model.txt",
+            "--smb", "mesh.smb",
         ])
-        with pytest.raises(NotImplementedError):
-            cli._run(args)
-        assert mocks["generate_mesh"].call_count == 0
+        cli._run(args)
+
+        assert mocks["read_gfile"].call_count == 1
+        assert mocks["generate_mesh"].call_count == 1
+        assert mocks["build_spec"].call_count == 1
+        assert mocks["write_model"].call_count == 1
+        assert mocks["write_smb"].call_count == 1
+        assert mocks["write_hdf5"].call_count == 0
+
+        spec = mocks["spec"]
+        model_args, _ = mocks["write_model"].call_args
+        smb_args, _ = mocks["write_smb"].call_args
+        assert model_args[0] is spec
+        assert smb_args[0] is mocks["mesh"]
+        assert smb_args[1] is spec
+        assert str(smb_args[2]).endswith("mesh.smb")
+        assert not str(smb_args[2]).endswith("mesh0.smb")
+
+    def test_m3dc1_no_smb_still_writes_model(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "m3dc1",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--model", "model.txt",
+            "--smb", "mesh.smb",
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        assert mocks["build_spec"].call_count == 1
+        assert mocks["write_model"].call_count == 1
+        assert mocks["write_smb"].call_count == 0
 
     def test_single_region_first_wall_not_implemented_before_oft(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
@@ -689,6 +744,20 @@ class TestInputLayerIRunIntegration:
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
 
+    def test_trimeg_does_not_enter_m3dc1_branch(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "trimeg",
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        assert mocks["write_hdf5"].call_count == 1
+        assert mocks["build_spec"].call_count == 0
+        assert mocks["write_model"].call_count == 0
+
     def test_mesh_only_skips_hdf5(self, monkeypatch, tmp_path):
         # mesh_only + nested_three_region + artificial_outer：不写 HDF5，仍生成网格。
         monkeypatch.chdir(tmp_path)
@@ -701,6 +770,9 @@ class TestInputLayerIRunIntegration:
         cli._run(args)
         assert mocks["generate_mesh"].call_count == 1
         assert mocks["write_hdf5"].call_count == 0
+        assert mocks["build_spec"].call_count == 0
+        assert mocks["write_model"].call_count == 0
+        assert mocks["write_smb"].call_count == 0
 
     def test_array_file_conflict_with_gfile_fails(self, monkeypatch, tmp_path):
         # boundary_source=array_file 时禁止同时提供 gfile。
@@ -718,6 +790,28 @@ class TestInputLayerIRunIntegration:
         with pytest.raises((ConfigError, NotImplementedError)):
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
+
+    def test_m3dc1_plot_receives_same_gfile_mesh_and_path(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+        plot_path = str(tmp_path / "check.png")
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "m3dc1",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--model", "model.txt",
+            "--smb", "mesh.smb",
+            "--plot", plot_path,
+        ])
+        cli._run(args)
+
+        plot_args, plot_kwargs = mocks["plot_mesh"].call_args
+        assert plot_args[0] is mocks["gfile_data"]
+        assert plot_args[1] is mocks["mesh"]
+        assert str(plot_args[2]).endswith("check.png")
+        assert plot_kwargs["show_region_ids"] is True
 
     def test_verbose_prints_config_status(self, monkeypatch, tmp_path, capsys):
         monkeypatch.chdir(tmp_path)

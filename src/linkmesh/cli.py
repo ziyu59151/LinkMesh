@@ -19,8 +19,9 @@ cli.py —— LinkMesh 命令行入口。
     CLI 参数 → CliOverrides（仅显式输入）→ load_effective_config() → EffectiveConfig
          → read_gfile() → GFileData
          → oft_adapter.generate_mesh(..., profile=, boundary_source=) → Mesh2D
-         → write_hdf5()（target=trimeg 且未 --no-hdf5）
-         → write_smb()（除非 --no-smb）
+         → target=trimeg：write_hdf5()（且未 --no-hdf5）
+         → target=m3dc1：build_single_face_model_spec() →
+           write_m3dc1_model() + write_smb()（SMB 除非 --no-smb）
          → plot_mesh()（若配置 plot_path）
 
 CLI 分区域网格密度参数（v1.13 契约）：
@@ -421,16 +422,31 @@ def _run(args: argparse.Namespace) -> None:
         write_hdf5(mesh, hdf5_str, verbose=verbose)
 
     # ------------------------------------------------------------------ #
-    # Step 5：写出 .smb（M4；保持旧开关语义）                                #
-    # 旧行为：无 --no-smb 时尝试写 SMB（SMB Writer 仍 NotImplementedError）。 #
-    # 为保持旧 CLI 行为不变，target=trimeg 默认仍映射 mesh.smb。             #
+    # Step 5：按 target 分派 M3DC1 输出                                     #
     # ------------------------------------------------------------------ #
-    if not args.no_smb:
-        smb_str = str(cfg.smb_path) if cfg.smb_path is not None else "mesh.smb"
-        from linkmesh.writers.smb_writer import write_smb
+    if cfg.target == "m3dc1":
+        from linkmesh.m3dc1_model import build_single_face_model_spec
+        from linkmesh.writers.m3dc1_model_writer import write_m3dc1_model
+
+        spec = build_single_face_model_spec(mesh)
+        model_str = str(cfg.model_path)
         if verbose:
-            print(f"[LinkMesh] 写出 PUMI .smb：{smb_str}")
-        write_smb(mesh, smb_str)
+            print(f"[LinkMesh] 写出 M3D-C1 model TXT：{model_str}")
+        write_m3dc1_model(spec, model_str)
+
+        if not args.no_smb:
+            from linkmesh.writers.smb_writer import write_smb
+
+            smb_str = str(cfg.smb_path)
+            if verbose:
+                print(
+                    f"[LinkMesh] 写出 PUMI SMB 基础路径：{smb_str}"
+                )
+                print(
+                    "[LinkMesh] PUMI 实际 rank-0 SMB 文件名由 "
+                    "SMB Writer/helper 管理"
+                )
+            write_smb(mesh, spec, smb_str)
 
     # ------------------------------------------------------------------ #
     # Step 6：可视化自检（若配置 plot_path）                                 #
@@ -441,6 +457,8 @@ def _run(args: argparse.Namespace) -> None:
         if verbose:
             print(f"[LinkMesh] 生成网格自检图：{plot_str}")
         plot_mesh(gfile_data, mesh, plot_str, show_region_ids=True)
+        if verbose:
+            print(f"[LinkMesh] PNG 路径：{plot_str}")
 
 
 if __name__ == "__main__":

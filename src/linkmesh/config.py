@@ -436,7 +436,7 @@ def load_effective_config(
 
     异常：
         ConfigError: 发现/读取/校验/合并/兼容矩阵任一环节失败。
-        NotImplementedError: 当前阶段未实现的组合（single_region/flux_surface/m3dc1）。
+        NotImplementedError: 当前阶段未实现的组合（single_region/flux_surface）。
     """
     base_cwd = Path(cwd) if cwd is not None else Path.cwd()
 
@@ -620,14 +620,27 @@ def _validate_required_fields(cfg: EffectiveConfig) -> None:
     if cfg.target == "trimeg" and cfg.hdf5_path is None:
         raise ConfigError("target=trimeg 需要 hdf5_path")
 
+    # M5 第一条 M3DC1 CLI 闭环需要配套 TXT model 与 SMB 基础输出路径。
+    if cfg.target == "m3dc1":
+        if cfg.model_path is None:
+            raise ConfigError(
+                "target=m3dc1 需要 model_path（--model 或 [output].model）"
+            )
+        if cfg.smb_path is None:
+            raise ConfigError(
+                "target=m3dc1 需要 smb_path（--smb 或 [output].smb）"
+            )
+
 
 # --------------------------------------------------------------------------- #
 # 当前阶段实现边界（输入层 I + 输入层 II）                                       #
 # --------------------------------------------------------------------------- #
 
-# 输入层 II 已实现的 single_region 组合：single_region + lcfs（mesh_only / trimeg）。
-# 只有这些 (target, boundary_source) 组合在 single_region 下允许进入业务执行；
-# 其余 single_region 组合（first_wall/array_file/flux_surface）仍明确未实现。
+# 当前已实现的 single_region 来源：single_region + lcfs。
+# M5 仅额外开放 target=m3dc1 的该组合；其余 single_region 组合
+#（first_wall/array_file/flux_surface）仍明确未实现。
+_IMPLEMENTED_M3DC1_PROFILE = "single_region"
+_IMPLEMENTED_M3DC1_SOURCE = "lcfs"
 _IMPLEMENTED_SINGLE_REGION_SOURCES = ("lcfs",)
 
 
@@ -635,15 +648,17 @@ def _validate_current_stage(cfg: EffectiveConfig) -> None:
     """当前阶段（输入层 I + 输入层 II）业务能力边界校验。
 
     - flux_surface：首批明确未实现（第 6A.8 节，禁止缩放 LCFS 伪造磁面）；
-    - target=m3dc1：M4 Writer 未实现，明确失败；
-    - single_region：输入层 II 已实现 single_region + lcfs（mesh_only / trimeg）；
+    - target=m3dc1：仅允许 M5 第一条 single_region + lcfs CLI 闭环；
+    - single_region：输入层 II 已实现 single_region + lcfs（mesh_only / trimeg），
+      M5 额外开放 m3dc1 + single_region + lcfs；
       其余 single_region 组合（first_wall/array_file）仍属输入层 III–IV，
       明确报未实现，不回退 artificial_outer。
 
     当前进入业务执行的组合：
         - target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer
           （已实现回归路径）；
-        - target ∈ {trimeg, mesh_only} + single_region + lcfs（输入层 II 新增）。
+        - target ∈ {trimeg, mesh_only} + single_region + lcfs（输入层 II）；
+        - target=m3dc1 + single_region + lcfs（M5 第一条 CLI 闭环）。
     """
     if cfg.boundary_source == "flux_surface":
         raise NotImplementedError(
@@ -652,10 +667,14 @@ def _validate_current_stage(cfg: EffectiveConfig) -> None:
         )
 
     if cfg.target == "m3dc1":
-        raise NotImplementedError(
-            f"target=m3dc1 尚未实现（{_combo(cfg)}）："
-            "M4 M3DC1 model 与 PUMI/SMB Writer 尚未实现"
-        )
+        if not (
+            cfg.profile == _IMPLEMENTED_M3DC1_PROFILE
+            and cfg.boundary_source == _IMPLEMENTED_M3DC1_SOURCE
+        ):
+            raise NotImplementedError(
+                f"target=m3dc1 当前仅支持 single_region + lcfs（{_combo(cfg)}）"
+            )
+        return
 
     if cfg.profile == "single_region":
         # 输入层 II 已实现 single_region + lcfs；其余 single_region 组合仍未实现。

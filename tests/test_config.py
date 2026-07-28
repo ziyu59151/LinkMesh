@@ -16,7 +16,8 @@ Linux 服务器执行。
 
 输入层 II 状态变化：
     - single_region + lcfs（mesh_only / trimeg）现已实现，合法通过；
-    - single_region + first_wall/array_file、flux_surface、m3dc1 仍未实现。
+    - m3dc1 仅允许 single_region + lcfs；
+    - single_region + first_wall/array_file、flux_surface 仍未实现。
 """
 
 from __future__ import annotations
@@ -618,12 +619,67 @@ class TestCurrentStage:
                 no_config=True, cwd=tmp_path,
             )
 
-    def test_m3dc1_not_implemented(self, tmp_path):
-        with pytest.raises(NotImplementedError, match="m3dc1"):
+    def test_m3dc1_single_region_lcfs_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(
+                target="m3dc1",
+                profile="single_region",
+                boundary_source="lcfs",
+                gfile="g.eqdsk",
+                model="model.txt",
+                smb="mesh.smb",
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert cfg.target == "m3dc1"
+        assert cfg.profile == "single_region"
+        assert cfg.boundary_source == "lcfs"
+        assert cfg.model_path == (tmp_path / "model.txt").resolve()
+        assert cfg.smb_path == (tmp_path / "mesh.smb").resolve()
+
+    def test_m3dc1_requires_model_and_smb_paths(self, tmp_path):
+        with pytest.raises(ConfigError, match="model_path"):
             load_effective_config(
-                _overrides(target="m3dc1", profile="single_region",
-                           boundary_source="lcfs", gfile="g.eqdsk"),
-                no_config=True, cwd=tmp_path,
+                _overrides(
+                    target="m3dc1",
+                    profile="single_region",
+                    boundary_source="lcfs",
+                    gfile="g.eqdsk",
+                    smb="mesh.smb",
+                ),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
+    def test_m3dc1_nested_forbidden(self, tmp_path):
+        with pytest.raises(ConfigError, match="m3dc1"):
+            load_effective_config(
+                _overrides(
+                    target="m3dc1",
+                    profile="nested_three_region",
+                    boundary_source="artificial_outer",
+                    gfile="g.eqdsk",
+                    model="model.txt",
+                    smb="mesh.smb",
+                ),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
+    def test_m3dc1_non_lcfs_forbidden(self, tmp_path):
+        with pytest.raises(ConfigError, match="single_region"):
+            load_effective_config(
+                _overrides(
+                    target="m3dc1",
+                    profile="single_region",
+                    boundary_source="first_wall",
+                    gfile="g.eqdsk",
+                    model="model.txt",
+                    smb="mesh.smb",
+                ),
+                no_config=True,
+                cwd=tmp_path,
             )
 
     def test_single_region_first_wall_not_implemented(self, tmp_path):
