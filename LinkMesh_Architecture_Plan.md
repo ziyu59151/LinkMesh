@@ -66,8 +66,8 @@ edge endpoint order、face↔loop topology 与 geometric classification 语义�
 - User 已在 liustation 完成目标环境只读调查；服务器 `/opt/spack` 与
   `/data/liuchang` 路径不属于本地 LinkMesh 仓库，不得由本地开发流程访问、复制、
   创建或假定存在。服务器输出在本蓝图中属于外部直接证据。
-- M4-1B probe 与 M4-2 PUMI Adapter 将在具有目标 PUMI 安装的后续服务器环境中
-  编译和运行。本地开发仓库、服务器外部调查环境与后续编译运行环境必须保持区分。
+- M4-1B probe 与 M4-2 PUMI Adapter 已在具有目标 PUMI 安装的服务器环境中完成
+  编译和生成侧运行。本地开发仓库、服务器外部调查环境与目标编译运行环境必须保持区分。
 - M4 首要兼容目标锁定为同一套 Spack 构建实例：PUMI 2.2.9，Git commit
   `f87525cae7597322edfb2ccf1c7d4437402d948`，Spack hash `333b2ut`，
   GCC 13.3.0，Open MPI 4.1.6，Zoltan 3.901，CMake Release 构建；
@@ -152,11 +152,12 @@ SMB validator、M3D-C1 消费端或通用 PUMI 验证工具。项目主线现已
 | `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`、`plot_mesh()`（支持区域着色、LCFS/第一壁闭合显示） | 修改任何数据对象 |
 
 M4-1A 已实现 M3DC1 目标专用对象 `M3DC1ModelSpec`、single-face model Adapter
-与独立 TXT model Writer；M4-2 将实现 SCOREC/PUMI/APF/MDS Adapter（第 7 节）。
+与独立 TXT model Writer；M4-2 已实现 Python SMB Writer → 独立 C++ helper →
+SCOREC/PUMI/APF/MDS 官方 API 的生成侧 Adapter（第 7 节）。
 首版只实现 single-region + single-face，不在 M4 P0 提前设计多 face Writer；
 未来多 face 规划保留。
 
-**M4 当前授权与实施顺序（v2.6）**：
+**M4 当前状态与 M5 实施顺序（v3.0）**：
 
 **M4-1A：ModelSpec 与独立 TXT Writer（PASSED）**
 
@@ -190,8 +191,8 @@ User 提供的服务器直接运行证据：
 - 冒烟输出为完整 model TXT，头部 `1 -1 1 -1 -1`，最小样例含
   4 geometric vertices、4 geometric edges、1 loop 与 1 face。
 
-上述证据将 M4-1A 与 Level 1 状态更新为 **PASSED**，但不表示 M4-2、
-Level 2/3、完整 M3D-C1 或 M4 总体已通过。
+上述证据将 M4-1A 与 Level 1 状态更新为 **PASSED**。M4-2 LinkMesh 生成侧随后
+已实现并通过；真实 M3D-C1/SCOREC 外部消费验收仍为 **PENDING**。
 
 **M4-1B：目标环境与实现入口 probe（COMPLETED / PASSED）**
 
@@ -364,7 +365,7 @@ Python 公开 Writer 落点保持：
 src/linkmesh/writers/smb_writer.py
 ```
 
-计划中的 P0 Python 接口为：
+已实现的 P0 Python 接口为：
 
 ```text
 write_smb(
@@ -572,8 +573,8 @@ Python Writer 查找 helper 的唯一优先级为：
 目标版本自检；候选缺失、不可执行或版本不相容时立即失败，不继续猜测仓库 build
 目录或服务器安装路径。显式参数或环境变量已设置但无效时不得降级到下一层。
 
-更换 PUMI 版本、编译器或 MPI ABI 后，必须重新执行入口 probe，并重新执行正式
-Level 2/3；不得仅复用旧 helper 二进制。
+更换 PUMI 版本、编译器或 MPI ABI 后，必须重新执行入口 probe、LinkMesh 生成侧
+验收及同门外部消费兼容性验收；不得仅复用旧 helper 二进制。
 
 #### 最小测试边界
 
@@ -593,9 +594,9 @@ M4-2 测试与验收按以下最小分层维护：
 - LinkMesh 不建设 SMB loader、SMB validator、M3D-C1 消费端、大型 Fake
   SCOREC/PUMI 或通用原生测试框架。
 
-#### M4-2 实现停止条件
+#### M4-2 维护停止条件
 
-后续实现遇到以下任一情况必须停止并报告：
+后续维护或兼容性修正遇到以下任一情况必须停止并报告：
 
 - 无法无歧义映射 `Mesh2D` node/edge 与 `M3DC1ModelSpec` geometric entities；
 - classification 必须依赖最近距离、容差最近邻、投影猜测或其他启发式；
@@ -665,8 +666,8 @@ classification、Triangle 方向处理、串行 ownership、严格验证、官�
 - 禁止将服务器绝对安装前缀硬编码进 LinkMesh 业务源码；
 - 依赖定位通过已确认的 CMake config/imported targets、环境变量、Spack 加载或
   明确命令行参数完成；
-- 未来更换 PUMI 版本、编译器或 MPI ABI 时，必须重新执行最小入口 probe，并重新
-  完成 Level 2/3 兼容性验收。
+- 未来更换 PUMI 版本、编译器或 MPI ABI 时，必须重新执行最小入口 probe、LinkMesh
+  生成侧验收及同门外部消费兼容性验收。
 
 当前准确状态：M4-1A TXT/Level 1 **PASSED**；M4-1B 实现入口 probe
 **COMPLETED / PASSED**；M4-2 LinkMesh 生成侧 **IMPLEMENTED / PASSED**；真实
