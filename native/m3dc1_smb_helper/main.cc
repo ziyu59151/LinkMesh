@@ -1165,7 +1165,7 @@ void create_and_write_mesh(
     }
 
     mesh->acceptChanges();
-    apf::verify(mesh, false);
+    mesh->verify();
     mesh->writeNative(exchange.output_base.string().c_str());
 
     const auto output_rank0 = rank0_path(exchange.output_base);
