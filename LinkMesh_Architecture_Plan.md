@@ -260,8 +260,8 @@ rank-0 文件命名的本次目标版本运行事实：
 错误或 PUMI loader 缺陷中的任何一个写成已证实事实。该失败不否定已经成功的编译、
 classified entity 创建、`acceptChanges`、`verify`、`writeNative` 与非空 SMB
 写出证据，也不构成 PUMI loader、SMB 格式或正式 LinkMesh 方案失败。该人工 probe
-不再继续修补；正式重载验证转入 M4-2 产生真实 LinkMesh TXT+SMB 候选后的
-Level 2/3。
+不再继续修补，也不扩展为 LinkMesh loader/validator；正式配套 TXT+SMB 的加载检查
+属于由同门执行的真实 M3D-C1/SCOREC 外部消费验收。
 
 M4-1B 的职责是消除 M4-2 实现入口处的目标环境、构建接入和核心 API 不确定性，
 不要求提前完成正式 LinkMesh TXT+SMB 的 Level 2/3。因此 M4-1B 状态更新为
