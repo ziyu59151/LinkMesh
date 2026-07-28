@@ -1180,11 +1180,13 @@ void create_and_write_mesh(
         "writeNative created an empty rank-0 SMB: " +
             output_rank0.string());
 
+    apf::disownMdsModel(mesh);
     mesh->destroyNative();
     apf::destroyMesh(mesh);
     mesh = nullptr;
   } catch (...) {
     if (mesh != nullptr) {
+      apf::disownMdsModel(mesh);
       mesh->destroyNative();
       apf::destroyMesh(mesh);
     }
