@@ -1233,8 +1233,6 @@ int main(int argc, char** argv) {
         "runtime_validate",
         "M4-2 P0 helper only supports one MPI rank");
 
-    gmi_register_analytic();
-
     const auto output_rank0 = rank0_path(exchange.output_base);
     {
       NativeModel native_model;
