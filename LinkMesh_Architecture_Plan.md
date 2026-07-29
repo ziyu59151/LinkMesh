@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **3.1**（保持 M1–M4 与 TRIMEG 既有验收结论不变；同步 M5 第一条 `target=m3dc1 + profile=single_region + boundary_source=lcfs` 正式 CLI 最小闭环已在真实 DIII-D GFile 上运行通过的事实，记录 TXT、rank-0 SMB、PNG 与终端统计的实际生成证据，并固化当前组内 Case 使用和用户级部署原则。M4-2 LinkMesh 生成侧与 M5 第一条 CLI 闭环均已通过；真实 M3D-C1/SCOREC 外部消费验收仍由同门负责且为 PENDING。LinkMesh 不建设 SMB loader/validator 或 M3D-C1 消费端；Simmetrix、并行 split、Python ABI 扩展与手写 SMB 仍严格排除在 P0 外）
+- 文档状态：正式版 **3.2**（修复事故提交 `d947b04dd5243cd69a28ddd133d33cc76f640b37` 中 `stream_read_error` 导致的文档截断，恢复第 6A.1–6A.13 节输入层字段级契约与完整文档结尾；保留事故后形成的 M4、M5、CLI、配置、helper、部署及真实验收状态。本轮仅恢复既有正式结构和契约，不引入新的技术规划，不改变正式字段、接口、编号约定、HDF5 契约或 SMB 契约）
 - 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`（阶段证据，非本蓝图正文的长期正式依赖，蓝图正文自包含）
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -1115,4 +1115,545 @@ v3.1 仍**不暴露**为正式配置或 CLI 字段，保持内部默认策略。
 - `src/linkmesh/config.py`：`EffectiveConfig` 定义 + `linkmesh.in` 读取/校验/合并 + 兼容矩阵/required fields 校验（职责与禁止见第 2 节表）。
 - `src/linkmesh/readers/boundary_reader.py`：`array_file` 两列 CSV → `(B,2) float64`（职责与禁止见第 2 节表）。
 - `readers/gfile_reader.py`、`mesher/oft_adapter.py`、`cli.py`、`mesh.py`、
-[Upstream error: stream_read_error]
+  各 Writer 与 Plotter：继续遵守第 2 节定义的现有职责边界；输入层不得把配置解析、
+  边界来源选择或路径合并逻辑下沉到这些业务模块。
+- 不新增 `inputs/` 包、source 抽象基类、注册表、插件系统或任意 N 区域配置语言。
+
+### 6A.2 `EffectiveConfig`
+
+`EffectiveConfig` 已在 `src/linkmesh/config.py` 中实现为
+`@dataclass(frozen=True)`。它是内建默认值、配置文件和用户显式 CLI 覆盖完成合并、
+类型校验、路径解析、兼容矩阵校验及 required fields 校验后的唯一正式配置对象。
+
+正式字段共 15 个：
+
+| 字段 | 类型 | 正式含义 |
+|---|---|---|
+| `schema_version` | `int` | 配置 schema 版本；v1 固定为 `1` |
+| `config_path` | `Optional[Path]` | 实际加载的配置文件绝对路径；未加载时为 `None` |
+| `target` | `Literal["mesh_only","trimeg","m3dc1"]` | 当前目标输出族 |
+| `profile` | `Literal["single_region","nested_three_region"]` | 区域构造策略 |
+| `boundary_source` | `Literal["lcfs","first_wall","array_file","artificial_outer","flux_surface"]` | 计算域外边界来源 |
+| `gfile_path` | `Optional[Path]` | GFile/EQDSK 绝对路径 |
+| `array_file_path` | `Optional[Path]` | 两列 CSV 边界文件绝对路径 |
+| `plasma_dx` | `float` | plasma 或 single-region 目标网格尺度 [m] |
+| `vacuum_dx` | `float` | vacuum 区目标网格尺度 [m] |
+| `outer_dx` | `float` | outer 区目标网格尺度 [m] |
+| `hdf5_path` | `Optional[Path]` | TRIMEG HDF5 输出绝对路径 |
+| `plot_path` | `Optional[Path]` | PNG 输出绝对路径 |
+| `model_path` | `Optional[Path]` | M3D-C1 analytic model TXT 输出绝对路径 |
+| `smb_path` | `Optional[Path]` | 未插入 MPI rank 的 SMB 基础输出绝对路径 |
+| `verbose` | `bool` | 是否输出详细日志 |
+
+约束：
+
+1. 所有非 `None` 的 `Path` 在 `EffectiveConfig` 构造前规范化为绝对路径。
+2. 配置文件相对路径相对配置文件所在目录解析；显式 CLI 相对路径相对进程当前工作
+   目录解析；内建默认输出路径相对当前工作目录解析。
+3. 路径不展开 `~`，不展开环境变量，不因输出路径尚不存在而创建目录。
+4. `EffectiveConfig` 不保存值来源字典、NumPy 数组、`Mesh2D`、`GFileData`、
+   PUMI 句柄、Writer、argparse Namespace 或可变业务状态。
+5. `schema_version` 不是 CLI 可覆盖字段。
+6. `EffectiveConfig` 只表达配置事实，不读取 GFile、array CSV 或任何输出文件。
+7. 当前已实现的 M3DC1 组合只有
+   `target=m3dc1 + profile=single_region + boundary_source=lcfs`；不得因字段存在而
+   推断其他组合已经实现。
+
+### 6A.3 内建默认值
+
+内建默认值的唯一实现来源是 `src/linkmesh/config.py`，CLI 不得维护第二套默认值。
+
+| 字段 | 内建默认值 |
+|---|---|
+| `schema_version` | `1` |
+| `target` | `"trimeg"` |
+| `profile` | `"nested_three_region"` |
+| `boundary_source` | `"artificial_outer"` |
+| `plasma_dx` | `0.08` m |
+| `vacuum_dx` | `0.10` m |
+| `outer_dx` | `0.15` m |
+| `verbose` | `False` |
+| `hdf5_path` | target 为 `trimeg` 时使用当前工作目录下的 `mesh.h5` |
+| `plot_path` | `None` |
+| `model_path` | `None` |
+| `smb_path` | `None` |
+| `gfile_path` | `None` |
+| `array_file_path` | `None` |
+
+规则：
+
+- 无配置文件且无新增显式 CLI 参数时，默认行为保持
+  `trimeg + nested_three_region + artificial_outer`。
+- `model_path` 与 `smb_path` 不制造隐式可执行默认路径；当前 M3DC1 CLI 必须由配置
+  文件或显式 CLI 提供二者。
+- `hdf5_path` 的 `mesh.h5` 默认只在 `target=trimeg` 时建立；其他 target 不产生
+  无意义的 HDF5 默认输出。
+- `outer_padding` 与 OFT `merge_thresh` 不是 `EffectiveConfig` 字段，当前不得通过
+  CLI 或 `linkmesh.in` 暴露。
+- `--min-angle` 与 `--max-area` 是 CLI 历史兼容参数，不进入
+  `EffectiveConfig`；非默认使用由 CLI 在配置加载及 OFT 调用前拒绝。
+
+### 6A.4 `linkmesh.in` v1 TOML schema
+
+标准配置文件采用 Python 标准库 `tomllib` 可读取的 TOML，顶层必须包含：
+
+```toml
+schema_version = 1
+```
+
+v1 只允许以下 section 和键：
+
+```text
+顶层：
+  schema_version
+
+[task]
+  target
+
+[input]
+  gfile
+  array_file
+
+[domain]
+  profile
+  boundary_source
+
+[mesh]
+  plasma_dx
+  vacuum_dx
+  outer_dx
+
+[output]
+  hdf5
+  plot
+  model
+  smb
+
+[runtime]
+  verbose
+```
+
+字段契约：
+
+| TOML 键 | 类型 | 映射字段 |
+|---|---|---|
+| `schema_version` | 整数，且必须等于 `1` | `schema_version` |
+| `[task].target` | 字符串枚举 | `target` |
+| `[input].gfile` | 非空字符串路径 | `gfile_path` |
+| `[input].array_file` | 非空字符串路径 | `array_file_path` |
+| `[domain].profile` | 字符串枚举 | `profile` |
+| `[domain].boundary_source` | 字符串枚举 | `boundary_source` |
+| `[mesh].plasma_dx` | 有限正数 | `plasma_dx` |
+| `[mesh].vacuum_dx` | 有限正数 | `vacuum_dx` |
+| `[mesh].outer_dx` | 有限正数 | `outer_dx` |
+| `[output].hdf5` | 非空字符串路径 | `hdf5_path` |
+| `[output].plot` | 非空字符串路径 | `plot_path` |
+| `[output].model` | 非空字符串路径 | `model_path` |
+| `[output].smb` | 非空字符串路径 | `smb_path` |
+| `[runtime].verbose` | TOML 布尔值 | `verbose` |
+
+严格校验规则：
+
+1. `schema_version` 必须存在，必须是非布尔整数，且必须等于 `1`。
+2. 未列出的顶层键、section 或 section 内键立即报 `ConfigError`。
+3. section 必须是 TOML table；不得用标量冒充 section。
+4. 路径必须是非空字符串；v1 不接受 TOML 数组、Path 对象或环境变量表达式。
+5. `dx` 接受 TOML 整数或浮点数，但拒绝布尔值、NaN、Inf、零和负数。
+6. `verbose` 必须是 TOML 布尔值，不接受字符串 `"true"` 或整数 `1`。
+7. TOML 语法错误、读取错误和 schema 错误必须包含配置文件路径及字段位置。
+8. 配置 Reader 不读取路径指向的业务文件内容，不创建输出目录。
+9. 仓库当前不提供标准化 `linkmesh.in` 示例；该事实不改变 schema 已实现状态。
+   标准示例仍按第 6A 节引言中的当前决策后置。
+
+### 6A.5 CLI 正式参数
+
+输入层正式参数及其合并语义如下：
+
+| CLI 参数 | argparse 目标 | 语义 |
+|---|---|---|
+| `--config PATH` | `config` | 只加载指定配置文件；不存在立即失败 |
+| `--no-config` | `no_config` | 禁止当前目录自动发现配置文件 |
+| `--target VALUE` | `target` | 覆盖 `[task].target` |
+| `--profile VALUE` | `profile` | 覆盖 `[domain].profile` |
+| `--boundary-source VALUE` | `boundary_source` | 覆盖 `[domain].boundary_source` |
+| `--gfile PATH` | `gfile` | 覆盖 `[input].gfile` |
+| `--array-file PATH` | `array_file` | 覆盖 `[input].array_file` |
+| `--plasma-dx FLOAT` | `plasma_dx` | 覆盖 `[mesh].plasma_dx` |
+| `--vacuum-dx FLOAT` | `vacuum_dx` | 覆盖 `[mesh].vacuum_dx` |
+| `--outer-dx FLOAT` | `outer_dx` | 覆盖 `[mesh].outer_dx` |
+| `--output PATH` | `hdf5` | 覆盖 `[output].hdf5` |
+| `--plot PATH` | `plot` | 覆盖 `[output].plot` |
+| `--model PATH` | `model` | 覆盖 `[output].model` |
+| `--smb PATH` | `smb` | 覆盖 `[output].smb`；仍表示未插入 rank 的基础路径 |
+| `--verbose` | `verbose` | 显式 `True` 时覆盖 `[runtime].verbose` |
+
+规则：
+
+1. `--config` 与 `--no-config` 互斥。
+2. 参与三层合并的可选参数使用 `UNSET` 区分“用户未提供”和“用户显式提供”；
+   argparse 默认值不得覆盖 TOML。
+3. `--verbose` 为 `store_true`；只有显式出现时才以 `True` 覆盖 TOML，未出现时保持
+   `UNSET` 语义。
+4. `--no-hdf5` 与 `--no-smb` 是执行期开关，不进入 `EffectiveConfig`，也不取消
+   target 对 required output path 的配置校验。
+5. `--min-angle` 默认 `20.0`，非默认值在任何配置或网格生成前拒绝；
+   `--max-area` 默认 `None`，一旦提供即拒绝。二者不映射为 OFT `dx`。
+6. CLI 只收集显式输入并编排业务模块；类型、有限正数、枚举、兼容矩阵和路径合并的
+   最终校验集中在 `config.py`。
+7. `--smb` 不由 CLI 改写为 rank-0 文件名。`<base>0.smb` 的定位由
+   `smb_writer.py` 与目标 PUMI 版本规则负责。
+8. CLI 不解析 `LINKMESH_M3DC1_SMB_HELPER`，不猜测 helper 构建目录，不硬编码
+   PUMI 安装路径。
+
+### 6A.6 配置发现与合并算法
+
+配置发现顺序固定为：
+
+1. 同时提供 `--config` 与 `--no-config`：立即失败。
+2. 提供 `--config PATH`：只解析该路径；相对路径相对进程当前工作目录解析；
+   文件不存在或不是普通文件立即失败，不再自动发现。
+3. 提供 `--no-config`：不加载任何配置文件。
+4. 二者均未提供：只检查当前工作目录下的 `linkmesh.in`。
+5. 不递归父目录，不搜索用户主目录，不搜索仓库根目录，不读取环境变量指定的配置。
+
+合并优先级固定为：
+
+```text
+内建默认值 < linkmesh.in < 用户显式 CLI
+```
+
+合并算法：
+
+1. 发现配置文件并解析、严格校验 TOML。
+2. 以当前工作目录为 CLI 路径基准，以配置文件所在目录为 TOML 路径基准。
+3. 标量字段先取显式 CLI；否则取 TOML；否则取内建默认值。
+4. 路径字段分别按 CLI 短键名与 TOML/`EffectiveConfig` 长字段名映射：
+   `gfile→gfile_path`、`array_file→array_file_path`、`hdf5→hdf5_path`、
+   `plot→plot_path`、`model→model_path`、`smb→smb_path`。
+5. 路径使用 `Path.resolve(strict=False)` 等价语义规范化为绝对路径；不要求输出
+   已存在，不创建目录，不展开 `~` 或环境变量。
+6. 合并后再次校验枚举、数值和布尔类型，覆盖 CLI 直接构造输入的情况。
+7. 构造冻结的 `EffectiveConfig`。
+8. 依次执行兼容矩阵、required fields 和当前实现阶段闸门校验。
+9. 只有全部校验通过后才进入 Reader、OFT、Writer 或 Plotter。
+10. 未实现组合必须明确失败，不得回退到
+    `nested_three_region + artificial_outer`。
+
+路径存在性边界：
+
+- `--config` 指定的配置文件在发现阶段必须存在。
+- GFile、array file 的业务输入存在性或内容有效性由对应 Reader/业务阶段报告；
+  `config.py` 不读取其内容。
+- 输出父目录不会由配置层创建；具体 Writer 按自身契约检查。
+- helper 路径不属于 `EffectiveConfig`，继续由 SMB Writer 的显式参数、环境变量和
+  `PATH` 优先级管理。
+
+### 6A.7 `array_file` v1 契约
+
+`boundary_source=array_file` 的正式输入格式为轻量两列 CSV，但该来源当前仍为
+**PLANNED / NOT IMPLEMENTED**，不得因恢复本契约而标记为已实现。
+
+文件契约：
+
+| 项目 | 规定 |
+|---|---|
+| 编码 | UTF-8 文本 |
+| 数据列 | 恰好两列，依次为 `R,Z` |
+| 单位 | m |
+| 数值类型 | 可解析为有限 `float64` |
+| header | v1 不允许 header |
+| 注释 | v1 不定义注释语法 |
+| 空行 | 可忽略纯空白行；数据行不得为空字段 |
+| 分隔符 | 逗号 |
+| shape | 读取后 `(B,2)` |
+| 最低点数 | 至少 3 个有效点 |
+| 闭合 | 末尾不得重复首点；最后一点到第一点隐式闭合 |
+| 方向 | 输入可为任一方向；进入 `Mesh2D.outer_boundary` 前规范化为顺时针并保持起点 |
+| 几何 | 单一简单闭环；禁止相邻重复、退化面积、非相邻边交叉、端点接触或共线重叠 |
+
+`boundary_reader.py` 的计划职责：
+
+1. 只读取 CSV 语法并转换为 `(B,2) float64`。
+2. 报告文件不存在、无法读取、列数错误、空字段、非数字、NaN/Inf 和点数不足。
+3. 创建独立数组，不返回对解析缓冲区的共享可变视图。
+4. 复用 `mesh.py` 的统一边界验证入口完成简单闭环几何验证，不复制自交算法。
+5. 不创建 `Mesh2D`，不调用 OFT，不读取 GFile，不使用 pandas。
+6. 不自动闭合、不自行重采样、不平滑、不排序、不投影、不按最近距离修补。
+7. 不从文件名或坐标范围推断物理区域语义。
+
+实施前停止条件：
+
+- 需要改变两列 `R,Z`、单位 m、隐式闭合或单一简单闭环契约；
+- 需要引入多轮廓、孔洞、区域种子、任意 N 区域语言或 pandas；
+- 需要修改 `Mesh2D` 字段才能表示首版输入；
+- array boundary 与 GFile 同时存在时的业务语义无法按第 6A.10 节无歧义拒绝。
+
+### 6A.8 boundary source 正式契约
+
+| `boundary_source` | 正式来源 | 当前实现状态 | P0 规则 |
+|---|---|---|---|
+| `lcfs` | `GFileData.lcfs_r/lcfs_z` | **已实现并通过真实 CLI** | single-region 唯一计算域边界；不使用第一壁、不创建人工外框、不缩放 LCFS |
+| `first_wall` | `GFileData.wall_r/wall_z` | **PLANNED / NOT IMPLEMENTED** | 需要有效第一壁；首版用于 single-region；缺壁必须失败 |
+| `array_file` | v1 两列 CSV | **PLANNED / NOT IMPLEMENTED** | 首版用于 single-region；与 GFile 输入互斥 |
+| `artificial_outer` | LCFS/第一壁联合包围盒加内部固定 padding 的人工矩形 | **已实现并通过真实 CLI** | 当前只配 `nested_three_region`；四个控制角点不得直接作为 `outer_boundary` |
+| `flux_surface` | 从平衡数据提取的真实磁通面 | **NOT IMPLEMENTED** | 禁止径向缩放 LCFS 伪造磁面；真实轮廓提取契约确认前不得实现 |
+
+共同规则：
+
+1. `boundary_source` 选择的是计算域最外边界来源，不等同于 OFT region ID。
+2. 每次任务只允许一个正式计算域外边界来源。
+3. `lcfs`、`first_wall` 和 `artificial_outer` 需要 GFile。
+4. `array_file` 需要 `array_file_path`，并禁止同时提供 `gfile_path`。
+5. `flux_surface` 在真实提取输入、参数和验收依据未定义前明确报未实现。
+6. 已实现来源最终都必须通过策略层捕获 Region、OFT build 后回写点列及
+   `Mesh2D.outer_boundary` 统一验证链。
+7. 未实现来源不得静默回退到 LCFS、第一壁或人工外框。
+8. `first_wall` 和 `array_file` 的字段与契约存在不表示对应 Reader、OFT 策略层或
+   CLI 业务路径已实现。
+
+### 6A.9 target/profile/boundary_source 兼容矩阵
+
+当前正式矩阵：
+
+| target | profile | boundary_source | 契约状态 |
+|---|---|---|---|
+| `mesh_only` | `nested_three_region` | `artificial_outer` | 已实现 |
+| `trimeg` | `nested_three_region` | `artificial_outer` | 已实现并验收 |
+| `mesh_only` | `single_region` | `lcfs` | 已实现 |
+| `trimeg` | `single_region` | `lcfs` | 已实现并通过真实 CLI/MATLAB 消费验收 |
+| `m3dc1` | `single_region` | `lcfs` | 已实现；第一条真实 CLI 生成闭环 PASSED，外部消费 PENDING |
+| `mesh_only` / `trimeg` | `single_region` | `first_wall` | 规划有效，但当前未实现 |
+| `mesh_only` / `trimeg` | `single_region` | `array_file` | 规划有效，但当前未实现 |
+| 任意 | `single_region` | `flux_surface` | 未实现 |
+| `m3dc1` | `single_region` | `first_wall` / `array_file` / `flux_surface` | 当前未开放 |
+| `m3dc1` | `nested_three_region` | 任意 | 禁止 |
+| 任意 | `nested_three_region` | `lcfs` / `first_wall` / `array_file` | profile/source 不匹配，禁止 |
+| 任意 | `single_region` | `artificial_outer` | profile/source 不匹配，禁止 |
+
+裁决规则：
+
+1. 禁止组合使用 `ConfigError` 拒绝。
+2. 在架构上可表达但当前阶段尚未实现的组合使用 `NotImplementedError` 明确拒绝。
+3. 当前实际异常边界以 `config.py` 的兼容矩阵与阶段闸门为准；旧测试若期待不同异常
+   类型，应更新测试预期，不得为满足旧预期放行未实现组合。
+4. `target=trimeg` 只进入 HDF5 Writer，不调用 SMB Writer。
+5. `target=m3dc1` 只在当前唯一开放组合中进入共享 ModelSpec 的 TXT/SMB Writers。
+6. `target=mesh_only` 不进入 HDF5、TXT 或 SMB Writer；配置了 `plot_path` 时仍可绘图。
+7. 新增矩阵组合必须先更新本蓝图并取得 User 确认，不得只修改 argparse choices 或
+   删除阶段闸门。
+
+### 6A.10 required fields
+
+required fields 在路径合并完成后、业务执行前校验。
+
+按 boundary source：
+
+| boundary_source | 必需字段 | 禁止同时提供 |
+|---|---|---|
+| `lcfs` | `gfile_path` | `array_file_path` |
+| `first_wall` | `gfile_path` | `array_file_path` |
+| `artificial_outer` | `gfile_path` | `array_file_path` |
+| `array_file` | `array_file_path` | `gfile_path` |
+| `flux_surface` | 当前未定义完整 required fields；阶段闸门直接报未实现 | 不得猜测 |
+
+按 target：
+
+| target | 必需输出字段 | Writer 行为 |
+|---|---|---|
+| `mesh_only` | 无 | 不写 HDF5、TXT 或 SMB |
+| `trimeg` | `hdf5_path` | 未使用 `--no-hdf5` 时写 HDF5 |
+| `m3dc1` | `model_path`、`smb_path` | 总是写 TXT；未使用 `--no-smb` 时写 SMB |
+
+补充规则：
+
+1. 当前所有已实现业务路径均由 GFile Reader 进入，因此 `lcfs` 与
+   `artificial_outer` 必须有 `gfile_path`。
+2. `first_wall` 即使字段齐全，仍必须由未来输入层检查 GFile 是否实际包含至少三个
+   有效壁点；该来源当前未实现。
+3. `array_file` 即使字段齐全，仍须由未来 `boundary_reader.py` 验证文件内容；
+   该来源当前未实现。
+4. `target=m3dc1` 的 `smb_path` 是未插入 rank 的基础路径。
+5. `--no-smb` 不使 `smb_path` 在配置层变为可选；该开关只控制执行期跳过 helper。
+6. `--no-hdf5` 不改变 `target=trimeg` 的有效配置结构。
+7. `plot_path` 对所有 target 均为可选。
+8. 配置层只校验字段存在与组合关系，不读取 GFile、CSV、HDF5、TXT 或 SMB 内容。
+9. required fields 通过不等于对应组合已经实现；之后仍须通过当前阶段闸门。
+
+### 6A.11 `single_region` 构造契约
+
+`single_region` 表示由一条外边界围成、只生成一个 OFT 区域的二维计算域。它不是
+“从多区域结果中筛选某个 region”，也不创建真空 annulus 或人工 outer region。
+
+#### `single_region + lcfs`（已实现并验收）
+
+正式构造：
+
+1. 从 `GFileData.lcfs_r/lcfs_z` 取得 LCFS。
+2. 执行基础 shape、长度、有限性、最低点数和普通显式闭合末点处理。
+3. 在调用 OFT `add_polygon()` 前，按锁定的 OFT 26.6 默认
+   `merge_thresh=1e-4 m` 稳定过滤相邻近重复控制点：
+   - 保留第一个点；
+   - 按原顺序遍历候选点；
+   - 候选点与最后一个已接受点的欧氏距离严格小于 `1e-4 m` 时删除候选点；
+   - 否则保留候选点；
+   - 不排序、不循环移位、不插值、不重采样、不全局去重、不修改保留坐标。
+4. 过滤后必须至少有 3 点。
+5. 过滤后首末点距离若仍小于 `1e-4 m`，明确失败，不继续静默删除。
+6. 定义唯一 OFT region，类型沿当前实现为 `plasma`，网格尺度使用
+   `plasma_dx`。
+7. 调用一次 `add_polygon(lcfs, "plasma")`，不提供 parent region。
+8. 不读取或使用第一壁，不定义 vacuum，不创建 artificial outer，不创建 annulus。
+9. 在 `add_polygon()` 前后通过 `domain.regions` 长度差异捕获唯一新增 Region 引用。
+10. `mesh_from_oft_domain()` 在 `build_mesh()` 前保存该引用，在 build 后读取同一对象
+    的 `_resampled_points`。
+11. 按第 3.2A 节规范化并验证 `outer_boundary`，再构造 `Mesh2D`。
+12. `vacuum_dx`、`outer_dx` 和 `outer_padding` 不参与该分支；保留前两字段只为统一
+    配置对象与调用签名，不得把它们合并为新的通用 `mesh_size`。
+13. 不径向缩放 LCFS，不从最终 `pts/lc`、`idxevert` 或原始控制点直接构造
+    `outer_boundary`。
+
+该路径已在真实 DIII-D GFile 上生成 344 节点、631 三角形、1 区域和 55 点
+`outer_boundary`，并通过 TRIMEG 与 M3DC1 第一条 CLI 的现有验收。该结果不开放其他
+single-region boundary source。
+
+#### `single_region + first_wall`（规划有效，当前未实现）
+
+正式规划：
+
+1. 从 `GFileData.wall_r/wall_z` 取得有效第一壁。
+2. 第一壁作为唯一计算域边界和唯一 Region polygon。
+3. 网格尺度首版使用 `plasma_dx`，不增加新的公共 `mesh_size` 字段。
+4. 不创建 LCFS 内部界面、vacuum annulus 或 artificial outer。
+5. 缺壁、R/Z 不同时存在、点数不足、非有限、退化或非简单闭环时失败。
+6. 仍须走 OFT Region 捕获、build 后回写和统一 `outer_boundary` 验证链。
+7. 该路径当前不得标记为已实现或由 CLI 放行。
+
+#### `single_region + array_file`（规划有效，当前未实现）
+
+正式规划：
+
+1. 由第 6A.7 节的两列 CSV 提供唯一计算域边界。
+2. 不同时读取 GFile，不从文件名推断物理语义。
+3. 网格尺度首版使用 `plasma_dx`。
+4. 由 OFT `add_polygon()` 创建唯一 Region。
+5. 仍须捕获该 Region，并以 build 后 `_resampled_points` 作为最终
+   `Mesh2D.outer_boundary` 来源。
+6. 该路径当前不得标记为已实现或由 CLI 放行。
+
+#### `single_region + flux_surface`（当前未实现）
+
+必须先确认真实磁通面提取所需的平衡字段、用户输入参数、轮廓选择规则和真实验收依据。
+禁止通过 LCFS 坐标径向缩放、中心缩放或任意几何插值伪造磁通面。
+
+共同停止条件：
+
+- 必须复制 OFT 重采样、点合并、segment 拼接、种子搜索或 Triangle 算法；
+- 无法可靠捕获唯一 outer Region；
+- 必须从最终拓扑或最近距离猜测有序边界；
+- 需要放宽 `Mesh2D.outer_boundary` 的简单闭环契约；
+- 需要新增多轮廓、孔洞、任意 N 区域配置或第二网格引擎；
+- 需要改变当前正式字段、索引、单位或 Writer 契约但蓝图尚未更新。
+
+### 6A.12 输入层实施拆分
+
+输入层按小步闭环维护，不把所有 boundary source 一次性实现：
+
+| 阶段 | 内容 | 当前状态 |
+|---|---|---|
+| 输入层 I | `EffectiveConfig`、严格 TOML v1、配置发现、默认/TOML/CLI 合并、兼容矩阵、required fields、CLI 新参数 | **IMPLEMENTED** |
+| 输入层 II | `single_region + lcfs` OFT 策略、相邻近重复控制点规范化、真实 GFile/CLI/TRIMEG 验收 | **PASSED** |
+| 输入层 III | `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED** |
+| 输入层 IV | `boundary_reader.py` 与 `single_region + array_file` | **PLANNED / NOT IMPLEMENTED** |
+| 输入层 V | 真实 `flux_surface` 提取与 single-region 构造 | **NOT IMPLEMENTED；需求与证据待确认** |
+| M5 第一条 | `m3dc1 + single_region + lcfs` 的 TXT+SMB+PNG CLI 编排 | **PASSED；外部消费 PENDING** |
+
+实施纪律：
+
+1. 每一阶段先更新蓝图，再修改对应最小源码和测试。
+2. 新来源以少量关键单元测试加真实 OFT 26.6/GFile/CLI/PNG/HDF5 验收为主，
+   不扩建大型 Fake OFT 体系。
+3. 输入层 III–V 不阻塞已通过的 M4 生成侧和 M5 第一条 CLI。
+4. 不因未来来源规划改变当前默认
+   `nested_three_region + artificial_outer`。
+5. 不提前创建标准 `linkmesh.in` 示例；继续遵守第 6A 节引言中的消费端验收条件。
+6. 不提前建设 boundary source plugin、抽象基类、注册表或通用区域 DSL。
+7. 未实现阶段必须在配置阶段明确拒绝，不进入 Reader 或 OFT 后再隐式回退。
+
+### 6A.13 输入层验收矩阵
+
+#### 配置与发现
+
+- `schema_version=1` 可读取；缺失、类型错误、其他版本均失败。
+- 未知顶层键、未知 section、未知 section 键均失败。
+- TOML 类型错误、非法枚举、非有限或非正 `dx`、非布尔 `verbose` 均失败。
+- `--config` 与 `--no-config` 互斥。
+- 显式 `--config` 不存在时立即失败，不再自动发现。
+- `--no-config` 禁止自动发现。
+- 默认只发现当前工作目录下的 `linkmesh.in`，不递归父目录。
+- 优先级严格为“默认 < TOML < 显式 CLI”。
+- TOML 相对路径相对配置目录；CLI 相对路径相对当前工作目录。
+- 路径不展开 `~` 或环境变量。
+- `EffectiveConfig` 冻结，字段精确为第 6A.2 节定义的 15 项。
+
+#### 兼容矩阵与 required fields
+
+- 已实现组合可通过配置层。
+- 禁止组合以 `ConfigError` 拒绝。
+- 规划有效但当前未实现组合以 `NotImplementedError` 拒绝。
+- `lcfs`、`first_wall`、`artificial_outer` 要求 GFile，并拒绝 array file。
+- `array_file` 要求 array file，并拒绝 GFile。
+- `trimeg` 要求 HDF5 输出路径。
+- `m3dc1` 要求 TXT model 与 SMB 基础路径。
+- `m3dc1 + nested_three_region` 始终禁止。
+- 当前只放行 `m3dc1 + single_region + lcfs`。
+- `mesh_only` 不调用 Writer；`trimeg` 不调用 SMB Writer。
+- `--no-smb`、`--no-hdf5` 只控制执行，不改变有效配置 required fields。
+
+#### `single_region + lcfs`
+
+- LCFS 是唯一 polygon 和唯一计算域边界。
+- 只创建一个 OFT region，不创建 first-wall interface、vacuum、annulus 或人工外框。
+- 网格尺度使用 `plasma_dx`。
+- 相邻距离 `<1e-4 m` 的控制点按稳定顺序过滤后一点。
+- 过滤不排序、不重采样、不全局去重、不改变保留坐标。
+- 过滤后不足 3 点或首末仍近重复时失败。
+- build 后读取已捕获 Region 的 `_resampled_points`，不得读取禁止的 Mesh 私有结构。
+- `Mesh2D.outer_boundary` 是独立 float64、顺时针、隐式闭合、单一简单闭环。
+- OFT 输出为单一区域，`region_ids` 原样保留。
+- 真实 DIII-D GFile、TRIMEG HDF5、MATLAB A/B 与 M3DC1 第一条 CLI 的既有通过结论
+  保持不变。
+
+#### `array_file` 和 `first_wall`
+
+- `array_file` 两列、有限 float64、至少 3 点、无 header、单位 m、单一简单闭环。
+- CSV 语法错误、列数错误、空字段、非数字和 NaN/Inf 必须失败。
+- `first_wall` 缺失或无效必须失败，不得回退 LCFS。
+- 两个来源均不得创建人工 outer 或多区域 annulus。
+- 两个来源当前均为 **NOT IMPLEMENTED**；契约测试和字段存在不得写成业务路径已通过。
+
+#### target 编排与回归
+
+- 默认 `trimeg + nested_three_region + artificial_outer` 行为保持。
+- `trimeg + single_region + lcfs` 保持 HDF5 与可选 PNG 行为。
+- `m3dc1 + single_region + lcfs` 只构造一次 `M3DC1ModelSpec`，TXT/SMB Writers
+  共享同一对象。
+- SMB 基础路径不由 CLI 插入 rank。
+- helper 定位仍由 SMB Writer 管理。
+- PNG 不替代外部 M3D-C1/SCOREC 消费验收。
+- M4 生成侧、M5 第一条真实 CLI、helper 生命周期与部署原则不得因输入层契约恢复而
+  降级或回退。
+- 当前已记录的两项旧测试预期债务不得误写为全部自动测试通过。
+
+---
+
+本蓝图在 `d947b04dd5243cd69a28ddd133d33cc76f640b37` 事故后形成的 M4、M5、CLI、
+helper、部署和验收更新，已在前述第 1、2、6 节及本节当前状态表中保留。事故前第 7
+至第 10 节涉及的 M4 规划、里程碑、测试门槛、实施纪律和待决事项，已由当前蓝图前述
+章节中的较新正式内容覆盖；为避免恢复过期状态和形成大段语义重复，本次不机械追加
+这些旧章节。
+
+当前准确结论仍为：M1–M3 与 TRIMEG 消费验收已通过；M4 LinkMesh 生成侧已通过；
+M5 第一条 `m3dc1 + single_region + lcfs` 真实 CLI 与 PNG 人工检查已通过；真实
+M3D-C1/SCOREC 外部消费验收仍为 PENDING；`single_region + first_wall`、
+`single_region + array_file` 与真实 `flux_surface` 均未实现。本次完整性恢复未引入
+新的设备、边界形态、求解器时间推进或其他技术规划。
