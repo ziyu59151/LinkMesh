@@ -43,23 +43,34 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | OFT/Triangle 二维网格生成 | 已实现；默认嵌套区域路径和单区域 LCFS 路径均有真实运行证据 |
 | `Mesh2D` 统一网格对象 | 已实现 |
 | TRIMEG HDF5 Writer | 已实现并通过既有 Python、h5py 和 MATLAB 消费验收 |
-| M3D-C1 analytic model TXT Writer | 已实现 |
-| PUMI native SMB Writer 与 C++ helper | LinkMesh 生成侧已实现并在锁定的服务器 PUMI 环境运行通过 |
-| 单区域真实 GFile M3D-C1 CLI | 已跑通，成功生成 TXT、rank-0 SMB 和 PNG |
-| PNG 人工检查 | 已通过，未观察到明显孔洞、越界、折叠或显著异常单元 |
-| 真实 M3D-C1/SCOREC 外部消费 | 待同门反馈；当前不能写成已通过 |
-| 多区域、多 face、三维和并行分区 | 当前未开放 |
+| M3D-C1 analytic model TXT Writer | PASSED |
+| PUMI native SMB Writer 与 C++ helper | 生成侧 PASSED |
+| 第一条真实 M3D-C1 CLI | PASSED |
+| PNG 人工检查 | PASSED |
+| M3D-C1 TXT+SMB 加载 | PASSED |
+| M3D-C1 初始化 | PASSED |
+| M3D-C1 时间推进主循环 | PENDING |
+| M3D-C1 中等或长时运行稳定性 | PENDING |
+| M3D-C1 物理结果正确性 | PENDING |
+| EAST 边界调查 | NEXT |
+| TCV/TRIMEG 实际消费 | PENDING |
+| `single_region + first_wall` | 未实现 |
+| `single_region + array_file` | 未实现 |
+| `single_region + flux_surface` | 未实现 |
+| 多 face、三维、自适应网格和并行分区 | 当前未开放 |
 
 当前最准确的结论是：
 
 ```text
-LinkMesh 单区域生成侧最小闭环：已跑通
+LinkMesh 单区域生成侧最小闭环：PASSED
 TXT、rank-0 SMB、PNG：已生成
-PNG 人工检查：已通过
-真实 M3D-C1/SCOREC 外部消费验收：待同门完成
+PNG 人工检查：PASSED
+TXT+SMB 加载：PASSED
+M3D-C1 初始化：PASSED
+M3D-C1 时间推进、稳定性和物理正确性：PENDING
 ```
 
-外部消费尚待验证，不表示 LinkMesh 生成失败；同样，生成侧运行成功和 PNG 检查通过也不能替代真实 M3D-C1/SCOREC 消费验收。
+TXT+SMB 已完成 M3D-C1 加载和初始化，但这不能扩大表述为完整 M3D-C1 模拟、时间推进、长期稳定性或物理科学验证已经通过。
 
 ---
 
@@ -73,6 +84,9 @@ LinkMesh/
 ├── LinkMesh_Architecture_Plan.md
 ├── Project_Tree.md
 ├── History.md
+├── examples/
+│   └── m3dc1_single_region/
+│       └── linkmesh.in.example
 │
 ├── src/
 │   └── linkmesh/
@@ -131,12 +145,15 @@ LinkMesh/
 
 需要注意：
 
+- `examples/m3dc1_single_region/linkmesh.in.example` 是供用户复制到 Case 并改名为 `linkmesh.in` 的标准配置示例；它不定义新的技术契约，正式配置规则仍以根目录技术蓝图为准。
 - LinkMesh 自有 Python 业务源码位于 `src/linkmesh/`。
 - M3D-C1 native SMB helper 的正式源码位于 `native/m3dc1_smb_helper/`。
 - `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
 - `docs/trimeg/` 中的 MATLAB 读取脚本和真实样例是 TRIMEG 文件契约的只读证据。
 - `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md` 是历史版本参考，不得覆盖根目录当前 `LinkMesh_Architecture_Plan.md` 的正式裁决。
-- 当前不把计划中的示例、安装元数据或配置模板画入实际仓库树。不存在或尚未确认存在的文件，不应被当成当前仓库组成。
+- 根目录当前 `LinkMesh_Architecture_Plan.md` 是唯一有效技术蓝图；`docs/linkmesh/` 中的旧版蓝图只能作为历史参考。
+- `build/` 是 native helper 的构建产物目录，不是正式源码目录，也不应作为 Git 源码提交。
+- 当前仓库树只列出已经存在且属于当前导读范围的文件；不存在或尚未确认存在的文件，不应被当成当前仓库组成。
 - 编译 native helper 时产生的 `build/` 目录属于构建产物，不是正式源码目录，也不应作为 Git 源码提交。
 
 ---
@@ -368,6 +385,8 @@ helper 的构建依赖、目标 PUMI 版本和定位优先级请查阅当前技�
 - 真实 DIII-D GFile 的单区域 M3D-C1 CLI 最小闭环已经成功。
 - TXT、rank-0 SMB 和 PNG 已实际生成。
 - PNG 已由 User 人工检查通过。
+- 配套 TXT+SMB 已完成 M3D-C1 外部加载和初始化。
+- M3D-C1 时间推进主循环、中等或长时运行稳定性以及物理结果正确性仍为 `PENDING`。
 - 最近记录的服务器配置与 CLI 专项测试仍有两项旧预期不一致，不能表述为“自动测试全部通过”。
 - 其中一项旧测试对未开放组合的异常类型预期过时；另一项仍期待 TRIMEG target 调用 SMB Writer，与当前 target 分派不一致。
 - 未实际执行的测试命令不能记录为通过或失败。
@@ -478,7 +497,7 @@ work/
 
 ### 最简命令
 
-进入 Case 后运行：
+标准配置示例位于 `examples/m3dc1_single_region/linkmesh.in.example`。用户可将其复制到 Case 目录并改名为 `linkmesh.in`，再进入 Case 运行：
 
 ```bash
 python -m linkmesh --config linkmesh.in
@@ -591,7 +610,8 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 - 通过 SCOREC/PUMI helper 写出串行 rank-0 native SMB；
 - 生成 PNG 人工检查图；
 - 写出 TRIMEG HDF5；
-- 通过配置文件和显式 CLI 参数编排当前已开放流程。
+- 通过配置文件和显式 CLI 参数编排当前已开放流程；
+- 通过 TXT+SMB 完成 M3D-C1 加载和初始化。
 
 ### 当前未开放
 
@@ -601,7 +621,9 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 - 环向切分；
 - MPI 并行分区；
 - `part*.smb` 或 `split_smb` 替代实现；
-- M3D-C1 消费端；
+- M3D-C1 时间推进主循环；
+- M3D-C1 中等或长时运行稳定性；
+- M3D-C1 物理结果正确性；
 - SMB loader 或 validator；
 - 通用边界插件系统；
 - Simmetrix、`.smd` 或 `.sms` 正式依赖。
@@ -614,12 +636,13 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 当前真正有意义的短期工作是：
 
-1. 等待同门完成配套 TXT+SMB 的真实 M3D-C1/SCOREC 外部消费并反馈结果。
-2. 根据外部消费证据判断是否需要最小兼容性修正，不建设 LinkMesh 自有 loader 或 validator。
-3. 在消费契约稳定后整理标准 `linkmesh.in` 配置模板和简明用户说明。
-4. 建立无需 `sudo` 的个人 Conda 用户级安装，使 Python 包和 native helper 一起进入用户环境。
-5. 清理开发阶段构建目录和命名，明确源码、构建产物与 Case 产物边界。
-6. 工具稳定后再评估服务器统一安装。
+1. 调查老师提供的 EAST 样例边界真实类型，判断其属于 LCFS、GFile 第一壁还是独立二维闭合轮廓。
+2. 若为 LCFS，复用 `single_region + lcfs`；若为第一壁，先完成 `first_wall` 蓝图契约确认；若为独立轮廓，先完成 `array_file` 蓝图契约确认。
+3. 使用确认后的 EAST 边界生成足够细密的 TXT、rank-0 SMB 和 PNG，在 M3D-C1 中重新完成加载和初始化，并进入时间推进主循环。计算边界需要包含 X-point 附近的目标磁拓扑研究区域，但当前不对该拓扑作额外推断。
+4. 并行调查 TCV 参考边界和 TRIMEG 实际消费。
+5. 只有真实场景证明全局 `dx` 不足时，才进一步评估局部加密。
+6. 建立无需 `sudo` 的个人 Conda 用户级安装，使 Python 包和 native helper 一起进入用户环境。
+7. 工具稳定后再评估服务器统一安装。
 
 遇到问题时：
 
