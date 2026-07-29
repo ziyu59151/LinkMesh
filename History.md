@@ -67,3 +67,13 @@
 服务器随后使用真实 DIII-D GFile 完成第一条正式用户 CLI 最小闭环：`target=m3dc1`、`profile=single_region`、`boundary_source=lcfs`、`plasma_dx=0.08 m`；数据流为 GFile → `read_gfile()` → LCFS → OFT single-region mesh → `Mesh2D` → 一次 `build_single_face_model_spec(mesh)` → 同一个 spec 驱动 TXT Writer 与 SMB Writer → Plotter PNG → CLI 正常退出。该次运行读取 LCFS 原始点 81、第一壁点 88，OFT 唯一边界点 55，生成 344 个节点、631 个三角形和 1 个区域；实际输出 TXT 2275 bytes、rank-0 SMB 44823 bytes、PNG 235388 bytes，日志完整运行到结束，SMB Writer/helper 实际完成 SCOREC/PUMI 2.2.9 `writeNative()`。这些大小和计数只作为本次运行身份与直接证据，不是格式常量或其他输入的测试期望。
 
 User 已人工检查该 PNG并判定通过：LCFS 轮廓显示合理，网格覆盖单区域，未观察到明显孔洞、越界、折叠或显著异常单元。PNG 人工检查只支持几何自检，不证明 SMB 可被 M3D-C1 正确消费。配套 TXT+SMB 已交给同门执行真实 M3D-C1/SCOREC 外部消费验收，当前状态仍为 `PENDING`；不得将其写成已通过，也不得因此把 M4 生成侧或 M5 第一条真实 CLI 闭环降回未通过。当前开放范围仍严格限定 single-region、single-face、LCFS 计算域；多区域、多 face、三维、环向分区与并行 split 未开放。当前组内建议使用一份 LinkMesh 服务同层级多个 Case，每个 Case 保存自己的配置、GFile、M3D-C1 输入和网格产物；先独立生成 TXT/SMB/PNG并人工检查，再提交求解，不在每次 `sbatch` 中无条件覆盖网格。近期采用无需 `sudo` 的源码或 Conda 用户级部署，服务器全局安装待工具稳定后再评估。
+
+24. 完成技术蓝图异常截断恢复与文档完整性修复。`LinkMesh_Architecture_Plan.md` 曾在提交 `d947b04` 中异常截断，丢失第 6A.1 节之后的大量正式内容；恢复提交为 `8f2aff3`。恢复工作补回输入层字段级契约，删除异常截断内容，同时保留事故后形成的 M4、M5、CLI、配置、native helper、部署与验收更新；未机械恢复已被较新正式内容覆盖的旧章节。第 1–23 条中的 `PENDING`、`NOT IMPLEMENTED` 及其他阶段性判断继续作为当时的真实历史保留，最新状态仅通过本轮新增条目顺延记录。
+
+25. 完成面向组内用户的单区域 M3D-C1 标准配置示例：新增 `examples/m3dc1_single_region/linkmesh.in.example`。该示例采用当前 TOML `schema_version=1`，表达 `target=m3dc1`、`profile=single_region`、`boundary_source=lcfs`、GFile 输入、`plasma_dx`、TXT model 输出、SMB 基础路径输出、PNG 输出及 `verbose` 日志；其存在用于说明当前已开放配置契约，不表示用户级安装、全局部署或完整模拟流程已经完成。
+
+26. 确认 LinkMesh 配套 TXT+SMB 的 M3D-C1 外部加载与初始化成果：组内同学已成功将 LinkMesh 生成的配套 TXT+SMB 加载到 M3D-C1，并使用该配套文件完成 M3D-C1 初始化。当前外部消费状态严格分层为：TXT+SMB 加载 **PASSED**；M3D-C1 初始化 **PASSED**；M3D-C1 时间推进主循环 **PENDING**；中等或长时运行稳定性 **PENDING**；物理结果正确性 **PENDING**。成功加载与初始化不得扩大表述为完整 M3D-C1 模拟、时间推进、长期稳定性或物理科学验证已经通过；PNG 人工检查也不构成时间推进或物理正确性证据。本条不记录未经提供的时间步数、运行时长、物理结果、测试输出、提交号或日志。
+
+27. 完成当前有效技术蓝图的章节结构整理：蓝图形成连续的第 1 至第 10 节；输入、配置与 CLI 集中到第 5 节；TRIMEG HDF5 契约集中到第 6 节；M3D-C1 TXT、SMB 与 native helper 契约集中到第 7 节；真实场景、使用与部署路线集中到第 8 节；里程碑、测试与验收集中到第 9 节；变更纪律、停止条件与待决事项集中到第 10 节。本次整理未改变正式字段、接口、HDF5 契约、SMB 交换契约、CLI 参数、实现状态或验收结论；同时清理旧 CLI 重复说明，配置权威优先级继续保持 `内建默认值 < linkmesh.in < 用户显式 CLI`。
+
+28. 下一阶段主线转为 EAST 真实场景调查：首先调查老师提供的 EAST 样例边界，判断其是 LCFS、GFile 第一壁还是独立二维闭合轮廓，当前边界类型尚未确认。若为 LCFS，复用现有 `single_region + lcfs`；若为第一壁或独立闭合轮廓，先完成蓝图契约确认，再决定实施 `single_region + first_wall` 或 `single_region + array_file`；随后使用足够细密的 EAST 网格进入 M3D-C1 时间推进主循环。EAST 材料调查、细密网格生成和时间推进均未在本条中记为完成。TCV/TRIMEG 保持为并行的第二条真实场景验证路线，当前未将 TCV 边界调查或 TRIMEG 实际消费记为完成。当前仍未实现或未开放：`single_region + first_wall`、`single_region + array_file`、`flux_surface`、多 face、三维、自适应网格和并行分区。
