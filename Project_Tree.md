@@ -184,38 +184,33 @@ User 当前明确决定
 
 ## 5. 核心数据流
 
-当前单区域 M3D-C1 用户链路可按以下方式理解：
+TRIMEG 路径：
 
 ```text
-CLI / linkmesh.in
-  │
-  ↓
-src/linkmesh/config.py
-  │  合并内建默认值、配置文件和显式 CLI 参数
-  ↓
-src/linkmesh/readers/gfile_reader.py
-  │  通过 OFT GEQDSKEquilibrium 读取 GFile
-  ↓
-src/linkmesh/mesher/oft_adapter.py
-  │  调用 OFT/TokaMaker/Triangle 生成二维三角网格
-  ↓
-src/linkmesh/mesh.py :: Mesh2D
-  │
-  ├──→ src/linkmesh/m3dc1_model.py
-  │       │  从有序计算域外边界构造共享 M3DC1ModelSpec
-  │       ├──→ writers/m3dc1_model_writer.py → analytic model TXT
-  │       └──→ writers/smb_writer.py
-  │               ↓
-  │             native/m3dc1_smb_helper/
-  │               ↓  SCOREC/PUMI APF/MDS + writeNative()
-  │             rank-0 native SMB
-  │
-  ├──→ writers/hdf5_writer.py → TRIMEG HDF5
-  │
-  └──→ utils/plotter.py → PNG 人工检查图
+GFile/EQDSK
+  → Reader
+  → OFT/Triangle
+  → Mesh2D
+  → HDF5 Writer
+  → TRIMEG HDF5
+  → MATLAB/TRIMEG 消费
 ```
 
-TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric vertices、edges、loop、face 和分类标签一致。
+M3D-C1 路径：
+
+```text
+linkmesh.in / CLI
+  → Config
+  → GFile Reader
+  → OFT/Triangle
+  → Mesh2D
+  → 共享 M3DC1ModelSpec
+  → TXT Writer + SMB Writer/native helper
+  → TXT + rank-0 SMB
+  → M3D-C1 加载和初始化
+```
+
+TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric vertices、edges、loop、face 和分类标签一致。SMB 是由 PUMI 写出的 native 二进制文件。当前 TXT+SMB 已完成 M3D-C1 加载和初始化；时间推进仍待验证。
 
 ---
 
