@@ -53,6 +53,7 @@ from linkmesh.mesher.oft_adapter import (
     _normalize_single_region_polygon,
     _signed_area_closed,
     build_oft_domain_from_gfile,
+    build_single_region_domain_from_boundary,
     build_single_region_domain_from_lcfs,
     generate_mesh,
     mesh_from_oft_domain,
@@ -1668,6 +1669,35 @@ class TestGenerateMeshComposition:
         m_mesh.assert_called_once_with(sentinel_domain)
         assert result is sentinel_mesh
 
+    def test_generate_mesh_single_region_array_file_dispatch(self):
+        boundary = _cw_rect_points_4()
+        sentinel_domain = object()
+        sentinel_mesh = object()
+
+        with patch(
+            "linkmesh.mesher.oft_adapter.build_single_region_domain_from_boundary",
+            return_value=sentinel_domain,
+        ) as m_build, patch(
+            "linkmesh.mesher.oft_adapter.mesh_from_oft_domain",
+            return_value=sentinel_mesh,
+        ) as m_mesh, patch(
+            "linkmesh.mesher.oft_adapter.build_oft_domain_from_gfile",
+        ) as m_nested:
+            result = generate_mesh(
+                boundary,
+                plasma_dx=0.04,
+                profile="single_region",
+                boundary_source="array_file",
+            )
+
+        m_build.assert_called_once()
+        build_args, build_kwargs = m_build.call_args
+        assert build_args[0] is boundary
+        assert build_kwargs["plasma_dx"] == 0.04
+        assert not m_nested.called
+        m_mesh.assert_called_once_with(sentinel_domain)
+        assert result is sentinel_mesh
+
     def test_generate_mesh_unimplemented_combo_raises(self):
         # 未实现的 profile/source 组合应抛 NotImplementedError（不回退 nested）。
         gfile = FakeGFileData(*_square_contour(), None, None)
@@ -1812,6 +1842,63 @@ class TestSingleRegionPolygonNormalization:
     def test_rejects_invalid_shape_or_non_finite_input(self, bad):
         with pytest.raises(ValueError):
             _normalize_single_region_polygon(bad)
+
+
+class TestBuildSingleRegionDomainFromBoundary:
+    def test_array_boundary_creates_only_one_plasma_region(self):
+        boundary = _cw_rect_points_4()
+        holder = SingleRegionDomainHolder()
+        fake_gs_domain_cls = MagicMock(return_value=holder)
+
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=fake_gs_domain_cls,
+        ):
+            domain = build_single_region_domain_from_boundary(
+                boundary,
+                plasma_dx=0.045,
+            )
+
+        assert domain is holder
+        assert holder.add_polygon.call_count == 1
+        assert len(holder.regions) == 1
+        define_args = holder.define_region.call_args.args
+        assert define_args == ("plasma", 0.045, "plasma")
+        assert getattr(domain, _OUTER_REGION_ATTR) is holder.regions[0]
+        assert not hasattr(holder, "add_rectangle")
+        assert not hasattr(holder, "add_annulus")
+
+    def test_array_boundary_is_copied_before_add_polygon(self):
+        boundary = _cw_rect_points_4()
+        snapshot = boundary.copy()
+        holder = SingleRegionDomainHolder()
+
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+            return_value=MagicMock(return_value=holder),
+        ):
+            build_single_region_domain_from_boundary(boundary)
+
+        polygon = holder.add_polygon.call_args.args[0]
+        np.testing.assert_array_equal(boundary, snapshot)
+        np.testing.assert_array_equal(polygon, snapshot)
+        assert not np.shares_memory(polygon, boundary)
+
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            np.array([0.0, 1.0, 2.0]),
+            np.array([[0.0, 0.0], [1.0, np.nan], [1.0, 0.0]]),
+            np.array([[0.0, 0.0], [1.0, np.inf], [1.0, 0.0]]),
+        ],
+    )
+    def test_invalid_array_boundary_fails_before_oft(self, bad):
+        with patch(
+            "linkmesh.mesher.oft_adapter._load_gs_domain_class",
+        ) as loader:
+            with pytest.raises(ValueError):
+                build_single_region_domain_from_boundary(bad)
+        assert not loader.called
 
 
 class TestBuildSingleRegionDomainFromLcfs:

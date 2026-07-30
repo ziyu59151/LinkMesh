@@ -79,6 +79,11 @@ def _install_cli_mocks(monkeypatch, gfile_data=None, mesh=None):
         mesh = _fake_mesh()
 
     m_read = MagicMock(return_value=gfile_data)
+    boundary = __import__("numpy").array(
+        [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]],
+        dtype=float,
+    )
+    m_read_boundary = MagicMock(return_value=boundary)
     m_generate = MagicMock(return_value=mesh)
     m_write_hdf5 = MagicMock(return_value=None)
     m_build_spec = MagicMock(name="build_single_face_model_spec")
@@ -90,6 +95,11 @@ def _install_cli_mocks(monkeypatch, gfile_data=None, mesh=None):
 
     monkeypatch.setattr(
         "linkmesh.readers.gfile_reader.read_gfile", m_read, raising=True
+    )
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_boundary_file",
+        m_read_boundary,
+        raising=True,
     )
     monkeypatch.setattr(
         "linkmesh.mesher.oft_adapter.generate_mesh", m_generate, raising=True
@@ -118,6 +128,8 @@ def _install_cli_mocks(monkeypatch, gfile_data=None, mesh=None):
         "gfile_data": gfile_data,
         "mesh": mesh,
         "read_gfile": m_read,
+        "read_boundary_file": m_read_boundary,
+        "boundary": boundary,
         "generate_mesh": m_generate,
         "write_hdf5": m_write_hdf5,
         "build_spec": m_build_spec,
@@ -720,17 +732,27 @@ class TestInputLayerIRunIntegration:
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
 
-    def test_single_region_array_file_not_implemented_before_oft(self, monkeypatch, tmp_path):
+    def test_single_region_array_file_uses_boundary_reader_only(
+        self, monkeypatch, tmp_path
+    ):
         monkeypatch.chdir(tmp_path)
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse([
             "--no-config",
-            "--profile", "single_region", "--boundary-source", "array_file",
-            "--array-file", "b.csv",
+            "--target", "mesh_only",
+            "--profile", "single_region",
+            "--boundary-source", "array_file",
+            "--array-file", "EAST",
         ])
-        with pytest.raises(NotImplementedError):
-            cli._run(args)
-        assert mocks["generate_mesh"].call_count == 0
+        cli._run(args)
+
+        assert mocks["read_boundary_file"].call_count == 1
+        assert mocks["read_gfile"].call_count == 0
+        assert mocks["generate_mesh"].call_count == 1
+        mesh_args, mesh_kwargs = mocks["generate_mesh"].call_args
+        assert mesh_args[0] is mocks["boundary"]
+        assert mesh_kwargs["profile"] == "single_region"
+        assert mesh_kwargs["boundary_source"] == "array_file"
 
     def test_forbidden_nested_lcfs_fails_before_oft(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
@@ -772,6 +794,46 @@ class TestInputLayerIRunIntegration:
         assert mocks["write_hdf5"].call_count == 0
         assert mocks["build_spec"].call_count == 0
         assert mocks["write_model"].call_count == 0
+        assert mocks["write_smb"].call_count == 0
+
+    def test_m3dc1_array_file_reuses_one_spec(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--no-config",
+            "--target", "m3dc1",
+            "--profile", "single_region",
+            "--boundary-source", "array_file",
+            "--array-file", "EAST",
+            "--model", "model.txt",
+            "--smb", "mesh.smb",
+        ])
+        cli._run(args)
+
+        assert mocks["read_gfile"].call_count == 0
+        assert mocks["read_boundary_file"].call_count == 1
+        assert mocks["generate_mesh"].call_count == 1
+        assert mocks["build_spec"].call_count == 1
+        model_args, _ = mocks["write_model"].call_args
+        smb_args, _ = mocks["write_smb"].call_args
+        assert model_args[0] is mocks["spec"]
+        assert smb_args[1] is mocks["spec"]
+        assert mocks["write_hdf5"].call_count == 0
+
+    def test_trimeg_array_file_does_not_call_smb(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--no-config",
+            "--target", "trimeg",
+            "--profile", "single_region",
+            "--boundary-source", "array_file",
+            "--array-file", "EAST",
+        ])
+        cli._run(args)
+
+        assert mocks["write_hdf5"].call_count == 1
+        assert mocks["build_spec"].call_count == 0
         assert mocks["write_smb"].call_count == 0
 
     def test_array_file_conflict_with_gfile_fails(self, monkeypatch, tmp_path):

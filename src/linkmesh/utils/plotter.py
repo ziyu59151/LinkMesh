@@ -61,7 +61,7 @@ def _closed_for_display(r, z):
 
 
 def plot_mesh(
-    gfile_data: "GFileData",
+    gfile_data: Optional["GFileData"],
     mesh: "Mesh2D",
     filepath: str,
     show_boundary_markers: bool = True,
@@ -70,7 +70,7 @@ def plot_mesh(
     """绘制 LCFS 边界与生成三角网格的叠加图，输出 PNG 自检图。
 
     参数：
-        gfile_data:            GFileData 对象，提供 LCFS 和磁轴坐标
+        gfile_data:            可选 GFileData；为 None 时不绘制平衡参考信息
         mesh:                  Mesh2D 对象，提供三角网格数据
         filepath:              输出 .png 文件路径
         show_boundary_markers: 是否用不同颜色标注边界标记类型（仅当存在边界段时）
@@ -155,41 +155,64 @@ def plot_mesh(
         # 仅绘制网格线
         ax.triplot(triang, color="#555555", linewidth=0.3, alpha=0.8)
 
-    # --- 叠加绘制 LCFS 边界曲线（红色实线，显示闭合）---
-    lcfs_r_disp, lcfs_z_disp = _closed_for_display(gfile_data.lcfs_r, gfile_data.lcfs_z)
-    ax.plot(
-        lcfs_r_disp,
-        lcfs_z_disp,
-        color="red",
-        linewidth=1.5,
-        label="LCFS",
-        zorder=3,
-    )
-
-    # --- 若有第一壁数据，叠加绘制第一壁曲线（蓝色虚线，显示闭合）---
-    if gfile_data.wall_r is not None and gfile_data.wall_z is not None:
-        wall_r_disp, wall_z_disp = _closed_for_display(gfile_data.wall_r, gfile_data.wall_z)
+    # --- 绘制实际计算域边界；该边界不暗示 LCFS/第一壁等物理语义 ---
+    if mesh.outer_boundary is not None:
+        boundary_r, boundary_z = _closed_for_display(
+            mesh.outer_boundary[:, 0],
+            mesh.outer_boundary[:, 1],
+        )
         ax.plot(
-            wall_r_disp,
-            wall_z_disp,
-            color="blue",
-            linewidth=1.2,
-            linestyle="--",
-            label="First wall",
+            boundary_r,
+            boundary_z,
+            color="black",
+            linewidth=1.6,
+            label="Computational boundary",
             zorder=3,
         )
 
-    # --- 标注磁轴位置（红色叉号）---
-    ax.plot(
-        gfile_data.rmaxis,
-        gfile_data.zmaxis,
-        marker="x",
-        color="red",
-        markersize=8,
-        markeredgewidth=2,
-        label=f"Magnetic axis ({gfile_data.rmaxis:.3f}, {gfile_data.zmaxis:.3f})",
-        zorder=4,
-    )
+    # --- GFile 平衡信息仅作为可选参考叠加 ---
+    if gfile_data is not None:
+        lcfs_r_disp, lcfs_z_disp = _closed_for_display(
+            gfile_data.lcfs_r,
+            gfile_data.lcfs_z,
+        )
+        ax.plot(
+            lcfs_r_disp,
+            lcfs_z_disp,
+            color="red",
+            linewidth=1.5,
+            label="LCFS",
+            zorder=3,
+        )
+
+        if gfile_data.wall_r is not None and gfile_data.wall_z is not None:
+            wall_r_disp, wall_z_disp = _closed_for_display(
+                gfile_data.wall_r,
+                gfile_data.wall_z,
+            )
+            ax.plot(
+                wall_r_disp,
+                wall_z_disp,
+                color="blue",
+                linewidth=1.2,
+                linestyle="--",
+                label="First wall",
+                zorder=3,
+            )
+
+        ax.plot(
+            gfile_data.rmaxis,
+            gfile_data.zmaxis,
+            marker="x",
+            color="red",
+            markersize=8,
+            markeredgewidth=2,
+            label=(
+                f"Magnetic axis ({gfile_data.rmaxis:.3f}, "
+                f"{gfile_data.zmaxis:.3f})"
+            ),
+            zorder=4,
+        )
 
     # --- 旧边界段绘制：仅当 boundary_segments/boundary_markers 非空时 ---
     has_boundary = (

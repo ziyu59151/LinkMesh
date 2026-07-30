@@ -636,29 +636,26 @@ def _validate_required_fields(cfg: EffectiveConfig) -> None:
 # 当前阶段实现边界（输入层 I + 输入层 II）                                       #
 # --------------------------------------------------------------------------- #
 
-# 当前已实现的 single_region 来源：single_region + lcfs。
-# M5 仅额外开放 target=m3dc1 的该组合；其余 single_region 组合
-#（first_wall/array_file/flux_surface）仍明确未实现。
+# 当前已实现的 single_region 来源：lcfs 与 array_file。
+# first_wall/flux_surface 仍明确未实现。
 _IMPLEMENTED_M3DC1_PROFILE = "single_region"
-_IMPLEMENTED_M3DC1_SOURCE = "lcfs"
-_IMPLEMENTED_SINGLE_REGION_SOURCES = ("lcfs",)
+_IMPLEMENTED_M3DC1_SOURCES = ("lcfs", "array_file")
+_IMPLEMENTED_SINGLE_REGION_SOURCES = ("lcfs", "array_file")
 
 
 def _validate_current_stage(cfg: EffectiveConfig) -> None:
     """当前阶段（输入层 I + 输入层 II）业务能力边界校验。
 
     - flux_surface：首批明确未实现（第 6A.8 节，禁止缩放 LCFS 伪造磁面）；
-    - target=m3dc1：仅允许 M5 第一条 single_region + lcfs CLI 闭环；
-    - single_region：输入层 II 已实现 single_region + lcfs（mesh_only / trimeg），
-      M5 额外开放 m3dc1 + single_region + lcfs；
-      其余 single_region 组合（first_wall/array_file）仍属输入层 III–IV，
-      明确报未实现，不回退 artificial_outer。
+    - target=m3dc1：允许 single_region + lcfs/array_file；
+    - single_region：已实现 lcfs 与 array_file；
+      first_wall 仍明确报未实现，不回退 artificial_outer。
 
     当前进入业务执行的组合：
         - target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer
           （已实现回归路径）；
-        - target ∈ {trimeg, mesh_only} + single_region + lcfs（输入层 II）；
-        - target=m3dc1 + single_region + lcfs（M5 第一条 CLI 闭环）。
+        - target ∈ {trimeg, mesh_only} + single_region + lcfs/array_file；
+        - target=m3dc1 + single_region + lcfs/array_file。
     """
     if cfg.boundary_source == "flux_surface":
         raise NotImplementedError(
@@ -669,19 +666,19 @@ def _validate_current_stage(cfg: EffectiveConfig) -> None:
     if cfg.target == "m3dc1":
         if not (
             cfg.profile == _IMPLEMENTED_M3DC1_PROFILE
-            and cfg.boundary_source == _IMPLEMENTED_M3DC1_SOURCE
+            and cfg.boundary_source in _IMPLEMENTED_M3DC1_SOURCES
         ):
             raise NotImplementedError(
-                f"target=m3dc1 当前仅支持 single_region + lcfs（{_combo(cfg)}）"
+                "target=m3dc1 当前仅支持 single_region + lcfs/array_file"
+                f"（{_combo(cfg)}）"
             )
         return
 
     if cfg.profile == "single_region":
-        # 输入层 II 已实现 single_region + lcfs；其余 single_region 组合仍未实现。
         if cfg.boundary_source not in _IMPLEMENTED_SINGLE_REGION_SOURCES:
             raise NotImplementedError(
                 f"profile=single_region + boundary_source={cfg.boundary_source} "
                 f"尚未实现（{_combo(cfg)}）："
-                "single_region + first_wall/array_file 属输入层 III–IV，"
-                "当前阶段未实现，不回退 artificial_outer"
+                "single_region + first_wall 当前阶段未实现，"
+                "不回退 artificial_outer"
             )

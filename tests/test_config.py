@@ -667,8 +667,8 @@ class TestCurrentStage:
                 cwd=tmp_path,
             )
 
-    def test_m3dc1_non_lcfs_forbidden(self, tmp_path):
-        with pytest.raises(ConfigError, match="single_region"):
+    def test_m3dc1_first_wall_not_implemented(self, tmp_path):
+        with pytest.raises(NotImplementedError, match="single_region"):
             load_effective_config(
                 _overrides(
                     target="m3dc1",
@@ -682,6 +682,24 @@ class TestCurrentStage:
                 cwd=tmp_path,
             )
 
+    def test_m3dc1_single_region_array_file_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(
+                target="m3dc1",
+                profile="single_region",
+                boundary_source="array_file",
+                array_file="EAST",
+                model="model.txt",
+                smb="mesh.smb",
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert cfg.gfile_path is None
+        assert cfg.array_file_path == (tmp_path / "EAST").resolve()
+        assert cfg.model_path == (tmp_path / "model.txt").resolve()
+        assert cfg.smb_path == (tmp_path / "mesh.smb").resolve()
+
     def test_single_region_first_wall_not_implemented(self, tmp_path):
         with pytest.raises(NotImplementedError, match="single_region"):
             load_effective_config(
@@ -690,13 +708,19 @@ class TestCurrentStage:
                 no_config=True, cwd=tmp_path,
             )
 
-    def test_single_region_array_file_not_implemented(self, tmp_path):
-        with pytest.raises(NotImplementedError, match="single_region"):
-            load_effective_config(
-                _overrides(profile="single_region",
-                           boundary_source="array_file", array_file="b.csv"),
-                no_config=True, cwd=tmp_path,
-            )
+    def test_single_region_array_file_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(
+                profile="single_region",
+                boundary_source="array_file",
+                array_file="boundary",
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert cfg.boundary_source == "array_file"
+        assert cfg.array_file_path == (tmp_path / "boundary").resolve()
+        assert cfg.gfile_path is None
 
     def test_mesh_only_nested_artificial_allowed(self, tmp_path):
         # mesh_only + nested_three_region + artificial_outer 属首批目标，允许通过。

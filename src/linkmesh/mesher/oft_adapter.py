@@ -911,7 +911,56 @@ def _normalize_single_region_polygon(contour_in: Any) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------- #
-# 2c. LCFS 单区域来源策略层（v2.3 输入层 II）                                   #
+# 2c. 统一 single-region polygon 策略层                                        #
+# --------------------------------------------------------------------------- #
+
+def build_single_region_domain_from_boundary(
+    boundary: Any,
+    *,
+    plasma_dx: float = 0.08,
+) -> Any:
+    """Use one validated polygon as the only OFT plasma region boundary.
+
+    The input polygon is normalized only for OFT 26.6's locked merge
+    threshold. The authoritative Mesh2D.outer_boundary is still obtained from
+    the captured Region._resampled_points after build_mesh().
+    """
+    if not (np.isfinite(plasma_dx) and plasma_dx > 0):
+        raise ValueError(f"plasma_dx 必须是有限正数，实际={plasma_dx}")
+
+    polygon = np.array(boundary, dtype=np.float64, copy=True)
+    if polygon.ndim != 2 or polygon.shape[1] != 2:
+        raise ValueError(
+            f"single-region boundary 必须为 (B,2)，实际 shape={polygon.shape}"
+        )
+    if polygon.shape[0] < 3:
+        raise ValueError(
+            f"single-region boundary 至少需要 3 个点，实际={polygon.shape[0]}"
+        )
+    if not np.all(np.isfinite(polygon)):
+        raise ValueError("single-region boundary 含非有限值（NaN/Inf）")
+
+    polygon = _normalize_single_region_polygon(polygon)
+
+    gs_Domain = _load_gs_domain_class()
+    domain = gs_Domain()
+    domain.define_region("plasma", plasma_dx, "plasma")
+
+    regions = getattr(domain, "regions", None)
+    if regions is None or not hasattr(regions, "__len__"):
+        raise ValueError(
+            "domain.regions 不存在或不是预期容器：无法捕获 single-region Region 引用，"
+            "失败即停，不回退控制点/idxevert/自行重采样"
+        )
+    n_before = len(regions)
+
+    domain.add_polygon(polygon, "plasma")
+    _capture_and_attach_outer_region(domain, n_before)
+    return domain
+
+
+# --------------------------------------------------------------------------- #
+# 2d. LCFS 单区域来源策略层（v2.3 输入层 II）                                   #
 # --------------------------------------------------------------------------- #
 
 def build_single_region_domain_from_lcfs(
@@ -972,35 +1021,10 @@ def build_single_region_domain_from_lcfs(
         name="LCFS",
     )
 
-    # OFT 26.6 默认 merge_thresh=1e-4 m。进入 add_polygon() 前稳定删除
-    # 相邻距离严格小于该阈值的后一个控制点，避免多个局部点映射到同一全局点后
-    # 在 Region._resampled_points 有序回写点列中产生重复坐标。
-    # 该规则仅作用于 single-region polygon，不改变 nested 路径。
-    lcfs = _normalize_single_region_polygon(lcfs)
-
-    # --- 构造 OFT Domain（延迟导入）---
-    gs_Domain = _load_gs_domain_class()
-    domain = gs_Domain()
-
-    # single-region：唯一 plasma 区域，网格尺度使用 plasma_dx。
-    domain.define_region("plasma", plasma_dx, "plasma")
-
-    # --- 捕获唯一 Region 对象引用（add_polygon 前后 domain.regions 长度差异）---
-    regions = getattr(domain, "regions", None)
-    if regions is None or not hasattr(regions, "__len__"):
-        raise ValueError(
-            "domain.regions 不存在或不是预期容器：无法捕获 single-region Region 引用，"
-            "失败即停，不回退控制点/idxevert/自行重采样"
-        )
-    n_before = len(regions)
-
-    # LCFS 作为唯一计算域边界与唯一区域边界（无 parent_name，无人工外框）。
-    domain.add_polygon(lcfs, "plasma")
-
-    # 捕获并附加唯一 Region 引用（复用集中 helper，失败即停并保留异常链）
-    _capture_and_attach_outer_region(domain, n_before)
-
-    return domain
+    return build_single_region_domain_from_boundary(
+        lcfs,
+        plasma_dx=plasma_dx,
+    )
 
 
 def _prepare_contour(r: Any, z: Any, *, name: str) -> np.ndarray:
@@ -1110,6 +1134,13 @@ def generate_mesh(
         )
         return mesh_from_oft_domain(domain)
 
+    if profile == "single_region" and boundary_source == "array_file":
+        domain = build_single_region_domain_from_boundary(
+            gfile_data,
+            plasma_dx=plasma_dx,
+        )
+        return mesh_from_oft_domain(domain)
+
     if profile == "nested_three_region" and boundary_source == "artificial_outer":
         domain = build_oft_domain_from_gfile(
             gfile_data,
@@ -1124,5 +1155,5 @@ def generate_mesh(
         "generate_mesh 尚未实现该 profile/boundary_source 组合："
         f"profile={profile!r}, boundary_source={boundary_source!r}。"
         "当前 Adapter 仅支持 nested_three_region+artificial_outer 与 "
-        "single_region+lcfs。"
+        "single_region+lcfs/array_file。"
     )

@@ -114,7 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="array_file",
         default=UNSET,
         metavar="PATH",
-        help="array boundary CSV 路径（boundary_source=array_file 时使用）",
+        help="counted R-Z boundary text 路径（boundary_source=array_file 时使用）",
     )
 
     # ------------------------------------------------------------------ #
@@ -353,28 +353,40 @@ def _run(args: argparse.Namespace) -> None:
         )
 
     # ------------------------------------------------------------------ #
-    # Step 2：读取 GFile（M1）                                             #
-    # 当前阶段进入业务执行的组合（config 已保证其余组合报未实现/失败）：      #
-    #   - target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer #
-    #   - target ∈ {trimeg, mesh_only} + single_region + lcfs（输入层 II） #
-    # 上述两组均以 GFile 为输入，需要 gfile_path（required fields 已保证）。 #
-    # GFile 只读取一次。                                                    #
+    # Step 2：按 boundary_source 读取唯一输入。                              #
+    # lcfs/artificial_outer 读取一次 GFile；array_file 读取一次 counted      #
+    # R-Z boundary text，且不得读取 GFile。                                  #
     # ------------------------------------------------------------------ #
-    from linkmesh.readers.gfile_reader import read_gfile
+    gfile_data = None
+    if cfg.boundary_source == "array_file":
+        from linkmesh.readers.boundary_reader import read_boundary_file
 
-    gfile_str = str(cfg.gfile_path)
-    if verbose:
-        print(f"[LinkMesh] 读取 GFile：{gfile_str}")
+        boundary_path = str(cfg.array_file_path)
+        if verbose:
+            print(f"[LinkMesh] 读取外部计算边界：{boundary_path}")
+        mesh_input = read_boundary_file(boundary_path)
+        if verbose:
+            print(f"  计算边界点数: {mesh_input.shape[0]}")
+    else:
+        from linkmesh.readers.gfile_reader import read_gfile
 
-    gfile_data = read_gfile(gfile_str)
+        gfile_path = str(cfg.gfile_path)
+        if verbose:
+            print(f"[LinkMesh] 读取 GFile：{gfile_path}")
 
-    if verbose:
-        print(f"  LCFS 点数: {len(gfile_data.lcfs_r)}")
-        print(f"  磁轴: (R={gfile_data.rmaxis:.4f} m, Z={gfile_data.zmaxis:.4f} m)")
-        if gfile_data.wall_r is not None:
-            print(f"  第一壁点数: {len(gfile_data.wall_r)}")
-        else:
-            print("  第一壁: 无（GFile 不含 limiter 数据）")
+        gfile_data = read_gfile(gfile_path)
+        mesh_input = gfile_data
+
+        if verbose:
+            print(f"  LCFS 点数: {len(gfile_data.lcfs_r)}")
+            print(
+                f"  磁轴: (R={gfile_data.rmaxis:.4f} m, "
+                f"Z={gfile_data.zmaxis:.4f} m)"
+            )
+            if gfile_data.wall_r is not None:
+                print(f"  第一壁点数: {len(gfile_data.wall_r)}")
+            else:
+                print("  第一壁: 无（GFile 不含 limiter 数据）")
 
     # ------------------------------------------------------------------ #
     # Step 3：生成网格（M2 正式路径：OFT Adapter）                          #
@@ -385,8 +397,11 @@ def _run(args: argparse.Namespace) -> None:
     from linkmesh.mesher.oft_adapter import generate_mesh
 
     if verbose:
-        if cfg.profile == "single_region" and cfg.boundary_source == "lcfs":
-            print("[LinkMesh] 调用 OFT gs_Domain 生成 single-region LCFS 二维三角网格...")
+        if cfg.profile == "single_region":
+            print(
+                "[LinkMesh] 调用 OFT gs_Domain 生成 single-region "
+                f"{cfg.boundary_source} 二维三角网格..."
+            )
             print(f"  网格尺度: plasma_dx={cfg.plasma_dx} m（single-region 唯一尺度）")
         else:
             print("[LinkMesh] 调用 OFT gs_Domain 生成 nested-three-region 二维三角网格...")
@@ -396,7 +411,7 @@ def _run(args: argparse.Namespace) -> None:
             )
 
     mesh = generate_mesh(
-        gfile_data,
+        mesh_input,
         plasma_dx=cfg.plasma_dx,
         vacuum_dx=cfg.vacuum_dx,
         outer_dx=cfg.outer_dx,
