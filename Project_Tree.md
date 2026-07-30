@@ -362,8 +362,10 @@ main.cc + CMakeLists.txt
 4. 源码和可执行文件不是两个不同的 helper，而是同一组件的源代码与构建结果。
 5. helper 是 LinkMesh M3D-C1 输出链的正式组成部分，不是临时 probe。
 6. helper 不重新剖分网格；它只根据 Python 提供的节点、连接关系、几何模型和分类信息构造 APF/MDS 网格，并调用 SCOREC/PUMI 官方接口写出 native SMB。
-7. 常见 `build/` 目录只是 CMake 生成的构建产物目录，不是正式源码，不应作为 Git 源码提交。
-8. 普通用户不需要理解内部交换文件；该内容仅属于 Python Writer 与 helper 的内部实现契约。
+7. helper 连接 Python SMB Writer 与 SCOREC/PUMI；它不读取 GFile 或边界文件，不调用
+   OFT/Triangle，也不重新生成三角网格。
+8. 常见 `build/` 目录只是 CMake 生成的构建产物目录，不是正式源码，不应作为 Git 源码提交。
+9. 普通用户不需要理解内部交换文件；该内容仅属于 Python Writer 与 helper 的内部实现契约。
 
 当前仓库尚未完成让所有用户在任意目录无条件调用 helper 的统一安装。运行时仍需保证：
 
