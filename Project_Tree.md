@@ -52,7 +52,8 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | M3D-C1 时间推进主循环 | PENDING |
 | M3D-C1 中等或长时运行稳定性 | PENDING |
 | M3D-C1 物理结果正确性 | PENDING |
-| EAST 边界调查 | NEXT |
+| EAST counted R-Z 调查与生成侧 | PASSED |
+| EAST M3D-C1 加载、初始化与时间推进 | PENDING |
 | TCV/TRIMEG 实际消费 | PENDING |
 | `single_region + first_wall` | 未实现 |
 | `single_region + array_file` | 未实现 |
@@ -99,6 +100,7 @@ LinkMesh/
 │       │
 │       ├── readers/
 │       │   ├── __init__.py
+│       │   ├── boundary_reader.py
 │       │   └── gfile_reader.py
 │       │
 │       ├── mesher/
@@ -147,7 +149,10 @@ LinkMesh/
 
 - `examples/m3dc1_single_region/linkmesh.in.example` 是供用户复制到 Case 并改名为 `linkmesh.in` 的标准配置示例；它不定义新的技术契约，正式配置规则仍以根目录技术蓝图为准。
 - LinkMesh 自有 Python 业务源码位于 `src/linkmesh/`。
-- M3D-C1 native SMB helper 的正式源码位于 `native/m3dc1_smb_helper/`。
+- M3D-C1 native SMB helper 的当前正式源码位于 `native/m3dc1_smb_helper/`。
+- 已批准但尚未实施的迁移目标为 `native/linkmesh_scorec_helper/`、
+  `linkmesh-scorec-helper` 和 `LINKMESH_SCOREC_HELPER`；当前目录树不得提前按目标
+  名称改写。
 - `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
 - `docs/trimeg/` 中的 MATLAB 读取脚本和真实样例是 TRIMEG 文件契约的只读证据。
 - `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md` 是历史版本参考，不得覆盖根目录当前 `LinkMesh_Architecture_Plan.md` 的正式裁决。
@@ -248,6 +253,17 @@ python -m linkmesh
 - **职责**：调用 OFT `GEQDSKEquilibrium`，提取 LCFS、第一壁、磁轴和基本平衡信息。
 - **输出**：`GFileData`。
 - **不负责**：手写 GFile 文本解析、网格生成或文件写出。
+
+### `src/linkmesh/readers/boundary_reader.py`
+
+- **输入**：counted R-Z boundary text。
+- **职责**：严格读取计数头和 R-Z 米制坐标，验证并规范化单一闭合计算边界。
+- **输出**：独立的二维边界数组。
+- **不负责**：读取 GFile、调用 OFT/Triangle、判断边界物理来源或生成网格。
+
+EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节点、329 个三角形和
+1 个区域，并成功生成 TXT、rank-0 SMB 和 PNG；M3D-C1 加载、初始化和时间推进仍待
+分层验收。
 
 ### `src/linkmesh/mesher/oft_adapter.py`
 
@@ -356,7 +372,29 @@ main.cc + CMakeLists.txt
 - 编译后的 helper 可由 SMB Writer 按正式定位规则找到；
 - helper 所依赖的 SCOREC/PUMI 与 MPI 环境相容。
 
-helper 的构建依赖、目标 PUMI 版本和定位优先级请查阅当前技术蓝图。
+当前服务器开发构建产物位于：
+
+```text
+/home/lxzeng/LinkMesh_runs/m4_2_helper_build/linkmesh-m3dc1-smb-helper
+```
+
+这是历史个人开发构建产物，不属于 Git，也不是推荐的长期结构。批准的后续开发构建根
+目录为：
+
+```text
+$HOME/LinkMesh_build/linkmesh_scorec_helper/
+```
+
+命名迁移完成后的目标为：
+
+```text
+native/linkmesh_scorec_helper/
+linkmesh-scorec-helper
+LINKMESH_SCOREC_HELPER
+```
+
+当前 Writer 和仓库仍使用旧名称；本轮文档更新不执行迁移。helper 的构建依赖、目标
+PUMI 版本、定位优先级和一次性迁移规则请查阅当前技术蓝图。
 
 ---
 
@@ -445,7 +483,30 @@ native/m3dc1_smb_helper/
 
 ---
 
-## 11. 普通用户最短使用路径
+## 11. 开发、验证与发布环境导读
+
+正式源码在本地 Windows Git Bash 仓库维护；本地负责源码、文档和 Git 审查，不运行
+测试、OFT/Triangle、native 构建或消费端验证。当前服务器源码由 User 从本地直接
+上传，不采用服务器 `git pull` 工作流。Linux 服务器负责创建环境、编译 helper、
+运行测试、生成产物和执行 M3D-C1/TRIMEG 验收。
+
+服务器环境分为：
+
+| 环境 | 用途 |
+|---|---|
+| 个人开发验证环境 | 允许 `PYTHONPATH`、测试依赖、开发 helper 和临时环境变量，不向组员承诺稳定 |
+| 个人发布候选环境 | 从零创建，正式安装 LinkMesh 与 helper，不依赖 `PYTHONPATH` 或开发构建目录 |
+| 组内共享 release | 位于导师批准的共享根目录，按版本发布，普通用户只读执行，不依赖个人主目录 |
+
+共享根目录尚待导师或服务器管理者确认，不得把 `/share` 等候选路径写成当前事实。
+目标共享结构是版本化 `releases/<version>/env`、可切换的 `current`、统一包装入口和
+可选 modulefile；详细契约及验收矩阵见正式技术蓝图。
+
+普通用户目标体验是通过统一入口运行 LinkMesh，不自行安装 Conda、不编译 helper、
+不设置个人 `PYTHONPATH` 或 helper 环境变量，也不进入维护者个人主目录。已确认的
+网格可由后续 M3D-C1 作业重复使用，不需要每次时间推进前重新生成。
+
+## 12. 普通用户最短使用路径
 
 ### 推荐 Case 布局
 
@@ -534,7 +595,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 12. Case 100/101/200 系列管理建议
+## 13. Case 100/101/200 系列管理建议
 
 组内 Case 编号可以同时表达 M3D-C1 源码版本和输入版本。例如：
 
@@ -559,7 +620,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 13. 生成网格与提交作业
+## 14. 生成网格与提交作业
 
 当前推荐流程是：
 
@@ -593,7 +654,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 14. 当前能力边界
+## 15. 当前能力边界
 
 ### 当前可用
 
@@ -627,17 +688,22 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 15. 下一步
+## 16. 下一步
 
 当前真正有意义的短期工作是：
 
-1. 调查老师提供的 EAST 样例边界真实类型，判断其属于 LCFS、GFile 第一壁还是独立二维闭合轮廓。
-2. 若为 LCFS，复用 `single_region + lcfs`；若为第一壁，先完成 `first_wall` 蓝图契约确认；若为独立轮廓，先完成 `array_file` 蓝图契约确认。
-3. 使用确认后的 EAST 边界生成足够细密的 TXT、rank-0 SMB 和 PNG，在 M3D-C1 中重新完成加载和初始化，并进入时间推进主循环。计算边界需要包含 X-point 附近的目标磁拓扑研究区域，但当前不对该拓扑作额外推断。
-4. 并行调查 TCV 参考边界和 TRIMEG 实际消费。
-5. 只有真实场景证明全局 `dx` 不足时，才进一步评估局部加密。
-6. 建立无需 `sudo` 的个人 Conda 用户级安装，使 Python 包和 native helper 一起进入用户环境。
-7. 工具稳定后再评估服务器统一安装。
+1. 完成 helper 全量一次性命名迁移，将源码目录、CMake target、可执行文件、Writer、
+   测试和文档同步迁移到批准的新名称。
+2. 建立 LinkMesh 正式 Python 打包和安装能力，并补齐 native CMake install。
+3. 从空构建目录创建个人干净发布候选环境，不依赖 `PYTHONPATH` 或开发 helper。
+4. 在不安装 triangle 的候选环境中执行完整自动测试、真实 GFile、EAST
+   `array_file`、HDF5、TXT、SMB、PNG 和消费验证，再裁决正式依赖。
+5. 完成 helper 的 `file`、完整 `ldd`、`readelf`、编译链接和 ABI 审计。
+6. 使用 EAST 生成侧产物执行 M3D-C1 加载、初始化和时间推进分层验收。
+7. 请导师确认共享软件根目录、组权限和 module 能力，再创建首个版本化共享 release
+   和包装入口。
+8. 并行调查 TCV 参考边界和 TRIMEG 实际消费。
+9. 只有真实场景证明全局 `dx` 不足时，才进一步评估局部加密。
 
 遇到问题时：
 
@@ -656,7 +722,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 16. 本文档的边界
+## 17. 本文档的边界
 
 本导读只回答“项目里有什么、如何找到、如何运行、当前做到哪里”。
 
