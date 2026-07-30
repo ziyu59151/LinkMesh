@@ -444,7 +444,7 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 模块落点：
 
 - `src/linkmesh/config.py`：配置读取、严格校验、合并和阶段闸门；
-- `src/linkmesh/readers/boundary_reader.py`：计划中的 CSV Reader；
+- `src/linkmesh/readers/boundary_reader.py`：计划中的 counted R-Z boundary text Reader；
 - `src/linkmesh/cli.py`：显式参数收集与业务编排；
 - `src/linkmesh/mesher/oft_adapter.py`：边界来源对应的 OFT 策略；
 - 不新增 `inputs/`、抽象基类、注册表、插件或任意 N 区域语言。
