@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(linkmesh_m3dc1_smb_helper LANGUAGES CXX)
+project(linkmesh_scorec_helper LANGUAGES CXX)
 
 find_package(MPI REQUIRED COMPONENTS CXX)
 find_package(
@@ -13,18 +13,18 @@ find_package(
 )
 
 add_executable(
-  linkmesh-m3dc1-smb-helper
+  linkmesh-scorec-helper
   main.cc
 )
 
 target_compile_features(
-  linkmesh-m3dc1-smb-helper
+  linkmesh-scorec-helper
   PRIVATE
     cxx_std_17
 )
 
 target_link_libraries(
-  linkmesh-m3dc1-smb-helper
+  linkmesh-scorec-helper
   PRIVATE
     MPI::MPI_CXX
     SCOREC::mds
@@ -34,7 +34,7 @@ target_link_libraries(
 )
 
 set_target_properties(
-  linkmesh-m3dc1-smb-helper
+  linkmesh-scorec-helper
   PROPERTIES
     CXX_EXTENSIONS OFF
 )

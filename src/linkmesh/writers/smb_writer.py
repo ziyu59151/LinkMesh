@@ -32,8 +32,8 @@ if TYPE_CHECKING:
 _MAGIC = b"LM4XCHG\x00"
 _SCHEMA_VERSION = 1
 _ENDIAN_MARKER = 0x01020304
-_HELPER_NAME = "linkmesh-m3dc1-smb-helper"
-_HELPER_ENV = "LINKMESH_M3DC1_SMB_HELPER"
+_HELPER_NAME = "linkmesh-scorec-helper"
+_HELPER_ENV = "LINKMESH_SCOREC_HELPER"
 _HELPER_TIMEOUT_SECONDS = 300
 
 _U32 = struct.Struct("<I")
@@ -751,8 +751,8 @@ def write_smb(
     Helper lookup priority is:
 
     1. Explicit ``helper_path``.
-    2. ``LINKMESH_M3DC1_SMB_HELPER``.
-    3. ``linkmesh-m3dc1-smb-helper`` on ``PATH``.
+    2. ``LINKMESH_SCOREC_HELPER``.
+    3. ``linkmesh-scorec-helper`` on ``PATH``.
 
     The destination is the base ``.smb`` path accepted by PUMI
     ``writeNative``. For SCOREC/PUMI 2.2.9 the expected physical rank-0 file

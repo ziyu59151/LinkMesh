@@ -1198,7 +1198,7 @@ std::filesystem::path parse_arguments(int argc, char** argv) {
   if (argc != 3 || std::string(argv[1]) != "--input") {
     throw StageError(
         "arguments",
-        "usage: linkmesh-m3dc1-smb-helper --input <exchange-file>");
+        "usage: linkmesh-scorec-helper --input <exchange-file>");
   }
 
   const std::filesystem::path input(argv[2]);

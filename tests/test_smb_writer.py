@@ -17,6 +17,7 @@ from linkmesh.m3dc1_model import (
     build_single_face_model_spec,
 )
 from linkmesh.mesh import Mesh2D
+from linkmesh.writers import smb_writer
 from linkmesh.writers.smb_writer import (
     SMBWriterError,
     _MAGIC,
@@ -166,21 +167,26 @@ def _read_exchange(path: Path) -> dict:
 def _make_helper(
     tmp_path: Path,
     *,
+    name: str = "fake-helper",
     exit_code: int = 0,
     create_output: bool = True,
     empty_output: bool = False,
+    sleep_seconds: float = 0.0,
 ) -> Path:
-    helper = tmp_path / "fake-helper"
+    helper = tmp_path / name
     script = textwrap.dedent(
         f"""\
         #!/usr/bin/env python3
         import pathlib
         import struct
         import sys
+        import time
         from urllib.parse import quote
 
         if len(sys.argv) != 3 or sys.argv[1] != "--input":
             sys.exit(99)
+
+        time.sleep({sleep_seconds!r})
 
         exchange = pathlib.Path(sys.argv[2])
         data = exchange.read_bytes()
@@ -336,16 +342,157 @@ def test_helper_missing_fails_clearly(tmp_path) -> None:
     assert list(tmp_path.glob("*.lm4xchg")) == []
 
 
-def test_explicit_invalid_helper_does_not_fall_back_to_path(
+def test_explicit_helper_path_has_first_priority(
     tmp_path,
     monkeypatch,
 ) -> None:
     mesh, spec, base = _minimal_inputs(tmp_path)
+    explicit_helper = _make_helper(tmp_path, name="explicit-helper")
+    environment_helper = _make_helper(
+        tmp_path,
+        name="environment-helper",
+        exit_code=17,
+    )
+    _make_helper(
+        tmp_path,
+        name="linkmesh-scorec-helper",
+        exit_code=18,
+    )
+    monkeypatch.setenv("LINKMESH_SCOREC_HELPER", str(environment_helper))
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    write_smb(mesh, spec, base, helper_path=explicit_helper)
+
+    assert _rank0_path(base.absolute()).is_file()
+
+
+def test_new_environment_variable_has_second_priority(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    environment_helper = _make_helper(
+        tmp_path,
+        name="environment-helper",
+    )
+    _make_helper(
+        tmp_path,
+        name="linkmesh-scorec-helper",
+        exit_code=18,
+    )
+    monkeypatch.setenv("LINKMESH_SCOREC_HELPER", str(environment_helper))
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    write_smb(mesh, spec, base)
+
+    assert _rank0_path(base.absolute()).is_file()
+
+
+def test_new_helper_name_is_resolved_from_path(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    _make_helper(tmp_path, name="linkmesh-scorec-helper")
+    monkeypatch.delenv("LINKMESH_SCOREC_HELPER", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    write_smb(mesh, spec, base)
+
+    assert _rank0_path(base.absolute()).is_file()
+
+
+def test_missing_sources_report_only_new_formal_names(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    monkeypatch.delenv("LINKMESH_SCOREC_HELPER", raising=False)
+    monkeypatch.delenv("LINKMESH_M3DC1_SMB_HELPER", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    with pytest.raises(SMBWriterError) as captured:
+        write_smb(mesh, spec, base)
+
+    message = str(captured.value)
+    assert "LINKMESH_SCOREC_HELPER" in message
+    assert "linkmesh-scorec-helper" in message
+    assert "LINKMESH_M3DC1_SMB_HELPER" not in message
+    assert "linkmesh-m3dc1-smb-helper" not in message
+
+
+def test_explicit_invalid_helper_does_not_fall_back_to_other_sources(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    environment_helper = _make_helper(
+        tmp_path,
+        name="environment-helper",
+    )
+    _make_helper(tmp_path, name="linkmesh-scorec-helper")
+    monkeypatch.setenv("LINKMESH_SCOREC_HELPER", str(environment_helper))
     monkeypatch.setenv("PATH", str(tmp_path))
     missing = tmp_path / "explicitly-missing"
 
     with pytest.raises(SMBWriterError, match="explicitly-missing"):
         write_smb(mesh, spec, base, helper_path=missing)
+
+    assert not _rank0_path(base.absolute()).exists()
+
+
+def test_invalid_new_environment_variable_does_not_fall_back_to_path(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    _make_helper(tmp_path, name="linkmesh-scorec-helper")
+    missing = tmp_path / "environment-missing"
+    monkeypatch.setenv("LINKMESH_SCOREC_HELPER", str(missing))
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    with pytest.raises(SMBWriterError, match="environment-missing"):
+        write_smb(mesh, spec, base)
+
+    assert not _rank0_path(base.absolute()).exists()
+
+
+def test_legacy_environment_variable_is_ignored(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    legacy_helper = _make_helper(tmp_path, name="legacy-environment-helper")
+    monkeypatch.delenv("LINKMESH_SCOREC_HELPER", raising=False)
+    monkeypatch.setenv("LINKMESH_M3DC1_SMB_HELPER", str(legacy_helper))
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    with pytest.raises(
+        SMBWriterError,
+        match="PATH 中不存在 linkmesh-scorec-helper",
+    ):
+        write_smb(mesh, spec, base)
+
+    assert not _rank0_path(base.absolute()).exists()
+
+
+def test_legacy_helper_name_on_path_is_ignored(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    _make_helper(tmp_path, name="linkmesh-m3dc1-smb-helper")
+    monkeypatch.delenv("LINKMESH_SCOREC_HELPER", raising=False)
+    monkeypatch.delenv("LINKMESH_M3DC1_SMB_HELPER", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    with pytest.raises(
+        SMBWriterError,
+        match="PATH 中不存在 linkmesh-scorec-helper",
+    ):
+        write_smb(mesh, spec, base)
+
+    assert not _rank0_path(base.absolute()).exists()
 
 
 def test_helper_nonzero_exit_propagates_stage_and_keeps_exchange(
@@ -375,6 +522,24 @@ def test_success_locates_rank0_and_removes_exchange(tmp_path) -> None:
     assert rank0.is_file()
     assert rank0.read_bytes() == b"FAKE_NOT_SMB"
     assert list(tmp_path.glob(".*.lm4xchg")) == []
+
+
+def test_helper_timeout_keeps_exchange(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    mesh, spec, base = _minimal_inputs(tmp_path)
+    helper = _make_helper(tmp_path, sleep_seconds=0.2)
+    monkeypatch.setattr(smb_writer, "_HELPER_TIMEOUT_SECONDS", 0.01)
+
+    with pytest.raises(
+        SMBWriterError,
+        match=r"stage=helper_timeout.*exchange=",
+    ):
+        write_smb(mesh, spec, base, helper_path=helper)
+
+    assert len(list(tmp_path.glob(".*.lm4xchg"))) == 1
+    assert not _rank0_path(base.absolute()).exists()
 
 
 def test_success_without_rank0_file_fails_and_keeps_exchange(tmp_path) -> None:
