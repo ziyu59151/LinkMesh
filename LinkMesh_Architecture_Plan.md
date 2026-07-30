@@ -3,8 +3,8 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **3.4**（本版仅整理章节结构，将既有正式内容归类为连续的第 1 至第 10 节，并统一旧 CLI 重复说明与 `EffectiveConfig`、三层配置合并及 required-fields 权威契约；不新增或改变字段、接口、编号约定、HDF5 契约、SMB 交换契约、CLI 参数、实现状态或验收结论）
-- 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`
+- 文档状态：正式版 **3.5**（本版依据 EAST 真实样例固化 counted R-Z boundary text 输入契约，批准 `single_region + array_file` 进入下一阶段实现，修正固定嵌套多区域生成侧状态，并澄清 `flux_surface` 的功能与待侦察状态；本版仅更新蓝图，不实施源码，不改变 Mesh2D、TRIMEG HDF5、M3D-C1 TXT、SMB schema v1、native helper 或 PUMI 契约）
+- 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；本轮输入层调查参考见 `docs/linkmesh/LinkMesh_Boundary_Input_Architecture_Analysis.md`，该文件保存 EAST 文件调查、R-Z 几何验证、边界输入分层分析、`array_file` 架构建议及 `flux_surface` 概念与证据边界，但不是第二份蓝图，与本文冲突时以本文为准；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
 
@@ -68,7 +68,7 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 
 | 维度 | 允许 | 禁止 |
 |---|---|---|
-| 输入 | OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；`array_file` 两列 CSV 边界为已批准但未实现契约 | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API |
+| 输入 | OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；`array_file` counted R-Z boundary text 为已批准、待实现契约 | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API；CSV、表头、注释或多轮廓边界格式 |
 | 网格生成 | OFT `gs_Domain` / `build_mesh()` 调用 Triangle | 第二网格引擎；复制 OFT 通用几何算法；三维网格；自适应细化；维护 OFT 分支 |
 | 分区 | LinkMesh 不涉及；终点为分区前串行 native SMB | `split_smb`、`part*.smb`、`**1.smb`～`**16.smb`、环向或并行分区 |
 | 输出 | TRIMEG HDF5；M3D-C1 analytic model TXT + 分区前串行 PUMI native SMB | Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；手写、解析、修改、拼接、模板复制或逆向 SMB 字节 |
@@ -111,25 +111,39 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | M3D-C1 时间推进主循环 | **PENDING** |
 | M3D-C1 中等或长时运行稳定性 | **PENDING** |
 | M3D-C1 物理结果正确性 | **PENDING** |
-| EAST 样例边界调查 | **NEXT** |
-| EAST 细密单区域网格生成 | **PENDING** |
+| EAST 文件结构调查 | **PASSED** |
+| EAST R-Z 列顺序、单位与基础几何验证 | **PASSED** |
+| EAST 物理构造算法及其与 LCFS、第一壁、磁轴、X-point 的精确关系 | **PENDING** |
+| `single_region + array_file` 正式输入契约 | **APPROVED / PENDING IMPLEMENTATION** |
+| EAST 单区域网格及 TXT+SMB+PNG 生成 | **PENDING** |
+| EAST M3D-C1 加载与初始化回归 | **PENDING** |
+| EAST M3D-C1 时间推进 | **PENDING** |
 | TCV 参考边界调查 | **PENDING** |
 | TCV/TRIMEG 实际消费 | **PENDING** |
 | `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED；未开放** |
-| `single_region + array_file` | **PLANNED / NOT IMPLEMENTED；未开放** |
-| `single_region + flux_surface` | **NOT IMPLEMENTED；未开放** |
+| `single_region + array_file` | **正式契约已批准 / PENDING IMPLEMENTATION；尚未开放执行** |
+| `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | 多区域、多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
 ### 1.6 下一阶段摘要
 
-下一阶段先调查老师提供的 EAST 边界真实类型，再决定：
+EAST 已确认为通过无扩展名纯文本文件提供的独立二维计算边界；文件结构、R-Z 列顺序、
+单位和基础几何验证已通过。其具体物理构造算法及其与 LCFS、第一壁、磁轴和 X-point
+的精确关系仍待确认，不阻塞读取研究人员已经确认的最终计算边界，也不得据此把该边界
+标记为 LCFS、第一壁或内部磁面。
 
-1. 若为 LCFS，复用 `single_region + lcfs`；
-2. 若为 GFile 第一壁，评估 `single_region + first_wall`；
-3. 若为独立二维闭合轮廓，先更新蓝图并实施 `single_region + array_file`。
+当前主线为：
 
-随后生成细密单区域网格，验证 M3D-C1 时间推进。TCV/TRIMEG 是并行的第二条真实
-消费验证路线。不得替 User 决定边界类型，不得自动构造人工边界。
+```text
+蓝图契约确认
+  → single_region + array_file 实现
+  → EAST Mesh2D + TXT + rank-0 SMB + PNG
+  → M3D-C1 加载和初始化回归
+  → M3D-C1 时间推进主循环
+```
+
+TCV/TRIMEG 是并行的第二条真实消费验证路线。既有 M3D-C1 TXT+SMB 加载与初始化
+继续保持 PASSED；时间推进、中等或长时稳定性及物理正确性继续保持 PENDING。
 
 ---
 
@@ -149,6 +163,7 @@ mesher.oft_adapter → mesh
 writers → mesh
 utils.plotter → mesh
 readers.boundary_reader → mesh
+utils.plotter → readers（仅用于可选的 GFileData 类型信息，不读取业务文件）
 ```
 
 `config` 不依赖 Reader、Mesher、Writer 或 Plotter。`mesh.py` 不依赖任何后端、
@@ -162,7 +177,7 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/cli.py` | 收集显式 CLI 参数；拦截历史参数；调用配置合并；编排 Reader → Mesher → Writer → Plotter | 几何、区域、种子、Triangle、dx 换算、配置默认值合并、SMB rank 改写、helper 环境变量解析 |
 | `src/linkmesh/config.py` | 定义冻结的 `EffectiveConfig`；严格读取 TOML；执行默认值、配置文件、CLI 合并；验证兼容矩阵和 required fields | 读取业务文件；创建 OFT Domain；调用 Writer；通用 DSL、插件或任意 N 区域语言 |
 | `src/linkmesh/readers/gfile_reader.py` | 调用 OFT `GEQDSKEquilibrium` 并输出 `GFileData` | 手写 GFile 解析；调用 Triangle；写文件 |
-| `src/linkmesh/readers/boundary_reader.py` | 计划读取两列 CSV 并复用统一边界验证 | 创建 `Mesh2D`；调用 OFT；读取 GFile；使用 pandas；当前未实现 |
+| `src/linkmesh/readers/boundary_reader.py` | 待实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
 | `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座；规范化 OFT 输出；受控读取 outer Region 回写边界 | 配置解析；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
@@ -171,7 +186,7 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/writers/smb_writer.py` | 验证输入；生成 classification 和交换文件；调用 helper；确认 rank-0 SMB | 创建 APF/MDS entity；读写 SMB 字节；硬编码 PUMI 路径 |
 | `native/m3dc1_smb_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
 | `native/m3dc1_smb_helper/CMakeLists.txt` | 构建唯一 helper target | 通用 native/plugin 框架；Python 扩展；运行时编译；硬编码安装前缀 |
-| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`、`plot_mesh()` PNG 自检 | 修改数据对象 |
+| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；待最小调整的 `plot_mesh()` 以 `Mesh2D` 及实际计算边界完成基础 PNG，自愿接收 `GFileData` 叠加 LCFS、第一壁和磁轴参考 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS |
 
 ---
 
@@ -309,9 +324,18 @@ OFT 输出契约：
 默认 nested 策略：
 
 - 有有效第一壁：PLASMA + VACUUM + OUTER；
-- 无有效第一壁：PLASMA + OUTER。
+- 无有效第一壁：PLASMA + OUTER；
+- 输入使用 GFile LCFS、可选 limiter/第一壁和 LinkMesh 固定策略构造的
+  `artificial_outer`；
+- 该生成路径已实现，并已有真实 DIII-D 与 fixed-boundary CLI、HDF5 和 PNG
+  的 LinkMesh 生成侧验收证据；
+- 该结论不开放 M3D-C1 多区域或多 face，不表示支持任意区域拓扑、三维、自适应
+  网格或并行分区。
 
-single-region 策略见第 5.10 节。
+single-region 的 LCFS、first wall、array file 和 flux surface 只在边界获取阶段
+不同；合法边界进入 Mesher 前统一为 `(B,2)` 的二维闭合轮廓，并复用同一
+single-region OFT Domain 和 OFT/Triangle 核心。`Mesh2D` 与 Writer 不按来源分叉。
+具体策略见第 5.10 节。
 
 ### 4.3 `merge_thresh` 与边界方向
 
@@ -425,7 +449,25 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `src/linkmesh/mesher/oft_adapter.py`：边界来源对应的 OFT 策略；
 - 不新增 `inputs/`、抽象基类、注册表、插件或任意 N 区域语言。
 
-### 5.2 内建默认值
+### 5.2 边界输入分层
+
+边界输入必须分别描述以下三个层次：
+
+| 层次 | 当前正式类别 |
+|---|---|
+| 输入载体 | GFile/EQDSK；外部二维边界纯文本 |
+| 边界物理语义 | LCFS；limiter/第一壁相关轮廓；内部闭合磁面；外部提供的计算边界 |
+| 边界构造方法 | GFile 直接读取；从 GFile 磁通场提取；外部程序构造；研究人员直接提供；LinkMesh 固定策略构造 `artificial_outer` |
+
+输入载体、物理语义和构造方法不得互相替代或互相推断。`array_file` 只表示边界通过
+外部二维文件进入 LinkMesh，不表示 CSV、NumPy 文件或特定扩展名，也不自动表示
+LCFS、第一壁或磁通面。
+
+不同来源必须先归一为统一二维闭合计算边界，再进入 single-region OFT Domain。
+Reader 负责获取边界，Mesher 负责构造 Domain，Writer 只消费 `Mesh2D`，不得跨层
+猜测来源或物理语义。
+
+### 5.3 内建默认值
 
 | 字段 | 内建默认值 |
 |---|---|
@@ -453,7 +495,7 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `outer_padding` 和 `merge_thresh` 不是配置字段。
 - 默认行为保持 `trimeg + nested_three_region + artificial_outer`。
 
-### 5.3 `linkmesh.in` TOML v1
+### 5.4 `linkmesh.in` TOML v1
 
 顶层必须包含：
 
@@ -522,7 +564,7 @@ schema_version = 1
 8. `examples/m3dc1_single_region/linkmesh.in.example` 已存在；示例不产生新规则，
    也不开放未实现组合。
 
-### 5.4 CLI 参数与 `UNSET`
+### 5.5 CLI 参数与 `UNSET`
 
 | CLI 参数 | argparse 目标 | 合并语义 |
 |---|---|---|
@@ -557,7 +599,7 @@ schema_version = 1
 - CLI 不解析 `LINKMESH_M3DC1_SMB_HELPER`。
 - CLI 不硬编码 PUMI 安装路径。
 
-### 5.5 配置发现和三层合并
+### 5.6 配置发现和三层合并
 
 发现顺序：
 
@@ -592,54 +634,89 @@ schema_version = 1
 配置层不要求输出文件已经存在，不创建父目录。输入业务文件存在性由 Reader 报告。
 helper 定位不属于 `EffectiveConfig`。
 
-### 5.6 `array_file` v1 契约
+### 5.7 `array_file` v1：counted R-Z boundary text
 
-当前状态为 **PLANNED / NOT IMPLEMENTED**。
+状态为 **APPROVED / PENDING IMPLEMENTATION**。正式语法为：
 
-| 项目 | 契约 |
+```text
+N
+R_1 Z_1
+R_2 Z_2
+...
+R_N Z_N
+```
+
+| 项目 | 正式契约 |
 |---|---|
-| 编码 | UTF-8 |
-| 列 | 恰好两列 `R,Z` |
-| 单位 | m |
-| 数值 | 有限 `float64` |
-| header | 不允许 |
-| 注释 | 不定义 |
-| 空行 | 可忽略纯空白行；数据行不得有空字段 |
-| 分隔符 | 逗号 |
-| shape | `(B,2)` |
-| 点数 | 至少 3 |
-| 闭合 | 末尾不重复首点；隐式闭合 |
-| 方向 | 输入任意；进入 `Mesh2D` 前规范为顺时针并保持起点 |
-| 几何 | 单一简单闭环；无重复、退化、自交、端点接触或共线重叠 |
+| 文件 | 纯文本；扩展名不参与格式判断，无扩展名合法 |
+| 计数头 | 第一行只包含一个十进制整数 `N`，且 `N >= 3` |
+| 数据行数 | 计数头后必须恰好有 `N` 行，不得少、多或包含额外数据 |
+| 坐标行 | 每行恰好两个有限浮点数，以一个或多个空白字符分隔 |
+| 列与单位 | 第一列 R，第二列 Z；单位 m |
+| 输出 | 独立 `(N,2) float64` 数组 |
+| 闭合 | 输入隐式闭合；首末点不得重复；最后一点由 LinkMesh 连接回第一点 |
+| 几何 | 至少 3 个互异节点；无相邻重复、零长度闭合边、零面积或自交；P0 只允许一条简单闭环 |
+| 方向 | 输入可顺时针或逆时针；进入 `Mesh2D.outer_boundary` 前规范为顺时针并保持起点 |
 
-计划中的 `boundary_reader.py`：
+P0 明确不支持 CSV 逗号分隔、表头、注释、索引列、额外列、空数据行或多条轮廓。
+不得根据文件名或内容猜测其他格式，不得自动排序、重采样、全局去重、平滑、缩放、
+投影或最近距离修补，也不得把外部边界自动解释为 LCFS、第一壁或磁通面。EAST
+原始点序为逆时针不改变 `Mesh2D.outer_boundary` 的全局顺时针契约。
 
-1. 读取 CSV 并生成独立 `(B,2) float64`；
-2. 报告读取、列数、空字段、非数字、NaN/Inf 和点数错误；
-3. 复用 `mesh.py` 的统一边界验证；
-4. 不创建 `Mesh2D`，不调用 OFT，不读取 GFile，不用 pandas；
-5. 不自动闭合、重采样、平滑、排序、投影或最近距离修补；
-6. 不从文件名或坐标范围推断物理语义。
+待实现接口固定为：
 
-### 5.7 `boundary_source`
+```text
+src/linkmesh/readers/boundary_reader.py
+read_boundary_file(filepath: str | Path) -> np.ndarray
+```
+
+职责与错误边界：
+
+1. Reader 只读取并验证 counted R-Z boundary text，返回独立 `(N,2) float64`。
+2. 文件不存在或不可读取沿用 `FileNotFoundError`/`OSError`。
+3. 文件语法错误与数值词法错误使用 `BoundaryFormatError(ValueError)`，错误信息包含
+   路径、行号和原因。
+4. 成功解析后先按现有方向约定规范化并保持起点，再复用 `mesh.py` 的统一
+   `_validate_outer_boundary`；几何非法沿用 `ValueError`。
+5. Reader 不解析 GFile，不构造 OFT Domain 或 `Mesh2D`，不生成网格，不判断物理
+   来源，不执行平滑、重采样、排序、全局去重或缩放，不使用 pandas。
+6. CLI 只调用 Reader 并编排后续流程，不自行读取或验证文件内容。
+
+EAST 直接证据：
+
+- 路径 `/data/liuchang/east_fishbone_1/EAST`；
+- 无扩展名纯文本，`N=104`，随后恰好 104 行 R-Z 米制坐标；
+- shape 为 `(104,2)`，首末不重复，隐式闭合，输入逆时针且无自交；
+- R 约为 `1.465..2.269 m`，Z 约为 `-0.627..0.563 m`；
+- 面积约 `0.7211 m²`，周长约 `3.1574 m`；
+- 图形和量级符合 EAST 二维极向截面的工程预期；
+- 它是与 EQDSK、M3D-C1 TXT 和 SMB 分离的外部二维计算边界；
+- 具体物理构造算法及其与 LCFS、第一壁、磁轴和 X-point 的精确关系仍为
+  PENDING，但不阻塞读取已由研究人员确认的最终边界。
+
+### 5.8 `boundary_source`
 
 | 来源 | 正式来源 | 状态 | 规则 |
 |---|---|---|---|
 | `lcfs` | `GFileData.lcfs_r/lcfs_z` | 已实现 | single-region 唯一边界；不使用第一壁或人工外框 |
 | `first_wall` | `GFileData.wall_r/wall_z` | 未实现 | 需要有效第一壁；首版 single-region |
-| `array_file` | 两列 CSV | 未实现 | 首版 single-region；与 GFile 互斥 |
-| `artificial_outer` | LCFS/第一壁包围盒加固定 padding | 已实现 | 当前只配 nested；四角不直接作为 `outer_boundary` |
-| `flux_surface` | 真实平衡磁通面 | 未实现 | 禁止缩放 LCFS 伪造 |
+| `array_file` | counted R-Z boundary text | 契约已批准，待实现 | 首版 single-region；EAST 主线；v1 与 GFile 互斥 |
+| `artificial_outer` | LCFS/第一壁包围盒加固定 padding | 已实现并完成生成侧真实验收 | 当前只配 nested；四角不直接作为 `outer_boundary` |
+| `flux_surface` | 从 GFile 二维极向磁通场提取指定内部闭合磁通等值线 | 实现候选，未实现，待 OFT 26.6 只读侦察 | 只用于 single-region 核心或内部等离子体计算域；禁止缩放 LCFS 伪造 |
 
 共同规则：
 
 - 每次任务只有一个计算域外边界来源。
 - `lcfs`、`first_wall`、`artificial_outer` 需要 GFile。
-- `array_file` 需要 array file，并禁止 GFile。
+- `array_file` v1 需要 array file，并禁止 GFile；未来若允许额外 GFile，只能作为
+  蓝图明确批准的可选平衡参考，且不得改变实际计算边界，本版不开放该能力。
+- `flux_surface` 不是文件格式或第二网格生成器，不能替代需要包含 X-point 或其附近
+  区域的 EAST 外部边界。本轮不批准其业务实现；后续必须先只读确认 OFT 26.6
+  的磁通场、归一化磁通、轮廓提取、多轮廓选择、闭合和方向接口。
 - 未实现来源不得回退。
 - 已实现来源必须走 Region 捕获、build 后回写和统一验证。
 
-### 5.8 兼容矩阵
+### 5.9 兼容矩阵
 
 | target | profile | boundary_source | 状态 |
 |---|---|---|---|
@@ -649,9 +726,11 @@ helper 定位不属于 `EffectiveConfig`。
 | `trimeg` | `single_region` | `lcfs` | 已实现并验收 |
 | `m3dc1` | `single_region` | `lcfs` | 已实现；加载和初始化通过 |
 | `mesh_only` / `trimeg` | `single_region` | `first_wall` | 规划有效，未实现 |
-| `mesh_only` / `trimeg` | `single_region` | `array_file` | 规划有效，未实现 |
-| 任意 | `single_region` | `flux_surface` | 未实现 |
-| `m3dc1` | `single_region` | `first_wall` / `array_file` / `flux_surface` | 未开放 |
+| `mesh_only` | `single_region` | `array_file` | 正式批准，待实现 |
+| `trimeg` | `single_region` | `array_file` | 正式批准，待实现；不改变 HDF5 契约 |
+| `m3dc1` | `single_region` | `array_file` | EAST 主线正式批准，待实现 |
+| 任意 | `single_region` | `flux_surface` | 实现候选，未实现，待 OFT 26.6 只读侦察 |
+| `m3dc1` | `single_region` | `first_wall` / `flux_surface` | 未开放 |
 | `m3dc1` | `nested_three_region` | 任意 | 禁止 |
 | 任意 | `nested_three_region` | `lcfs` / `first_wall` / `array_file` | 禁止 |
 | 任意 | `single_region` | `artificial_outer` | 禁止 |
@@ -659,7 +738,7 @@ helper 定位不属于 `EffectiveConfig`。
 禁止组合使用 `ConfigError`。架构可表达但未实现的组合使用
 `NotImplementedError`。旧测试若期待不同异常类型，应更新测试，不得放行组合。
 
-### 5.9 required-fields
+### 5.10 required-fields
 
 按边界来源：
 
@@ -668,7 +747,7 @@ helper 定位不属于 `EffectiveConfig`。
 | `lcfs` | `gfile_path` | `array_file_path` |
 | `first_wall` | `gfile_path` | `array_file_path` |
 | `artificial_outer` | `gfile_path` | `array_file_path` |
-| `array_file` | `array_file_path` | `gfile_path` |
+| `array_file` | `array_file_path` | `gfile_path`（v1 不开放可选平衡参考） |
 | `flux_surface` | 未定义，阶段闸门报未实现 | 不得猜测 |
 
 按 target：
@@ -682,9 +761,9 @@ helper 定位不属于 `EffectiveConfig`。
 `--no-smb` 不使 `smb_path` 可选；`--no-hdf5` 不改变有效配置结构。配置层只验证字段
 存在和组合，不读取业务内容。
 
-### 5.10 `single_region` 构造
+### 5.11 `single_region` 构造
 
-#### 5.10.1 `single_region + lcfs`
+#### 5.11.1 `single_region + lcfs`
 
 1. 读取 `GFileData.lcfs_r/lcfs_z`。
 2. 检查 shape、长度、有限性和最低点数，处理普通显式闭合末点。
@@ -705,7 +784,7 @@ helper 定位不属于 `EffectiveConfig`。
 12. `vacuum_dx`、`outer_dx`、`outer_padding` 不参与。
 13. 不缩放 LCFS，不从最终拓扑反推边界。
 
-#### 5.10.2 `single_region + first_wall`
+#### 5.11.2 `single_region + first_wall`
 
 当前未实现。规划契约：
 
@@ -716,37 +795,70 @@ helper 定位不属于 `EffectiveConfig`。
 - 必须走 Region 捕获、build 后回写和统一验证；
 - CLI 当前不得放行。
 
-#### 5.10.3 `single_region + array_file`
+#### 5.11.3 `single_region + array_file`
 
-当前未实现。规划契约：
+正式契约已批准，当前 **PENDING IMPLEMENTATION**：
 
-- 使用经物理人员确认的唯一二维闭合边界；
-- 不同时读取 GFile；
-- 首版尺度为 `plasma_dx`；
-- 使用 `add_polygon()` 创建唯一 Region；
-- 必须走 Region 捕获、build 后回写和统一验证；
-- 不自动推断 X-point 附近目标磁拓扑边界；
-- 实施前必须由真实 EAST/TCV 样例确认文件契约。
+1. 调用 `read_boundary_file()` 获取经验证和方向规范化的唯一 `(N,2)` 计算边界。
+2. v1 不读取 GFile；边界物理语义保持“外部提供的计算边界”。
+3. 使用现有单区域尺度 `plasma_dx`，不新增同义尺度字段。
+4. 复用统一 single-region OFT Domain 构造，调用一次
+   `add_polygon(boundary, "plasma")` 创建唯一 Region。
+5. 不创建 LCFS interface、first-wall interface、vacuum annulus 或
+   `artificial_outer`。
+6. 复用现有 OFT/Triangle 网格生成核心，不复制 Triangle、重采样、点合并或种子逻辑。
+7. 必须通过 `domain.regions` 长度差捕获唯一 Region，build 后读取同一对象的
+   `_resampled_points`，并执行统一 `outer_boundary` 验证。
+8. `Mesh2D.outer_boundary` 表达实际 EAST 计算域外边界；`Mesh2D`、Writer 和
+   native helper 不感知边界来源。
+9. 不自动推断 X-point 附近目标磁拓扑，不改变用户轮廓，不引入插件、抽象基类体系
+   或通用区域配置语言。
 
-#### 5.10.4 `single_region + flux_surface`
+#### 5.11.4 `single_region + flux_surface`
 
-当前未实现。必须先确认真实磁通面提取字段、输入参数、轮廓选择和验收依据。禁止径向
-缩放、中心缩放或任意几何插值伪造磁通面。
+状态为 **实现候选 / NOT IMPLEMENTED / 需要 OFT 26.6 只读侦察**，本轮不批准业务
+实现。它不是文件格式或第二网格生成器，而是从 GFile 二维极向磁通场提取指定内部闭合
+磁通等值线，并作为 single-region 唯一边界，适用于核心或内部等离子体计算域。
 
-### 5.11 输入层实施拆分
+该能力不能替代需要包含 X-point 或其附近区域的 EAST 外部边界。实现前必须确认
+OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多轮廓选择规则、闭合和方向
+约定及失败行为。禁止径向缩放、中心缩放或任意几何插值伪造内部磁面。
+
+#### 5.11.5 Plotter 的 array-file 最小调整
+
+1. 基础 `plot_mesh()` 以 `Mesh2D` 及其实际计算边界作为必需数据。
+2. `GFileData` 改为可选平衡参考；存在时可叠加 LCFS、limiter/第一壁和磁轴。
+3. 无 GFile 的 `array_file` 路径必须仍能绘制实际计算边界和三角网格。
+4. 不得为兼容 Plotter 把外部边界伪装成 LCFS。
+5. 坐标轴继续明确为 R、Z，单位 m。
+6. PNG 仅用于几何检查，不替代 M3D-C1 或 TRIMEG 消费验收。
+
+### 5.12 输入层实施拆分
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 输入层 I | `EffectiveConfig`、TOML、发现、合并、矩阵、required-fields、CLI 参数 | **IMPLEMENTED** |
 | 输入层 II | `single_region + lcfs`、近重复规范化、真实验收 | **PASSED** |
 | 输入层 III | `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED** |
-| 输入层 IV | `boundary_reader.py` 与 `array_file` | **PLANNED / NOT IMPLEMENTED** |
-| 输入层 V | 真实 `flux_surface` | **NOT IMPLEMENTED** |
+| 输入层 IV | counted R-Z Boundary Reader 与 `single_region + array_file` | **APPROVED / PENDING IMPLEMENTATION** |
+| 输入层 V | 真实 `flux_surface` | **实现候选 / NOT IMPLEMENTED / 待 OFT 26.6 只读侦察** |
 | M5 第一条 | M3D-C1 TXT+SMB+PNG CLI | **PASSED；时间推进 PENDING** |
+
+输入层 IV 必须按以下最小顺序实施和分别验收，不得预先写成已完成：
+
+1. Boundary Reader 与纯文件解析测试；
+2. 几何合法性验证；
+3. 配置兼容矩阵和 required-fields 放行；
+4. CLI 编排接入；
+5. single-region OFT Domain 接入；
+6. 无 GFile Plotter 支持；
+7. EAST 真实 `Mesh2D`、TXT+SMB 和 PNG 生成；
+8. M3D-C1 加载和初始化回归；
+9. M3D-C1 时间推进单独验收。
 
 每阶段必须先更新蓝图，再修改最小源码和测试。不得一次实现全部来源或建设插件体系。
 
-### 5.12 输入与 CLI 验收矩阵
+### 5.13 输入与 CLI 验收矩阵
 
 必须覆盖：
 
@@ -763,7 +875,18 @@ helper 定位不属于 `EffectiveConfig`。
 - `mesh_only` 不调用 Writer；
 - `trimeg` 不调用 SMB Writer；
 - single-region LCFS 唯一 polygon、近重复过滤和 Region 回写；
-- `array_file` CSV 契约；
+- `array_file` counted R-Z boundary text 契约；
+- EAST 无扩展名文件正确读取 `N=104`、恰好 104 点、shape `(104,2)`、第一列 R、
+  第二列 Z、单位 m；
+- 缺计数头、非法整数 N、行数与 N 不一致、列数不是 2、非数字、NaN/Inf、少于
+  3 个互异点、首尾重复、相邻重复、零长度闭合边、零面积、自交、多轮廓及额外数据
+  必须严格失败；
+- `single_region + array_file` 只生成一个区域和合法 `Mesh2D`，不创建嵌套区域
+  interface、vacuum annulus 或 artificial outer；
+- EAST `outer_boundary` 必须表达实际计算边界并满足正式顺时针约定，Writer 不感知来源；
+- 无 GFile 时仍可生成显示实际边界和三角网格的 R-Z 米制 PNG；
+- EAST TXT、rank-0 SMB 和 PNG 生成、PNG 人工检查、M3D-C1 加载、初始化与时间推进
+  必须分层记录，时间推进不得由前述结果替代；
 - first wall 缺失不得回退；
 - M3D-C1 只构造一次 `M3DC1ModelSpec`；
 - SMB 基础路径不插 rank；
@@ -1095,27 +1218,25 @@ validator 或 M3D-C1 消费端。
 
 ### 8.2 EAST 主线
 
+EAST 已确认为无扩展名 counted R-Z boundary text 提供的独立二维计算边界，文件结构、
+列顺序、单位和基础几何验证已通过。其物理构造算法及其与 LCFS、第一壁、磁轴和
+X-point 的精确关系仍待确认，不阻塞读取最终边界，也不得被擅自补写。
+
 ```text
-EAST 边界与输入
-  → 调查边界类型和文件契约
+蓝图 counted R-Z 契约确认
+  → single_region + array_file 实现
   → OFT/Triangle 细密二维网格
-  → TXT + SMB + PNG
-  → PNG 检查
+  → Mesh2D + TXT + rank-0 SMB + PNG
+  → PNG 几何检查
   → M3D-C1 加载
-  → 初始化
-  → 时间推进
+  → 初始化回归
+  → 时间推进主循环
   → 短时运行
   → 中等时长运行
 ```
 
-边界类型闸门：
-
-- 若为 LCFS：复用现有 `single_region + lcfs`；
-- 若为 GFile 第一壁：逐点确认后评估 `single_region + first_wall`；
-- 若为独立闭合轮廓：归入 `single_region + array_file`，先更新蓝图再编码。
-
-不得因“包含 X-point”推断必须多区域。`single_region` 描述区域数，不等于 LCFS。
-不得替 User 选择边界来源。
+`single_region` 描述区域数，不等于 LCFS。不得因为边界可能包含 X-point 推断必须
+多区域，不得把 EAST 外部计算边界改写为 LCFS、第一壁或内部磁面。
 
 ### 8.3 X-point 附近目标磁拓扑的工程边界
 
@@ -1239,9 +1360,10 @@ PNG、截图或 MATLAB 绘图不是 TRIMEG 实际消费通过证据。
 
 - 输入层 I：**IMPLEMENTED**；
 - 输入层 II：**PASSED**；
-- first wall：未实现；
-- array file：未实现；
-- flux surface：未实现。
+- first wall：**PLANNED / NOT IMPLEMENTED**；
+- EAST 文件结构、R-Z 列顺序、单位与基础几何调查：**PASSED**；
+- array file 正式 counted R-Z 契约：**APPROVED / PENDING IMPLEMENTATION**；
+- flux surface：**实现候选 / NOT IMPLEMENTED / 待 OFT 26.6 只读侦察**。
 
 新增来源以少量关键单元测试和真实 OFT/GFile/CLI/PNG/HDF5 验收为主，不扩建大型
 Fake OFT。
@@ -1260,9 +1382,14 @@ CLI 闭环，也不证明未运行测试通过。
 
 ### 9.6 EAST 和 TCV
 
-- EAST 边界调查：**NEXT**；
-- EAST 细密网格：**PENDING**；
-- M3D-C1 EAST 时间推进：**PENDING**；
+- EAST 文件结构调查：**PASSED**；
+- EAST R-Z 列顺序、单位和基础几何验证：**PASSED**；
+- EAST 边界物理构造算法及其与 LCFS、第一壁、磁轴、X-point 的精确关系：
+  **PENDING**；
+- `single_region + array_file`：**APPROVED / PENDING IMPLEMENTATION**；
+- EAST 细密网格及 TXT+SMB+PNG：**PENDING**；
+- EAST M3D-C1 加载和初始化回归：**PENDING**；
+- EAST M3D-C1 时间推进：**PENDING**；
 - TCV 边界调查：**PENDING**；
 - TCV/TRIMEG 实际消费：**PENDING**。
 
@@ -1306,7 +1433,8 @@ CLI 闭环，也不证明未运行测试通过。
 
 遇到任一情况必须停止：
 
-- `array_file` 需要改变两列 R/Z、单位 m、隐式闭合或简单闭环契约；
+- `array_file` 需要改变 counted R-Z 计数头、空白分隔双列 R/Z、单位 m、严格 N 行、
+  隐式闭合或简单闭环契约；
 - 需要多轮廓、孔洞、种子或任意 N 区域语言；
 - 必须修改 `Mesh2D` 表示首版边界；
 - GFile 与 array boundary 语义无法无歧义拒绝；
@@ -1336,13 +1464,12 @@ CLI 闭环，也不证明未运行测试通过。
 
 ### 10.5 当前待决事项
 
-1. EAST 边界究竟是 LCFS、第一壁还是独立闭合轮廓；
+1. EAST 边界的具体物理构造算法，以及它与 LCFS、第一壁、磁轴和 X-point 的精确关系；
 2. EAST 网格尺度与时间推进需求；
 3. `single_region + first_wall` 是否由真实需求启动；
-4. `single_region + array_file` 是否由 EAST/TCV 证据启动；
-5. TCV 参考边界与真实 TRIMEG 消费结果；
-6. M3D-C1 时间推进、稳定性和物理正确性；
-7. 真实场景是否证明全局 dx 不足。
+4. TCV 参考边界与真实 TRIMEG 消费结果；
+5. M3D-C1 时间推进、稳定性和物理正确性；
+6. 真实场景是否证明全局 dx 不足。
 
 待决事项不得写成已确认事实或自动转化为技术规划。
 
@@ -1359,9 +1486,13 @@ CLI 闭环，也不证明未运行测试通过。
 - 状态更新必须有直接证据，并保持加载、初始化、时间推进、稳定性和物理正确性分层。
 - 多 face、三维、自适应网格和并行分区继续未开放。
 
-当前准确结论：M1–M3 和既有 TRIMEG 消费验收已通过；M4 LinkMesh 生成侧已通过；
+当前准确结论：M1–M3 和既有 TRIMEG 消费验收已通过；nested-three-region 已完成
+真实 DIII-D 与 fixed-boundary 的 LinkMesh 生成侧验收；M4 LinkMesh 生成侧已通过；
 M5 第一条 `m3dc1 + single_region + lcfs` 真实 CLI、PNG、TXT+SMB 加载和
-M3D-C1 初始化已通过；时间推进主循环、中等或长时稳定性及物理结果正确性仍为
-PENDING。下一阶段先调查 EAST 边界真实类型；TCV/TRIMEG 是并行的第二条真实消费
-路线。`single_region + first_wall`、`single_region + array_file` 和
-`flux_surface` 均未实现；多 face、三维、自适应网格和并行分区均未开放。
+M3D-C1 初始化已通过。EAST counted R-Z 文件结构、列顺序、单位与基础几何调查已
+通过，`single_region + array_file` 正式契约已批准但尚未实现；EAST 网格、加载和
+初始化回归及时间推进均为 PENDING。EAST 的物理构造算法及其与 LCFS、第一壁、磁轴
+和 X-point 的精确关系仍为 PENDING，不阻塞读取最终二维边界。既有 M3D-C1 时间推进
+主循环、中等或长时稳定性及物理结果正确性仍为 PENDING；TCV/TRIMEG 是并行的第二条
+真实消费路线。`single_region + first_wall` 未实现；`flux_surface` 保持实现候选、
+未实现并等待 OFT 26.6 只读侦察；多 face、三维、自适应网格和并行分区均未开放。
