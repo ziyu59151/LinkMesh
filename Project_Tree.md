@@ -2,8 +2,8 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效
-- 最高依据：`LinkMesh_Architecture_Plan.md`
+- 文档状态：当前有效（对应技术蓝图 v4.0）
+- 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
 
@@ -15,18 +15,20 @@
 
 LinkMesh 是一个轻量级命令行网格转换工具。
 
-它从 GFile/EQDSK 平衡文件读取托卡马克边界，通过 OFT/TokaMaker 调用 Triangle 生成二维非结构化三角网格，再把统一的 `Mesh2D` 翻译为目标求解器所需的静态网格文件。
+它从 GFile/EQDSK 或 counted R-Z 二维边界文件取得计算域边界，通过
+OFT/TokaMaker 调用 Triangle 生成二维非结构化三角网格，再把统一的 `Mesh2D`
+翻译为目标求解器所需的静态网格文件。
 
-当前已经跑通的最小用户链路是：
+当前主数据流是：
 
 ```text
-GFile/EQDSK
-  → 读取 LCFS
-  → OFT/Triangle 单区域二维三角网格
+GFile/EQDSK 或 counted R-Z boundary
+  → Reader
+  → OFT/Triangle
   → Mesh2D
-  → 配套 M3D-C1 analytic model TXT
-  → PUMI native SMB
-  → PNG 人工检查
+      ├── TRIMEG HDF5
+      ├── M3D-C1 analytic model TXT + PUMI native SMB
+      └── PNG 几何自检
 ```
 
 OFT/Triangle 是 LinkMesh 唯一的二维三角剖分底座。PUMI 不重新生成三角网格，只负责建立目标几何分类、构造 APF/MDS 网格并调用官方接口写出 native SMB。
@@ -52,13 +54,17 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | M3D-C1 时间推进主循环 | PENDING |
 | M3D-C1 中等或长时运行稳定性 | PENDING |
 | M3D-C1 物理结果正确性 | PENDING |
-| EAST counted R-Z 调查与生成侧 | PASSED |
-| EAST M3D-C1 加载、初始化与时间推进 | PENDING |
-| TCV/TRIMEG 实际消费 | PENDING |
+| counted R-Z Boundary Reader | 已实现 |
+| `single_region + array_file` | 已实现；EAST 生成侧 PASSED |
+| EAST M3D-C1 后续运行 | 已交付，加载、初始化、时间推进结果 PENDING |
+| 最新 TRIMEG HDF5 | 已生成并交付卢老师测试，反馈 PENDING |
 | `single_region + first_wall` | 未实现 |
-| `single_region + array_file` | 未实现 |
 | `single_region + flux_surface` | 未实现 |
-| 多 face、三维、自适应网格和并行分区 | 当前未开放 |
+| OFT 单区域空间变网格密度 | 待调查，未实现 |
+| OFT 多区域拓扑 | 待调查 |
+| M3D-C1 多区域、多 geometric face 与 C1 兼容性 | 待调查，未开放 |
+| 动态自适应、磁面对齐、三维和并行分区 | 当前未开放 |
+| 正式共享部署 | 方案已讨论，实施 PENDING |
 
 当前最准确的结论是：
 
@@ -71,7 +77,9 @@ M3D-C1 初始化：PASSED
 M3D-C1 时间推进、稳定性和物理正确性：PENDING
 ```
 
-TXT+SMB 已完成 M3D-C1 加载和初始化，但这不能扩大表述为完整 M3D-C1 模拟、时间推进、长期稳定性或物理科学验证已经通过。
+既有 TXT+SMB 已完成 M3D-C1 加载和初始化；后续交付给组内同学的网格仍在继续运行。
+最新 TRIMEG HDF5 已交付卢老师测试。交付不等于外部加载、初始化、时间推进、稳定性
+或物理正确性已经通过，尚未返回的结果继续标记为 `PENDING`。
 
 ---
 
@@ -118,7 +126,7 @@ LinkMesh/
 │           └── plotter.py
 │
 ├── native/
-│   └── m3dc1_smb_helper/
+│   └── linkmesh_scorec_helper/
 │       ├── CMakeLists.txt
 │       └── main.cc
 │
@@ -132,7 +140,9 @@ LinkMesh/
 │
 ├── docs/
 │   ├── linkmesh/
+│   │   ├── work_plan.md
 │   │   ├── plan.md
+│   │   ├── LinkMesh_Architecture_Plan_v3.7.md
 │   │   └── LinkMesh_Architecture_Plan_v1.13.md
 │   └── trimeg/
 │       ├── loadfemmesh_h5.m
@@ -149,14 +159,15 @@ LinkMesh/
 
 - `examples/m3dc1_single_region/linkmesh.in.example` 是供用户复制到 Case 并改名为 `linkmesh.in` 的标准配置示例；它不定义新的技术契约，正式配置规则仍以根目录技术蓝图为准。
 - LinkMesh 自有 Python 业务源码位于 `src/linkmesh/`。
-- M3D-C1 native SMB helper 的当前正式源码位于 `native/m3dc1_smb_helper/`。
-- 已批准但尚未实施的迁移目标为 `native/linkmesh_scorec_helper/`、
-  `linkmesh-scorec-helper` 和 `LINKMESH_SCOREC_HELPER`；当前目录树不得提前按目标
-  名称改写。
+- LinkMesh SCOREC helper 的当前正式源码位于 `native/linkmesh_scorec_helper/`。
+- helper 的当前构建目标和可执行文件名为 `linkmesh-scorec-helper`，显式定位变量为
+  `LINKMESH_SCOREC_HELPER`。
 - `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
 - `docs/trimeg/` 中的 MATLAB 读取脚本和真实样例是 TRIMEG 文件契约的只读证据。
-- `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md` 是历史版本参考，不得覆盖根目录当前 `LinkMesh_Architecture_Plan.md` 的正式裁决。
-- 根目录当前 `LinkMesh_Architecture_Plan.md` 是唯一有效技术蓝图；`docs/linkmesh/` 中的旧版蓝图只能作为历史参考。
+- `docs/linkmesh/work_plan.md` 承载下一阶段 OFT 高级网格能力侦察的执行拆解，但不是第二份技术蓝图。
+- `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 是进入 v4.0 前的完整 3.x 历史快照。
+- `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md` 是更早的历史版本参考。
+- 根目录当前 `LinkMesh_Architecture_Plan.md` 是唯一有效技术蓝图；历史快照和专题报告不得覆盖其正式裁决。
 - `build/` 是 native helper 的构建产物目录，不是正式源码目录，也不应作为 Git 源码提交。
 - 当前仓库树只列出已经存在且属于当前导读范围的文件；不存在或尚未确认存在的文件，不应被当成当前仓库组成。
 - 编译 native helper 时产生的 `build/` 目录属于构建产物，不是正式源码目录，也不应作为 Git 源码提交。
@@ -171,7 +182,9 @@ LinkMesh/
 | `CONTEXT.md` | 开始开发或让 AI 修改项目之前阅读，了解行为规范、只读边界和开发纪律。 |
 | `LinkMesh_Architecture_Plan.md` | 查询正式模块职责、数据结构、文件格式、接口、阶段状态和验收边界时阅读。它是唯一技术蓝图。 |
 | `History.md` | 查询某项功能何时完成、运行过哪些命令、测试结果、真实样例和阶段证据时阅读。 |
-| `docs/linkmesh/plan.md` | 查询组内 Case 管理、日常使用和部署建议时阅读。 |
+| `docs/linkmesh/work_plan.md` | 查询下一阶段 OFT 空间变密度、多区域拓扑和 M3D-C1 C1 兼容性调查的执行拆解时阅读。 |
+| `docs/linkmesh/plan.md` | 查询组内 Case 管理和日常使用建议时阅读。 |
+| `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` | 查询进入 v4.0 前的完整 3.x 技术蓝图时阅读；它是只读历史快照。 |
 
 如果文档之间出现不一致，应按以下顺序处理：
 
@@ -192,8 +205,8 @@ User 当前明确决定
 TRIMEG 路径：
 
 ```text
-GFile/EQDSK
-  → Reader
+GFile/EQDSK 或 counted R-Z boundary
+  → 对应 Reader
   → OFT/Triangle
   → Mesh2D
   → HDF5 Writer
@@ -274,12 +287,15 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 - **输出**：二维非结构化三角网格。
 - **不负责**：第二种剖分后端、PUMI 网格生成、TRIMEG/M3D-C1 文件写出或配置文件解析。
 
-当前正式单区域 M3D-C1 路径使用：
+当前正式 single-region 路径支持：
 
 ```text
 profile=single_region
-boundary_source=lcfs
+boundary_source=lcfs 或 array_file
 ```
+
+`lcfs` 来源读取 GFile；`array_file` 来源读取 counted R-Z boundary，并且 v1 契约下
+不同时读取 GFile。
 
 ### `src/linkmesh/mesh.py`
 
@@ -340,7 +356,7 @@ rank 插入由 SMB Writer/helper 与 PUMI 管理，不由普通用户手工改�
 原生 helper 的正式源码目录是：
 
 ```text
-native/m3dc1_smb_helper/
+native/linkmesh_scorec_helper/
 ├── CMakeLists.txt
 └── main.cc
 ```
@@ -350,7 +366,7 @@ native/m3dc1_smb_helper/
 ```text
 main.cc + CMakeLists.txt
   → 在具有相容 SCOREC/PUMI 和 MPI 的环境中编译
-  → linkmesh-m3dc1-smb-helper 可执行文件
+  → linkmesh-scorec-helper 可执行文件
   → 运行时由 Python smb_writer.py 调用
   → PUMI writeNative()
   → rank-0 native SMB
@@ -360,7 +376,7 @@ main.cc + CMakeLists.txt
 
 1. `main.cc` 是 helper 的 C++ 源码。
 2. `CMakeLists.txt` 是构建规则。
-3. 编译后产生的 `linkmesh-m3dc1-smb-helper` 是运行时可执行文件。
+3. 编译后产生的 `linkmesh-scorec-helper` 是运行时可执行文件。
 4. 源码和可执行文件不是两个不同的 helper，而是同一组件的源代码与构建结果。
 5. helper 是 LinkMesh M3D-C1 输出链的正式组成部分，不是临时 probe。
 6. helper 不重新剖分网格；它只根据 Python 提供的节点、连接关系、几何模型和分类信息构造 APF/MDS 网格，并调用 SCOREC/PUMI 官方接口写出 native SMB。
@@ -376,29 +392,17 @@ main.cc + CMakeLists.txt
 - 编译后的 helper 可由 SMB Writer 按正式定位规则找到；
 - helper 所依赖的 SCOREC/PUMI 与 MPI 环境相容。
 
-当前服务器开发构建产物位于：
+当前接口已经统一为：
 
 ```text
-/home/lxzeng/LinkMesh_runs/m4_2_helper_build/linkmesh-m3dc1-smb-helper
+源码目录：native/linkmesh_scorec_helper/
+构建目标和可执行文件：linkmesh-scorec-helper
+显式定位变量：LINKMESH_SCOREC_HELPER
+定位顺序：helper_path → LINKMESH_SCOREC_HELPER → PATH
 ```
 
-这是历史个人开发构建产物，不属于 Git，也不是推荐的长期结构。批准的后续开发构建根
-目录为：
-
-```text
-$HOME/LinkMesh_build/linkmesh_scorec_helper/
-```
-
-命名迁移完成后的目标为：
-
-```text
-native/linkmesh_scorec_helper/
-linkmesh-scorec-helper
-LINKMESH_SCOREC_HELPER
-```
-
-当前 Writer 和仓库仍使用旧名称；本轮文档更新不执行迁移。helper 的构建依赖、目标
-PUMI 版本、定位优先级和一次性迁移规则请查阅当前技术蓝图。
+服务器构建目录属于仓库外产物，不是 Git 源码。helper 的目标 SCOREC/PUMI 版本、
+MPI/ABI 约束、交换契约和生命周期规则请查阅当前技术蓝图。
 
 ---
 
@@ -463,7 +467,7 @@ src/linkmesh/
 LinkMesh 自有 native helper 源码位于：
 
 ```text
-native/m3dc1_smb_helper/
+native/linkmesh_scorec_helper/
 ```
 
 开发时必须清楚区分“LinkMesh 自有源码”和“外部参考源码”。
@@ -480,7 +484,7 @@ native/m3dc1_smb_helper/
 4. 阅读 `src/linkmesh/mesh.py`，理解统一的 `Mesh2D`。
 5. 阅读 `src/linkmesh/readers/gfile_reader.py` 与 `src/linkmesh/mesher/oft_adapter.py`，理解 GFile 到二维网格的路径。
 6. 阅读 `src/linkmesh/m3dc1_model.py`、`src/linkmesh/writers/m3dc1_model_writer.py` 和 `src/linkmesh/writers/smb_writer.py`，理解 TXT 与 SMB 如何共享模型语义。
-7. 阅读 `native/m3dc1_smb_helper/main.cc` 和对应 `CMakeLists.txt`，理解 Python 与 SCOREC/PUMI 的边界。
+7. 阅读 `native/linkmesh_scorec_helper/main.cc` 和对应 `CMakeLists.txt`，理解 Python 与 SCOREC/PUMI 的边界。
 8. 最后按需要查阅 `History.md`、测试文件、TRIMEG 参考资料以及外部只读源码。
 
 如果只想运行 LinkMesh，不需要先阅读 helper 的内部交换契约或 PUMI 生命周期细节。
@@ -694,20 +698,20 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ## 16. 下一步
 
-当前真正有意义的短期工作是：
+v4.0 主线从“建立网格生成和格式输出闭环”转向“OFT 高级网格能力侦察和真实求解反馈”：
 
-1. 完成 helper 全量一次性命名迁移，将源码目录、CMake target、可执行文件、Writer、
-   测试和文档同步迁移到批准的新名称。
-2. 建立 LinkMesh 正式 Python 打包和安装能力，并补齐 native CMake install。
-3. 从空构建目录创建个人干净发布候选环境，不依赖 `PYTHONPATH` 或开发 helper。
-4. 在不安装 triangle 的候选环境中执行完整自动测试、真实 GFile、EAST
-   `array_file`、HDF5、TXT、SMB、PNG 和消费验证，再裁决正式依赖。
-5. 完成 helper 的 `file`、完整 `ldd`、`readelf`、编译链接和 ABI 审计。
-6. 使用 EAST 生成侧产物执行 M3D-C1 加载、初始化和时间推进分层验收。
-7. 请导师确认共享软件根目录、组权限和 module 能力，再创建首个版本化共享 release
-   和包装入口。
-8. 并行调查 TCV 参考边界和 TRIMEG 实际消费。
-9. 只有真实场景证明全局 `dx` 不足时，才进一步评估局部加密。
+1. 收集组内同学对已交付 M3D-C1 网格的加载、初始化和时间推进反馈。
+2. 收集卢老师对最新 LinkMesh TRIMEG HDF5 的实际测试反馈。
+3. 调查 OFT 26.6 在单一闭合二维区域内部实现静态空间变网格密度的能力。
+4. 调查 OFT nested、adjacent、hole 和不同 Region `dx` 下的共享界面拓扑与
+   conforming 性。
+5. 调查 OFT 拓扑、SCOREC/PUMI geometric classification 与 M3D-C1 C1 连续性之间
+   的关系，确认多区域和多 geometric face 是否可行。
+6. 根据直接源码和最小运行探针形成调查报告；调查完成前不开放局部加密、
+   M3D-C1 多区域、多 face、动态自适应或磁面对齐。
+7. 等待老师确认正式共享根目录、权限和 module 能力，再实施版本化共享 release。
+
+详细调查工作流、术语和交付物见 `docs/linkmesh/work_plan.md`。
 
 遇到问题时：
 
@@ -719,7 +723,8 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 | 配置如何合并和限制组合 | `src/linkmesh/config.py` |
 | `Mesh2D` 保存什么 | `src/linkmesh/mesh.py` |
 | TXT 与 SMB 如何共享模型 | `src/linkmesh/m3dc1_model.py` |
-| helper 源码在哪里 | `native/m3dc1_smb_helper/` |
+| helper 源码在哪里 | `native/linkmesh_scorec_helper/` |
+| 下一阶段调查如何拆解 | `docs/linkmesh/work_plan.md` |
 | 日常 Case 如何组织 | `docs/linkmesh/plan.md` |
 | TRIMEG 消费契约依据 | `docs/trimeg/` |
 | OFT 或 M3D-C1 外部实现如何工作 | `TOKAMAKER/`、`M3DC1/`，仅限只读查证 |

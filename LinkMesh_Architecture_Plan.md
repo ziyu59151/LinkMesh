@@ -3,8 +3,8 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **3.7**（本版依据 User 当前决定，将 TRIMEG HDF5 输出路径的正式 CLI 参数修正为 `--hdf5`，并增加完全同义别名 `--h5`；旧参数 `--output` 一次性删除，不保留兼容别名、弃用警告或静默回退。TOML 键 `hdf5`、`EffectiveConfig.hdf5_path`、`--no-hdf5`、HDF5 Writer 接口及 TRIMEG 完整 11 数据集契约保持不变）
-- 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；本轮输入层调查参考见 `docs/linkmesh/LinkMesh_Boundary_Input_Architecture_Analysis.md`，该文件保存 EAST 文件调查、R-Z 几何验证、边界输入分层分析、`array_file` 架构建议及 `flux_surface` 概念与证据边界，但不是第二份蓝图，与本文冲突时以本文为准；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`
+- 文档状态：正式版 **4.0**（项目主线由“建立网格生成和格式输出闭环”切换为“OFT 高级网格能力侦察和真实求解反馈”；该版本切换不表示空间变网格密度、动态自适应、磁面对齐、M3D-C1 多区域、多 geometric face、C1 多区域兼容性或正式共享部署已经实现）
+- 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；下一阶段执行拆解见 `docs/linkmesh/work_plan.md`；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
 
@@ -68,7 +68,7 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 
 | 维度 | 允许 | 禁止 |
 |---|---|---|
-| 输入 | OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；`array_file` counted R-Z boundary text 为已批准、待实现契约 | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API；CSV、表头、注释或多轮廓边界格式 |
+| 输入 | OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；严格读取 `array_file` counted R-Z boundary text | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API；CSV、表头、注释或多轮廓边界格式 |
 | 网格生成 | OFT `gs_Domain` / `build_mesh()` 调用 Triangle | 第二网格引擎；复制 OFT 通用几何算法；三维网格；自适应细化；维护 OFT 分支 |
 | 分区 | LinkMesh 不涉及；终点为分区前串行 native SMB | `split_smb`、`part*.smb`、`**1.smb`～`**16.smb`、环向或并行分区 |
 | 输出 | TRIMEG HDF5；M3D-C1 analytic model TXT + 分区前串行 PUMI native SMB | Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；手写、解析、修改、拼接、模板复制或逆向 SMB 字节 |
@@ -126,41 +126,35 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | 多区域、多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
-### 1.6 下一阶段摘要
+### 1.6 v4.0 当前主线
 
-EAST 已确认为通过无扩展名纯文本文件提供的独立二维计算边界；文件结构、R-Z 列顺序、
-单位和基础几何验证已通过。其具体物理构造算法及其与 LCFS、第一壁、磁轴和 X-point
-的精确关系仍待确认，不阻塞读取研究人员已经确认的最终计算边界，也不得据此把该边界
-标记为 LCFS、第一壁或内部磁面。
-
-当前 EAST 生成侧链路为：
+LinkMesh 已建立两条目标格式生产链：
 
 ```text
-counted R-Z boundary text
-  → single_region + array_file
+GFile/EQDSK 或 counted R-Z boundary
+  → Reader
   → OFT/Triangle
   → Mesh2D
-  → TXT + rank-0 SMB + PNG
+      ├── TRIMEG HDF5
+      ├── M3D-C1 TXT + rank-0 native SMB
+      └── PNG
 ```
 
-该链路已通过生成侧验收：输入边界 104 点，OFT 输出 185 个节点、329 个三角形和
-1 个区域；PNG 已由 User 完成人工几何检查。TXT、SMB 和 PNG 是通过当前旧环境变量
-`LINKMESH_M3DC1_SMB_HELPER` 指向既有开发构建产物后生成。该证据不表示 EAST
-M3D-C1 加载、初始化、时间推进、长期稳定性或物理正确性已经通过。
+counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。已交付给组内
+同学的 M3D-C1 网格仍在继续运行；最新 TRIMEG HDF5 已交付卢老师测试。交付只表示
+文件已移交，不自动证明外部加载、初始化、时间推进、稳定性或物理正确性。
 
-当前后续主线为：
+v4.0 的下一阶段主线是：
 
-```text
-交付蓝图与命名迁移准备
-  → helper 全量命名迁移与正式安装能力
-  → 个人发布候选环境
-  → EAST M3D-C1 加载和初始化回归
-  → EAST M3D-C1 时间推进主循环
-  → 组内版本化共享发布
-```
+1. 收集 M3D-C1 后续运行反馈和卢老师的 TRIMEG 测试反馈。
+2. 只读调查 OFT 26.6 单一区域内部静态空间变网格密度能力。
+3. 运行 OFT 多区域共享界面和 conforming topology 最小探针。
+4. 调查 OFT topology、SCOREC/PUMI classification 与 M3D-C1 C1 连续性的关系。
+5. 在直接证据明确前，不开放 M3D-C1 多区域、多 geometric face、局部加密、
+   动态自适应或磁面对齐。
+6. 等待老师确认共享根目录、权限和 module 能力后再实施正式共享 release。
 
-TCV/TRIMEG 是并行的第二条真实消费验证路线。既有 M3D-C1 TXT+SMB 加载与初始化
-继续保持 PASSED；时间推进、中等或长时稳定性及物理正确性继续保持 PENDING。
+详细调查工作流和交付物见 `docs/linkmesh/work_plan.md`。
 
 ---
 
@@ -201,8 +195,8 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
 | `src/linkmesh/writers/smb_writer.py` | 验证输入；生成 classification 和交换文件；调用 helper；确认 rank-0 SMB | 创建 APF/MDS entity；读写 SMB 字节；硬编码 PUMI 路径 |
-| `native/m3dc1_smb_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
-| `native/m3dc1_smb_helper/CMakeLists.txt` | 构建唯一 helper target | 通用 native/plugin 框架；Python 扩展；运行时编译；硬编码安装前缀 |
+| `native/linkmesh_scorec_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
+| `native/linkmesh_scorec_helper/CMakeLists.txt` | 构建 `linkmesh-scorec-helper` target | 通用 native/plugin 框架；Python 扩展；运行时编译；硬编码安装前缀 |
 | `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；待最小调整的 `plot_mesh()` 以 `Mesh2D` 及实际计算边界完成基础 PNG，自愿接收 `GFileData` 叠加 LCFS、第一壁和磁轴参考 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS |
 
 ---
@@ -505,7 +499,7 @@ Reader 负责获取边界，Mesher 负责构造 Domain，Writer 只消费 `Mesh2
 
 裁决规则：
 
-- `mesh.h5` 是配置合并后的 target 条件默认值，不是 `--output` 的 argparse 默认值。
+- `mesh.h5` 是配置合并后的 target 条件默认值，不是 `--hdf5`/`--h5` 的 argparse 默认值。
 - `smb_path` 不存在 `mesh.smb` 隐式默认值。`target=m3dc1` 时必须通过配置文件或
   显式 CLI 提供。
 - `gfile_path=None`。是否必需由 `boundary_source` 和 required-fields 决定。
@@ -626,7 +620,7 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
 - `--min-angle` 默认 `20.0`；非默认值在读取配置或调用 OFT 前拒绝。
 - `--max-area` 默认 `None`；一旦提供立即拒绝。
 - CLI 不将 `--smb` 改写为 rank-0 文件名。
-- CLI 不解析 `LINKMESH_M3DC1_SMB_HELPER`。
+- CLI 不解析 `LINKMESH_SCOREC_HELPER`。
 - CLI 不硬编码 PUMI 安装路径。
 
 ### 5.6 配置发现和三层合并
@@ -1149,13 +1143,7 @@ Schema v1 限制：
 - 不承载 PUMI 指针、SMB 字节、MPI ownership、C1 field、高阶节点、field、
   numbering、partition、residence 或 ghost 信息。
 
-当前实时实现的 helper 调用：
-
-```text
-linkmesh-m3dc1-smb-helper --input <exchange-file>
-```
-
-已批准但尚未实施的一次性命名迁移完成后，正式调用改为：
+当前正式 helper 调用：
 
 ```text
 linkmesh-scorec-helper --input <exchange-file>
@@ -1203,56 +1191,29 @@ helper 必须：
 禁止依靠进程退出泄漏、重复销毁 model、跳过 `disownMdsModel`、跳过 mesh 销毁或以
 异常终止掩盖生命周期错误。
 
-### 7.7 helper 当前定位与正式命名迁移
+### 7.7 helper 名称、定位与 ABI 边界
 
-当前实时实现使用：
+当前正式接口：
 
-- 源码目录：`native/m3dc1_smb_helper/`；
-- CMake target 和可执行文件：`linkmesh-m3dc1-smb-helper`；
-- 环境变量：`LINKMESH_M3DC1_SMB_HELPER`；
-- 定位顺序：
-  `helper_path` → `LINKMESH_M3DC1_SMB_HELPER` →
-  `PATH` 中的 `linkmesh-m3dc1-smb-helper` → 明确失败。
-
-当前服务器开发构建产物为：
-
-```text
-/home/lxzeng/LinkMesh_runs/m4_2_helper_build/linkmesh-m3dc1-smb-helper
-```
-
-已批准但尚未实施的正式名称为：
-
-| 层次 | 目标名称 |
+| 层次 | 当前名称 |
 |---|---|
 | 文档组件名 | LinkMesh SCOREC helper |
 | Git 源码目录 | `native/linkmesh_scorec_helper/` |
 | CMake target | `linkmesh-scorec-helper` |
 | Linux 可执行文件 | `linkmesh-scorec-helper` |
 | 环境变量 | `LINKMESH_SCOREC_HELPER` |
-| 推荐开发构建根目录 | `$HOME/LinkMesh_build/linkmesh_scorec_helper/` |
-| 个人候选安装位置 | `$CONDA_PREFIX/bin/linkmesh-scorec-helper` |
-| 共享安装位置 | `<GROUP_SOFTWARE_ROOT>/linkmesh/releases/<version>/env/bin/linkmesh-scorec-helper` |
 
-源码目录使用下划线；Unix 可执行文件和 CMake target 使用连字符；环境变量使用大写
-下划线。名称变宽只说明它连接 LinkMesh Python 与 SCOREC/PUMI native 环境，不扩大
-当前 M3D-C1 native SMB 写出职责。
-
-项目处于组内正式交付前阶段，采用一次性强制迁移。迁移完成后唯一定位顺序为：
+唯一定位顺序：
 
 1. Python API 显式 `helper_path`；
 2. `LINKMESH_SCOREC_HELPER`；
 3. `PATH` 中的 `linkmesh-scorec-helper`；
 4. 全部失败时明确报错并停止。
 
-不保留旧环境变量或旧可执行文件兼容分支，不创建旧名称符号链接，不增加长期兼容
-警告。高优先级候选已提供但无效时不得静默回退。Python Writer 不猜测仓库 build、
-`LinkMesh_runs`、用户主目录、服务器固定路径或 Python 包同目录 helper。
-
-迁移实施必须同步修改源码目录、CMake target、输出文件名、Writer、测试、README、
-示例、部署说明和受控文档。服务器旧构建目录不是 Git 重命名对象；必须从新命名的空
-构建目录重新配置，禁止复用旧 `CMakeCache.txt`。本版只批准迁移，不执行迁移。
-
-更换 PUMI、编译器或 MPI ABI 时必须重新执行 probe、生成侧验收和外部消费验收。
+高优先级候选已提供但无效时不得静默回退。Python Writer 不猜测仓库 build、用户主
+目录、服务器固定路径或 Python 包同目录 helper。更换 SCOREC/PUMI、编译器、MPI
+实现或 ABI 时，必须重新配置空构建目录，重新执行 API/CMake probe、helper 生成侧
+验收和外部消费验收；不得复用旧 `CMakeCache.txt` 或把既有二进制视为跨 ABI 可移植。
 
 ### 7.8 LinkMesh SCOREC helper 职责边界
 
@@ -1442,30 +1403,19 @@ SMB、PNG，并执行 M3D-C1/TRIMEG 真实消费验收和保存命令、日志�
   → 再次上传并回归
 ```
 
-### 8.8 四类环境与当前开发状态
+### 8.8 开发、候选与共享环境
 
 | 环境 | 定位 | 正式规则 |
 |---|---|---|
-| 本地源码开发环境 | Windows Git Bash 正式仓库 | 维护源码和 Git；测试、Linux 科学计算栈与 native 构建均 NOT RUN |
-| Linux 个人开发验证环境 | 当前可变开发环境 | 允许测试依赖、`PYTHONPATH`、开发 helper 和临时环境变量；不向组员承诺稳定 |
-| Linux 个人发布候选环境 | User 个人可写目录中的全新环境 | 不克隆当前开发环境作为发布证明；正式安装 LinkMesh 和 helper；不依赖 `PYTHONPATH` 或开发构建目录 |
-| 组内共享稳定环境 | 导师批准共享根目录中的版本化 release | 普通用户只读执行；不依赖个人目录；不原地升级；含统一入口、版本清单和验证记录 |
+| 本地源码开发环境 | Windows Git 仓库 | 维护源码、文档和版本；未执行的 Linux/OFT/native/消费验证必须标记 `NOT RUN` |
+| Linux 个人开发验证环境 | 可变开发环境 | 允许测试依赖、临时 `PYTHONPATH` 和开发构建产物；不作为组内稳定发布 |
+| Linux 个人发布候选环境 | 全新可写前缀 | 正式安装 LinkMesh 与 helper；从源码目录外运行；不依赖个人 `PYTHONPATH` 或开发构建目录 |
+| 组内共享稳定环境 | 导师批准根目录下的版本化 release | 普通用户只读执行；不依赖维护者个人目录；不原地升级；保存版本和验收记录 |
 
-当前个人开发验证环境直接事实：
-
-- Conda 环境 `linkmesh`，路径 `/home/lxzeng/miniconda3/envs/linkmesh`；
-- Python `/home/lxzeng/miniconda3/envs/linkmesh/bin/python`，版本 3.12.13；
-- `PYTHONPATH=/home/lxzeng/LinkMesh_server/src`；
-- LinkMesh 从 `/home/lxzeng/LinkMesh_server/src/linkmesh` 导入，尚未作为正式发布包
-  安装到该环境 `site-packages`；
-- OpenFUSIONToolkit 26.6 从 Conda 环境 `site-packages` 导入；
-- 不得把 `TOKAMAKER/OpenFUSIONToolkit/src/python` 加入运行时 `PYTHONPATH`；
-- 当前观察版本包括 NumPy 2.5.1、h5py 3.16.0、matplotlib 3.11.0、
-  OpenFUSIONToolkit 26.6、pytest 9.1.1 和 triangle 20250106；
-- 当前 helper 通过旧环境变量指向个人开发构建目录。
-
-这些版本只是当前开发环境事实，不自动等于正式发布锁定版本。Python 3.12 和依赖
-锁定范围必须由干净发布候选环境验收。当前个人 Conda 环境不得直接定义为组内共享环境。
+正式发布不得依赖个人 `PYTHONPATH`。OFT 必须来自发布环境正式安装包，不得把
+`TOKAMAKER/OpenFUSIONToolkit/src/python` 作为运行时来源。普通用户不负责安装
+依赖或编译 helper。当前共享根目录、权限、modulefile、首个版本化 release 和普通
+用户验收尚未实施。
 
 ### 8.9 发布可追溯性
 
@@ -1610,24 +1560,19 @@ LinkMesh，原样传递参数并保留退出状态。不得硬编码 `/home/lxze
 支持、正式 MPI 来源、SCOREC/PUMI 正式位置和版本、系统库与 ABI 管理、备份、配额及
 清理策略。
 
-### 8.14 发布阶段顺序
+### 8.14 发布实施边界
 
-后续交付工作必须作为独立阶段实施，不得因当前个人环境可运行而跳过候选环境：
+交付环境和环境管理原则已经完成讨论，但共享部署仍为 `PENDING`。实施时必须：
 
-1. 文档与蓝图更新；
-2. helper 全量命名迁移；
-3. Python 正式打包和安装能力；
-4. native CMake install 与构建目录整理；
-5. 个人干净发布候选环境；
-6. triangle 非依赖候选验证；
-7. helper 完整二进制和动态库审计；
-8. 发布候选端到端测试；
-9. 导师确认共享根目录、组权限和 module 能力；
-10. 创建第一个版本化共享 release；
-11. 创建共享包装入口；
-12. 条件允许时创建 modulefile；
-13. 使用普通用户或等价权限验收；
-14. 发布、切换 `current` 并保留回退版本。
+1. 建立不依赖个人 `PYTHONPATH` 的正式 Python 安装。
+2. 通过 CMake install 安装 `linkmesh-scorec-helper`。
+3. 在个人干净候选环境完成自动测试、真实输入、格式输出和外部消费回归。
+4. 审计 helper 的完整动态库、MPI、SCOREC/PUMI、编译器和 ABI 信息。
+5. 等待老师确认共享根目录、组权限和 modulefile 能力。
+6. 创建新的版本化只读 release，验收后切换 `current`，保留旧版本回退。
+7. 使用普通用户或等价权限验证统一入口、输出目录和退出状态。
+
+不得因为个人开发环境可运行而宣告正式共享部署完成。
 
 ---
 
@@ -1696,17 +1641,25 @@ LinkMesh，原样传递参数并保留退出状态。不得硬编码 `/home/lxze
 新增来源以少量关键单元测试和真实 OFT/GFile/CLI/PNG/HDF5 验收为主，不扩建大型
 Fake OFT。
 
-### 9.5 自动测试事实边界
+### 9.5 自动测试与外部证据边界
 
-已记录的配置与 CLI 专项结果是 **145 passed、2 failed**，不得表述为全套通过：
+自动测试用于证明当前模块契约和回归行为，不能独立证明外部求解器消费能力或物理
+正确性。测试文件存在、mock 通过或源码结构正确，不得替代真实程序的分层证据。
 
-1. 一项旧测试期待 `ConfigError`，实际未实现组合正确抛出
-   `NotImplementedError`；
-2. 一项旧测试错误期待默认 TRIMEG 调用 SMB Writer，当前正式分派规定 TRIMEG
-   只调用 HDF5 Writer。
+外部状态必须分别记录：
 
-另有相邻回归命令引用不存在的 Plotter 测试路径，因此未执行。上述测试债务不否定真实
-CLI 闭环，也不证明未运行测试通过。
+| 状态 | 含义 |
+|---|---|
+| `IMPLEMENTED` | 代码链已经实现 |
+| `GENERATED` | 目标文件已经生成 |
+| `DELIVERED` | 文件已经交付外部人员或程序测试 |
+| `LOADED` | 外部程序已经成功加载 |
+| `INITIALIZED` | 外部程序完成初始化 |
+| `TIME-STEPPED` | 有直接证据证明完成明确时间推进 |
+| `PHYSICALLY VALIDATED` | 物理结果已由责任方确认 |
+| `PENDING` | 当前缺少对应层级的直接证据 |
+
+后一个状态不得由前一个状态自动推导。未实际运行的命令必须记录为 `NOT RUN`。
 
 ### 9.6 EAST 和 TCV
 
@@ -1826,47 +1779,67 @@ CLI 闭环，也不证明未运行测试通过。
 - 必须放宽 `outer_boundary` 简单闭环契约；
 - 新来源缺少真实输入、物理语义或验收证据。
 
-### 10.4 P0 禁止事项
+### 10.4 当前禁止事项
 
-- 第二网格引擎；
-- 三维网格；
-- 多 face；
-- 多区域 M3D-C1；
-- 自适应网格；
-- 局部加密；
-- 磁面对齐；
-- 环向或并行分区；
-- `split_smb` 或 `part*.smb`；
-- loader 或 validator；
+- 第二网格引擎、三维网格、环向或并行分区；
+- 未经调查和蓝图批准的局部加密、动态自适应或磁面对齐；
+- 未经 C1/classification 调查批准的 M3D-C1 多区域或多 geometric face；
+- 在调查完成前修改 helper exchange schema；
+- 把 conforming triangle topology 等同于 C1 有限元连续性；
+- 把网格密度分区自动解释为物理区域；
+- 仅凭 Region 数量判断 M3D-C1 C1 是否冲突；
+- `split_smb`、`part*.smb`、SMB loader 或 validator；
 - 手写、解析、修改、拼接或模板化 SMB；
 - Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；
-- 自动人工边界构造；
-- 通用插件、注册表或区域 DSL；
+- 自动猜测物理边界、通用插件、注册表或区域 DSL；
+- 为展示 OFT 功能而把 LinkMesh 扩展为 OFT 通用前端；
 - 修改 M3D-C1、TokaMaker 或 SCOREC/PUMI 只读参考源码。
 
-### 10.5 当前待决事项
+### 10.5 v4.0 调查边界与待决事项
 
-1. EAST 边界的具体物理构造算法，以及它与 LCFS、第一壁、磁轴和 X-point 的精确关系；
-2. EAST 网格尺度、M3D-C1 加载、初始化和时间推进需求；
-3. `single_region + first_wall` 是否由真实需求启动；
-4. TCV 参考边界与真实 TRIMEG 消费结果；
-5. M3D-C1 时间推进、稳定性和物理正确性；
-6. 真实场景是否证明全局 dx 不足；
-7. helper 实际重命名、Writer 新定位协议和 native CMake install；
-8. Python 正式打包、命令入口和版本元数据；
-9. Python 3.12 及正式依赖锁定范围；
-10. 不安装 triangle 的发布候选端到端验证；
-11. helper 完整动态库、链接和 ABI 审计；
-12. 个人发布候选环境与第一个共享 release；
-13. 正式共享根目录、权限、modulefile 和管理员接口；
-14. 包装入口、普通用户并发和回退验收。
+必须区分：
 
-待决事项不得写成已确认事实或自动转化为技术规划。
+| 能力 | 含义 | 当前状态 |
+|---|---|---|
+| 全局常数 `dx` | 整个 Region 使用一个目标尺度 | 已支持 |
+| 分区域常数 `dx` | 不同 Region 使用不同常数尺度 | 已支持生成；高级拓扑语义待调查 |
+| 静态空间变密度 | 单一闭合二维区域中尺度随位置变化 | 待调查，未实现 |
+| 动态自适应 | 根据求解结果或误差反复调整网格 | 不在当前实现范围 |
+| 磁面对齐 | 网格方向或节点分布与磁通面/磁场结构关联 | 待能力定位，未开放 |
+
+OFT 26.6 调查必须确认：
+
+1. `gs_Domain`、`Region`、`Mesh`、`run_triangle`、`dx`、`dx_curve`、region seed
+   和 Triangle area constraint 的真实数据流。
+2. 是否存在位置相关 size function、局部 refinement、背景尺度场、生成后 refinement
+   或质量改善接口。
+3. nested、adjacent、hole 和不同 Region `dx` 下是否共享节点和边，界面是否严格
+   conforming，是否出现重复点、裂缝、重叠或非流形边。
+4. Region 仅作为网格密度分区时，是否可以在下游保持一个 geometric face。
+5. OFT topology、SCOREC/PUMI geometric classification 与 M3D-C1 C1 有限元连续性
+   的关系。
+6. 多 geometric face 是否保持、中断或改变 M3D-C1 所需连续性。
+7. 若升级当前 single-region/single-face 契约，`M3DC1ModelSpec`、TXT、
+   classification、exchange schema 和 helper 分别需要哪些修改。
+
+调查只能形成直接源码证据、最小运行探针和候选架构。调查完成并先更新蓝图前，不得
+开放空间变密度、M3D-C1 多区域或多 face，也不得修改当前 Writer 和 helper 契约。
+详细执行顺序和报告交付物见 `docs/linkmesh/work_plan.md`。
+
+其他待决事项：
+
+- 已交付 M3D-C1 网格的后续加载、初始化、时间推进、稳定性和物理结果；
+- 卢老师对最新 LinkMesh TRIMEG HDF5 的测试反馈；
+- EAST 边界物理构造算法和网格尺度需求；
+- TCV 参考边界和 TRIMEG 实际消费；
+- Python 正式打包、CMake install 和干净发布候选；
+- 正式共享根目录、权限、modulefile、首个 release 和普通用户验收。
 
 ### 10.6 文档完整性纪律
 
 - 本文档保持第 1 至第 10 节连续结构。
-- 不恢复截断事故前的历史旧章节。
+- v1–v3 的实施过程、故障排查、测试计数和迁移过程由 `History.md` 与
+  `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 承载，不在 v4.0 重复展开。
 - 不通过重复章节保存过期状态。
 - 字段表、格式表、算法步骤、停止条件和验收矩阵应作为完整语义块维护。
 - 完全等价重复只保留一处；包含额外约束的内容必须保留其额外约束。
@@ -1890,13 +1863,18 @@ M3D-C1 加载、初始化回归和时间推进仍为 PENDING；其物理构造�
 已从当前接口一次性删除。TOML `[output].hdf5`、`--no-hdf5`、HDF5 Writer 和
 TRIMEG 完整 11 数据集契约均未改变。
 
-当前实时实现仍使用 `native/m3dc1_smb_helper/`、`linkmesh-m3dc1-smb-helper` 和
-`LINKMESH_M3DC1_SMB_HELPER`。新名称、Python 正式安装、CMake install、个人发布
-候选、triangle 非依赖验证、完整二进制审计、共享根目录、包装入口、modulefile、
-第一个共享 release 和普通用户验收均为已批准目标或 PENDING，不得写成已实施。
-本版文档更新未运行任何本地测试，状态为 **NOT RUN**。
+当前 helper 正式接口为 `native/linkmesh_scorec_helper/`、`linkmesh-scorec-helper`
+和 `LINKMESH_SCOREC_HELPER`。Python 正式安装、CMake install、干净发布候选、完整
+二进制审计、共享根目录、包装入口、modulefile、第一个共享 release 和普通用户验收
+仍为 `PENDING`，不得写成已实施。
 
-既有 M3D-C1 时间推进主循环、中等或长时稳定性及物理结果正确性仍为 PENDING；
-TCV/TRIMEG 是并行的第二条真实消费路线。`single_region + first_wall` 未实现；
-`flux_surface` 保持实现候选、未实现并等待 OFT 26.6 只读侦察；多 face、三维、
-自适应网格和并行分区均未开放。
+进入 v4.0 表示项目主线切换，不表示新增网格能力已经实现。既有 M3D-C1 网格已交付
+组内同学继续运行，最新 TRIMEG HDF5 已交付卢老师测试；尚未返回的外部加载、初始化、
+时间推进、稳定性和物理正确性证据继续为 `PENDING`。OFT 单区域静态空间变密度、
+多区域界面拓扑、M3D-C1 C1 与多区域/多 face 兼容性均处于调查阶段。动态自适应、
+磁面对齐、M3D-C1 多区域、多 face、三维和并行分区均未开放。
+
+本次 v4.0 重基线只修改 `Project_Tree.md`、`History.md` 和根目录本文档；未修改
+业务源码、native helper、测试、示例、依赖、`CONTEXT.md` 或 `docs/linkmesh/`
+资料，未运行 OFT、M3D-C1、TRIMEG、SCOREC/PUMI、native 构建或自动测试，状态为
+**NOT RUN**。`docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 保持只读且未修改。
