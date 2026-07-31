@@ -131,7 +131,8 @@ def build_parser() -> argparse.ArgumentParser:
     # 既有：输出路径参数（default=UNSET 交给 config 合并）                  #
     # ------------------------------------------------------------------ #
     parser.add_argument(
-        "--output",
+        "--hdf5",
+        "--h5",
         dest="hdf5",
         default=UNSET,
         metavar="PATH",

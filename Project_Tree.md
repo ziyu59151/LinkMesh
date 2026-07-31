@@ -226,6 +226,8 @@ TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric
 - **输入**：命令行参数。
 - **职责**：调用配置合并，编排 Reader、Mesher、Writer 和 Plotter。
 - **输出**：按目标生成 HDF5，或生成配套 TXT、SMB 和 PNG。
+- **TRIMEG HDF5 路径参数**：正式参数为 `--hdf5 PATH`，`--h5 PATH` 是完全同义别名；
+  二者最终形成同一个 `EffectiveConfig.hdf5_path`。旧 `--output` 已从当前接口删除。
 - **不负责**：网格算法、边界重采样、几何分类、SMB 字节实现或 helper 生命周期。
 
 `src/linkmesh/__main__.py` 只负责让以下命令进入同一个 CLI 主入口：

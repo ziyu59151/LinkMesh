@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **3.6**（本版依据 User 当前决定、实时仓库证据和 `docs/linkmesh/LinkMesh_Group_Delivery_and_SCOREC_Helper_Deployment_Analysis.md`，固化本地开发与服务器验证分工、四类环境、发布可追溯性、LinkMesh SCOREC helper 一次性命名迁移、Python 正式安装、native 构建安装、个人发布候选和组内版本化共享 release 契约；同步更新 EAST `array_file` 生成侧状态；本版仅更新正式文档，不实施 helper 重命名，不修改 Python、C++、CMake、测试、依赖、构建产物或部署脚本，不改变 Mesh2D、TRIMEG HDF5、M3D-C1 TXT、SMB schema v1、classification、PUMI 生命周期或 OFT/Triangle 契约）
+- 文档状态：正式版 **3.7**（本版依据 User 当前决定，将 TRIMEG HDF5 输出路径的正式 CLI 参数修正为 `--hdf5`，并增加完全同义别名 `--h5`；旧参数 `--output` 一次性删除，不保留兼容别名、弃用警告或静默回退。TOML 键 `hdf5`、`EffectiveConfig.hdf5_path`、`--no-hdf5`、HDF5 Writer 接口及 TRIMEG 完整 11 数据集契约保持不变）
 - 最高依据：本文档自身即为 LinkMesh 项目最高技术依据；开发纪律见 `CONTEXT.md`；已完成阶段的详细测试计数、提交过程与样例侦察证据见 `History.md`；本轮输入层调查参考见 `docs/linkmesh/LinkMesh_Boundary_Input_Architecture_Analysis.md`，该文件保存 EAST 文件调查、R-Z 几何验证、边界输入分层分析、`array_file` 架构建议及 `flux_surface` 概念与证据边界，但不是第二份蓝图，与本文冲突时以本文为准；M4-0 前置侦察逐轮证据见 `report.md`、`m4_0d_report.md`、`m4_0d1_report.md`、`m4_0d2_report.md`；OFT Region 重采样接口冲突只读核对见 `m3_complete11a_report.md`
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -595,7 +595,7 @@ schema_version = 1
 | `--plasma-dx FLOAT` | `plasma_dx` | 覆盖 `[mesh].plasma_dx` |
 | `--vacuum-dx FLOAT` | `vacuum_dx` | 覆盖 `[mesh].vacuum_dx` |
 | `--outer-dx FLOAT` | `outer_dx` | 覆盖 `[mesh].outer_dx` |
-| `--output PATH` | `hdf5` | 覆盖 `[output].hdf5` |
+| `--hdf5 PATH` / `--h5 PATH` | `hdf5` | 完全同义；覆盖 `[output].hdf5`，最终形成 `EffectiveConfig.hdf5_path` |
 | `--plot PATH` | `plot` | 覆盖 `[output].plot` |
 | `--model PATH` | `model` | 覆盖 `[output].model` |
 | `--smb PATH` | `smb` | 覆盖 `[output].smb`，表示未插 rank 的基础路径 |
@@ -604,12 +604,25 @@ schema_version = 1
 参与合并的 CLI 参数必须使用 `UNSET` 区分未提供与显式提供。CLI 层不得通过业务默认
 值覆盖 TOML。
 
+TRIMEG HDF5 输出路径的正式 CLI 参数是 `--hdf5 <PATH>`，`--h5 <PATH>` 是完全同义
+别名。二者属于同一个 argparse option action，写入同一个 `hdf5` dest，并沿既有
+`hdf5 → hdf5_path` 路径进入 `EffectiveConfig.hdf5_path`。同一命令重复提供
+`--hdf5`、`--h5` 或二者组合时，遵循 argparse 对同一 action 的既有确定性行为，不
+新增自定义冲突层。旧参数 `--output` 已一次性删除，必须作为未知参数由 argparse
+拒绝；不得保留兼容别名、弃用警告或静默回退。
+
+该修正只涉及 CLI 用户接口命名，不新增 target、Writer、输出格式、TOML 键或
+`EffectiveConfig` 字段。TOML `[output].hdf5`、target=trimeg 的 required-field
+`hdf5_path`、`--no-hdf5` 的配置与执行语义、`--plot`、`--model`、`--smb`、
+mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIMEG 完整 11
+数据集的路径、shape、dtype、索引和 `outer_boundary` 契约也保持不变。
+
 附加规则：
 
 - `--config` 与 `--no-config` 互斥。
 - `--verbose` 未出现时保持 `UNSET`。
 - `--no-hdf5` 和 `--no-smb` 是执行期开关，不进入 `EffectiveConfig`，不取消
-  required-fields。
+  required-fields；`--no-hdf5` 不改变 `--hdf5`/`--h5` 的配置合并语义。
 - `--min-angle` 默认 `20.0`；非默认值在读取配置或调用 OFT 前拒绝。
 - `--max-area` 默认 `None`；一旦提供立即拒绝。
 - CLI 不将 `--smb` 改写为 rank-0 文件名。
@@ -877,6 +890,8 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
 - 非法枚举、dx、bool；
 - `--config`/`--no-config` 互斥和发现规则；
 - 默认 < TOML < 显式 CLI；
+- `--hdf5` 与 `--h5` 完全同义、共用 `hdf5` dest 并覆盖 TOML
+  `[output].hdf5`，旧 `--output` 必须由 argparse 拒绝；
 - TOML 与 CLI 两套路径基准；
 - 路径不展开；
 - `EffectiveConfig` 冻结且恰为 15 字段；
@@ -1869,6 +1884,11 @@ array_file`、OFT/Triangle、Mesh2D、TXT+SMB+PNG 生成侧和 PNG 人工几何�
 本次结果为 104 个输入边界点、185 个节点、329 个三角形和 1 个区域。EAST
 M3D-C1 加载、初始化回归和时间推进仍为 PENDING；其物理构造算法及其与 LCFS、
 第一壁、磁轴和 X-point 的精确关系仍为 PENDING。
+
+当前 TRIMEG HDF5 CLI 使用 `--hdf5` 作为正式参数，`--h5` 作为完全同义别名；
+二者共用 `hdf5` 配置输入并最终形成 `EffectiveConfig.hdf5_path`。旧 `--output`
+已从当前接口一次性删除。TOML `[output].hdf5`、`--no-hdf5`、HDF5 Writer 和
+TRIMEG 完整 11 数据集契约均未改变。
 
 当前实时实现仍使用 `native/m3dc1_smb_helper/`、`linkmesh-m3dc1-smb-helper` 和
 `LINKMESH_M3DC1_SMB_HELPER`。新名称、Python 正式安装、CMake install、个人发布

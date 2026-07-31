@@ -201,6 +201,15 @@ class TestParserDefaults:
         assert args.boundary_source is UNSET
         assert args.array_file is UNSET
 
+    @pytest.mark.parametrize("flag", ["--hdf5", "--h5"])
+    def test_hdf5_output_aliases_share_dest(self, flag):
+        args = _parse(["--gfile", "dummy.eqdsk", flag, "mesh.h5"])
+        assert args.hdf5 == "mesh.h5"
+
+    def test_output_option_removed(self):
+        with pytest.raises(SystemExit):
+            _parse(["--gfile", "dummy.eqdsk", "--output", "mesh.h5"])
+
 
 class TestParserHelp:
     """--help 中出现三个参数、区域含义与单位。"""
@@ -234,6 +243,14 @@ class TestParserHelp:
         assert "--profile" in out
         assert "--boundary-source" in out
         assert "--array-file" in out
+
+    def test_help_uses_hdf5_names_and_omits_output(self, capsys):
+        with pytest.raises(SystemExit):
+            _parse(["--help"])
+        out = capsys.readouterr().out
+        assert "--hdf5" in out
+        assert "--h5" in out
+        assert "--output" not in out
 
 
 # ==========================================================================
@@ -395,7 +412,7 @@ class TestForwarding:
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse([
             "--gfile", "dummy.eqdsk",
-            "--output", out_path,
+            "--hdf5", out_path,
             "--plasma-dx", "0.12",
             "--vacuum-dx", "0.16",
             "--outer-dx", "0.24",
@@ -418,7 +435,7 @@ class TestForwarding:
         mocks = _install_cli_mocks(monkeypatch, mesh=mesh)
         args = _parse([
             "--gfile", "dummy.eqdsk",
-            "--output", out_path,
+            "--hdf5", out_path,
             "--no-smb",
             "--plot", plot_path,
         ])
@@ -468,7 +485,7 @@ class TestCombinations:
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse([
             "--gfile", "dummy.eqdsk",
-            "--output", out_path,
+            "--hdf5", out_path,
             "--plasma-dx", "0.05",
             "--vacuum-dx", "0.08",
             "--outer-dx", "0.16",
@@ -486,8 +503,8 @@ class TestCombinations:
         w_posargs, _ = mocks["write_hdf5"].call_args
         assert str(w_posargs[1]).endswith("out.h5")
 
-    def test_default_flow_unchanged_when_new_params_absent(self, monkeypatch, tmp_path):
-        # 不提供新参数时，既有默认 CLI 流程不变：转发默认 dx，且默认写 HDF5 + SMB
+    def test_default_trimeg_flow_writes_only_hdf5(self, monkeypatch, tmp_path):
+        # 默认 target=trimeg：转发默认 dx，只进入 HDF5 分支。
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse(["--gfile", "dummy.eqdsk"])
         cli._run(args)
@@ -496,9 +513,8 @@ class TestCombinations:
         assert kwargs["plasma_dx"] == 0.08
         assert kwargs["vacuum_dx"] == 0.10
         assert kwargs["outer_dx"] == 0.15
-        # 默认不加 --no-hdf5 / --no-smb：两个 Writer 均被调用
         assert mocks["write_hdf5"].call_count == 1
-        assert mocks["write_smb"].call_count == 1
+        assert mocks["write_smb"].call_count == 0
         # 未指定 --plot：Plotter 不调用
         assert mocks["plot_mesh"].call_count == 0
 
@@ -619,6 +635,37 @@ class TestInputLayerIRunIntegration:
         cli._run(args)
         _, kwargs = mocks["generate_mesh"].call_args
         assert kwargs["plasma_dx"] == 0.07
+
+    @pytest.mark.parametrize("flag", ["--hdf5", "--h5"])
+    def test_hdf5_cli_alias_overrides_toml(self, monkeypatch, tmp_path, flag):
+        (tmp_path / "linkmesh.in").write_text(
+            "schema_version = 1\n[output]\nhdf5 = 'from_toml.h5'\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk",
+            flag, "from_cli.h5",
+            "--no-smb",
+        ])
+        cli._run(args)
+
+        write_args, _ = mocks["write_hdf5"].call_args
+        assert write_args[1] == str((tmp_path / "from_cli.h5").resolve())
+
+    def test_toml_hdf5_used_without_cli_override(self, monkeypatch, tmp_path):
+        (tmp_path / "linkmesh.in").write_text(
+            "schema_version = 1\n[output]\nhdf5 = 'from_toml.h5'\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse(["--gfile", "dummy.eqdsk", "--no-smb"])
+        cli._run(args)
+
+        write_args, _ = mocks["write_hdf5"].call_args
+        assert write_args[1] == str((tmp_path / "from_toml.h5").resolve())
 
     def test_argparse_default_does_not_override_toml(self, monkeypatch, tmp_path):
         # 未显式给 --vacuum-dx 时，TOML 的 vacuum_dx 生效（argparse 默认不覆盖）。
@@ -779,6 +826,7 @@ class TestInputLayerIRunIntegration:
         assert mocks["write_hdf5"].call_count == 1
         assert mocks["build_spec"].call_count == 0
         assert mocks["write_model"].call_count == 0
+        assert mocks["write_smb"].call_count == 0
 
     def test_mesh_only_skips_hdf5(self, monkeypatch, tmp_path):
         # mesh_only + nested_three_region + artificial_outer：不写 HDF5，仍生成网格。
@@ -965,7 +1013,7 @@ class TestInputLayerIISingleRegionLcfs:
             "--gfile", "dummy.eqdsk", "--no-config",
             "--target", "trimeg",
             "--profile", "single_region", "--boundary-source", "lcfs",
-            "--output", out_path,
+            "--hdf5", out_path,
             "--no-smb",
         ])
         cli._run(args)

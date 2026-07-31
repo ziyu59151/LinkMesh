@@ -544,6 +544,17 @@ class TestRequiredFields:
                 no_config=True, cwd=tmp_path,
             )
 
+    def test_trimeg_requires_hdf5_path_when_default_unavailable(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(cfgmod, "DEFAULT_HDF5_NAME", None)
+        with pytest.raises(ConfigError, match="hdf5_path"):
+            load_effective_config(
+                _overrides(**_MINIMAL_GFILE_OVR),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
     def test_first_wall_requires_gfile(self, tmp_path):
         with pytest.raises(ConfigError, match="gfile"):
             load_effective_config(
