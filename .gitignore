@@ -1,6 +1,60 @@
+# Aider local state
 .aider*
-.env
+.aider.chat.history.md
+.aider.input.history
+
+# Python environments and caches
 .venv/
-.vscode/
+venv/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE and local settings
+.vscode/
+.idea/
+
+# Build and native compilation output
+build/
+dist/
+*.egg-info/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+
+# Runtime logs and generated outputs
+*.log
+*.h5
+*.hdf5
+*.smb
+*.png
+
+# Local runtime/configuration files
+.env
+*.local
+*.secret
+
+# External reference source trees
+M3DC1/
+TOKAMAKER/
+m3dc1/
+tokamaker/
+
+# Local external reference workspace
+external_references/
+
+# External reference source trees; kept locally, not committed
+/M3DC1/
+/TOKAMAKER/
+
+# Generated runtime outputs
+/LinkMesh_runs/
+/validation_outputs/
+/runs/
+/*.h5
+/*.hdf5
+/*.smb
+/*.log
