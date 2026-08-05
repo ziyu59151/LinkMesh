@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.0**（项目主线由“建立网格生成和格式输出闭环”切换为“OFT 高级网格能力侦察和真实求解反馈”；该版本切换不表示空间变网格密度、动态自适应、磁面对齐、M3D-C1 多区域、多 geometric face、C1 多区域兼容性或正式共享部署已经实现）
+- 文档状态：正式版 **4.1**（初期交付重排：当前最高优先级调整为现有功能产品化收口、`array_file` 网格配可选 GFile LCFS PNG 参考、普通用户发布候选和初期使用报告；OFT 高级网格能力调查保留为后续任务。新增参考曲线工作流状态为 **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；下一阶段执行拆解见 `docs/linkmesh/work_plan.md`；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -123,10 +123,13 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | TCV/TRIMEG 实际消费 | **PENDING** |
 | `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED；未开放** |
 | `single_region + array_file` | **IMPLEMENTED / PASSED；EAST 生成侧已验收** |
+| `array_file + 可选 GFile LCFS PNG 参考` | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED** |
+| `plot_lcfs` 配置字段与 `--plot-lcfs` CLI | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED** |
+| 普通用户可调用的发布候选 | **PENDING / NOT YET IMPLEMENTED** |
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | 多区域、多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
-### 1.6 v4.0 当前主线
+### 1.6 v4.1 当前主线与优先级
 
 LinkMesh 已建立两条目标格式生产链：
 
@@ -144,17 +147,40 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
 同学的 M3D-C1 网格仍在继续运行；最新 TRIMEG HDF5 已交付卢老师测试。交付只表示
 文件已移交，不自动证明外部加载、初始化、时间推进、稳定性或物理正确性。
 
-v4.0 的下一阶段主线是：
+当前执行优先级重排如下。
 
-1. 收集 M3D-C1 后续运行反馈和卢老师的 TRIMEG 测试反馈。
-2. 只读调查 OFT 26.6 单一区域内部静态空间变网格密度能力。
-3. 运行 OFT 多区域共享界面和 conforming topology 最小探针。
-4. 调查 OFT topology、SCOREC/PUMI classification 与 M3D-C1 C1 连续性的关系。
-5. 在直接证据明确前，不开放 M3D-C1 多区域、多 geometric face、局部加密、
-   动态自适应或磁面对齐。
-6. 等待老师确认共享根目录、权限和 module 能力后再实施正式共享 release。
+**P0：初期交付与产品化收口**
 
-详细调查工作流和交付物见 `docs/linkmesh/work_plan.md`。
+1. 收口老师和初期使用者需要的现有 `array_file` 与 GFile 可用入口。
+2. 实现 `array_file` 实际网格配可选 GFile LCFS PNG 参考工作流。
+3. 保持 TRIMEG 与 M3D-C1 Writer、`Mesh2D`、ModelSpec 和 helper 契约稳定。
+4. 设计并实施普通用户可调用的发布候选。
+5. 将发布候选交给 M3D-C1 和 TRIMEG 使用者。
+6. 收集初期使用报告并按真实证据归档问题。
+
+**P1：发布验证与反馈修正**
+
+1. 根据初期用户反馈修正 CLI、诊断、文档和打包。
+2. 完成不依赖个人 `PYTHONPATH` 或开发构建目录的干净发布候选验证。
+3. 核对 OFT 26.6、`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime
+   和 ABI 的运行时定位与动态依赖。
+4. 在共享根目录、权限和 module 能力确认后继续推进正式共享 release。
+
+**P2：高级网格能力调查**
+
+1. 调查 OFT 单区域静态空间变网格密度。
+2. 调查 Triangle refinement。
+3. 调查 OFT 多区域共享界面拓扑。
+4. 调查 M3D-C1 C1 连续性与多 geometric face。
+5. 动态自适应和磁面对齐继续保持未开放。
+
+既有 OFT 调查事实、问题列表和停止条件继续有效，仅降低当前执行优先级。在直接证据
+明确并先更新蓝图前，不开放空间变密度、局部 refinement、M3D-C1 多区域、多
+geometric face、动态自适应或磁面对齐。
+
+新增 `array_file + GFile LCFS reference` 工作流当前仅为
+**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。普通用户发布
+候选同样尚未完成，不得描述为已经打包、发布或通过普通用户验收。
 
 ---
 
@@ -185,19 +211,19 @@ Writer、CLI、Plotter 或 config。
 | 模块 | 职责 | 禁止 |
 |---|---|---|
 | `src/linkmesh/__main__.py` | `python -m linkmesh` 入口，仅调用 `cli.main()` | 参数解析和业务逻辑 |
-| `src/linkmesh/cli.py` | 收集显式 CLI 参数；拦截历史参数；调用配置合并；编排 Reader → Mesher → Writer → Plotter | 几何、区域、种子、Triangle、dx 换算、配置默认值合并、SMB rank 改写、helper 环境变量解析 |
+| `src/linkmesh/cli.py` | 收集显式 CLI 参数；拦截历史参数；调用配置合并；编排 Reader → Mesher → Writer → Plotter；在已批准但尚未实现的 `array_file + plot_lcfs` 工作流中分别读取实际边界和参考 GFile，并且只在调用 Plotter 时汇合两条支路 | 几何、区域、种子、Triangle、dx 换算、配置默认值合并、SMB rank 改写、helper 环境变量解析；把参考 `GFileData` 传给 Mesher 或 Writer |
 | `src/linkmesh/config.py` | 定义冻结的 `EffectiveConfig`；严格读取 TOML；执行默认值、配置文件、CLI 合并；验证兼容矩阵和 required fields | 读取业务文件；创建 OFT Domain；调用 Writer；通用 DSL、插件或任意 N 区域语言 |
-| `src/linkmesh/readers/gfile_reader.py` | 调用 OFT `GEQDSKEquilibrium` 并输出 `GFileData` | 手写 GFile 解析；调用 Triangle；写文件 |
-| `src/linkmesh/readers/boundary_reader.py` | 实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
+| `src/linkmesh/readers/gfile_reader.py` | 独立薄 Adapter：调用 OFT `GEQDSKEquilibrium`，读取 LCFS、limiter、磁轴和基本平衡参数并输出 `GFileData` | 手写 GFile 解析；读取 array file；调用 `boundary_reader`；决定网格边界来源；调用 Mesher、Plotter 或 Writer |
+| `src/linkmesh/readers/boundary_reader.py` | 独立 Boundary Reader：实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；调用 `gfile_reader`；返回 `GFileData`；组合参考几何；调用 Plotter；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
-| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座；规范化 OFT 输出；受控读取 outer Region 回写边界 | 配置解析；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件 |
+| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary | 配置解析；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；根据 LCFS 改变 Domain |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
 | `src/linkmesh/writers/smb_writer.py` | 验证输入；生成 classification 和交换文件；调用 helper；确认 rank-0 SMB | 创建 APF/MDS entity；读写 SMB 字节；硬编码 PUMI 路径 |
 | `native/linkmesh_scorec_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
 | `native/linkmesh_scorec_helper/CMakeLists.txt` | 构建 `linkmesh-scorec-helper` target | 通用 native/plugin 框架；Python 扩展；运行时编译；硬编码安装前缀 |
-| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；待最小调整的 `plot_mesh()` 以 `Mesh2D` 及实际计算边界完成基础 PNG，自愿接收 `GFileData` 叠加 LCFS、第一壁和磁轴参考 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS |
+| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；`plot_mesh()` 以 `Mesh2D` 及 `Mesh2D.outer_boundary` 作为实际网格和实际计算域边界来源，并可接收可选 `GFileData` 叠加平衡参考；在候选工作流中必须将 actual mesh boundary 与 LCFS reference 视觉和图例区分 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS；把 LCFS、limiter 或其他参考曲线标成实际 mesh boundary；把 PNG 当作消费端验收 |
 
 ---
 
@@ -267,6 +293,10 @@ Writer、CLI、Plotter 或 config。
 `EffectiveConfig` 是 `@dataclass(frozen=True)`，是默认值、配置文件和显式 CLI
 合并、类型校验、路径解析、兼容矩阵及 required-fields 校验后的唯一配置对象。
 
+当前源码对象有 15 个字段。已批准的 `array_file + LCFS reference` 实施将新增
+`plot_lcfs: bool`，实施完成后的正式对象必须准确包含 16 个字段；在业务源码尚未修改
+前，该字段状态为 **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+
 | 字段 | 类型 |
 |---|---|
 | `schema_version` | `int`，固定 `1` |
@@ -284,6 +314,7 @@ Writer、CLI、Plotter 或 config。
 | `model_path` | `Optional[Path]` |
 | `smb_path` | `Optional[Path]` |
 | `verbose` | `bool` |
+| `plot_lcfs` | `bool`，默认 `False`；已批准、尚未实现 |
 
 所有非 `None` 路径在构造前解析为绝对路径。对象不保存来源字典、NumPy 数组、
 `Mesh2D`、`GFileData`、PUMI 句柄、Writer、argparse Namespace 或可变业务状态。
@@ -478,6 +509,56 @@ LCFS、第一壁或磁通面。
 Reader 负责获取边界，Mesher 负责构造 Domain，Writer 只消费 `Mesh2D`，不得跨层
 猜测来源或物理语义。
 
+#### 5.2.1 实际计算域边界与 LCFS 参考曲线
+
+已批准的候选工作流必须严格区分两个几何对象。
+
+**实际计算域边界**
+
+```text
+counted R-Z array file
+  → boundary_reader.read_boundary_file()
+  → (N,2) float64 米制简单闭环
+  → single-region OFT Domain
+  → Mesh2D.outer_boundary
+      ├── TRIMEG Rbc/Zbc
+      └── M3D-C1 single-face geometric boundary
+```
+
+该对象是 `array_file` 工作流唯一实际计算域边界，决定 OFT polygon、网格节点、
+三角形、`region_ids`、`Mesh2D.outer_boundary`、Writer 输出和求解器计算域。
+
+**LCFS 参考曲线**
+
+```text
+可选 GFile/EQDSK
+  → gfile_reader.read_gfile()
+  → OFT GEQDSKEquilibrium
+  → boundary_R / boundary_Z
+  → GFileData.lcfs_r / lcfs_z
+  → Plotter
+```
+
+该对象只在 PNG 中作为平衡几何参考，帮助使用者比较 LCFS 与实际计算域边界的位置。
+它不得作为 `array_file` 路径的 OFT polygon，不得改变节点、三角形、Region、
+`region_ids` 或 `Mesh2D.outer_boundary`，不得写入 TRIMEG `Rbc/Zbc`、M3D-C1
+TXT、SMB 或 helper exchange。
+
+两条输入支路保持独立，只能在 CLI 把 `Mesh2D` 与可选 `GFileData` 一并传给
+Plotter 时汇合：
+
+```text
+主网格支路：
+array_file → boundary_reader → OFT Adapter → Mesh2D ─┐
+                                                      ├→ Plotter → PNG
+可选参考支路：                                        │
+gfile → gfile_reader → GFileData ─────────────────────┘
+```
+
+`boundary_reader` 与 `gfile_reader` 不得互相调用。OFT Adapter、`Mesh2D`、Writer、
+`M3DC1ModelSpec` 和 native helper 不得感知参考 GFile。不得把 array boundary
+伪装成 LCFS，也不得把 LCFS 伪装成 array 实际计算边界。
+
 ### 5.3 内建默认值
 
 | 字段 | 内建默认值 |
@@ -490,6 +571,7 @@ Reader 负责获取边界，Mesher 负责构造 Domain，Writer 只消费 `Mesh2
 | `vacuum_dx` | `0.10` |
 | `outer_dx` | `0.15` |
 | `verbose` | `False` |
+| `plot_lcfs` | `False`（已批准、尚未实现） |
 | `gfile_path` | `None` |
 | `array_file_path` | `None` |
 | `hdf5_path` | target 为 `trimeg` 时为当前工作目录下 `mesh.h5` |
@@ -541,6 +623,7 @@ schema_version = 1
   plot
   model
   smb
+  plot_lcfs
 
 [runtime]
   verbose
@@ -561,6 +644,7 @@ schema_version = 1
 | `[output].plot` | 非空字符串 | `plot_path` |
 | `[output].model` | 非空字符串 | `model_path` |
 | `[output].smb` | 非空字符串 | `smb_path` |
+| `[output].plot_lcfs` | TOML bool | `plot_lcfs`；默认 `false`；已批准、尚未实现 |
 | `[runtime].verbose` | TOML bool | `verbose` |
 
 严格规则：
@@ -593,6 +677,7 @@ schema_version = 1
 | `--plot PATH` | `plot` | 覆盖 `[output].plot` |
 | `--model PATH` | `model` | 覆盖 `[output].model` |
 | `--smb PATH` | `smb` | 覆盖 `[output].smb`，表示未插 rank 的基础路径 |
+| `--plot-lcfs` | `plot_lcfs` | 显式出现时覆盖 `[output].plot_lcfs` 为 `True`；已批准、尚未实现 |
 | `--verbose` | `verbose` | 显式出现时覆盖为 `True` |
 
 参与合并的 CLI 参数必须使用 `UNSET` 区分未提供与显式提供。CLI 层不得通过业务默认
@@ -615,6 +700,10 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
 
 - `--config` 与 `--no-config` 互斥。
 - `--verbose` 未出现时保持 `UNSET`。
+- `--plot-lcfs` 正式拼写使用连字符，不提供 `--plot_lcfs`；未出现时保持 `UNSET`，
+  使 TOML `[output].plot_lcfs` 不被 argparse 默认值覆盖。
+- `CliOverrides` 实施时新增 `plot_lcfs`，并沿同名标量字段合并到
+  `EffectiveConfig.plot_lcfs`。
 - `--no-hdf5` 和 `--no-smb` 是执行期开关，不进入 `EffectiveConfig`，不取消
   required-fields；`--no-hdf5` 不改变 `--hdf5`/`--h5` 的配置合并语义。
 - `--min-angle` 默认 `20.0`；非默认值在读取配置或调用 OFT 前拒绝。
@@ -651,9 +740,11 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
    `smb→smb_path`。
 6. 路径使用 `Path.resolve(strict=False)` 等价语义，不展开 `~` 或环境变量。
 7. 合并后再次校验枚举、数值和 bool。
-8. 构造冻结的 `EffectiveConfig`。
-9. 执行兼容矩阵、required-fields 和阶段闸门。
-10. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
+8. `plot_lcfs` 按同一标量规则取显式 CLI，否则 TOML，否则默认 `False`，并严格校验
+   为 bool。
+9. 构造冻结的 16 字段 `EffectiveConfig`。
+10. 执行兼容矩阵、required-fields 和阶段闸门。
+11. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
 
 配置层不要求输出文件已经存在，不创建父目录。输入业务文件存在性由 Reader 报告。
 helper 定位不属于 `EffectiveConfig`。
@@ -718,6 +809,92 @@ EAST 直接证据：
 - 具体物理构造算法及其与 LCFS、第一壁、磁轴和 X-point 的精确关系仍为
   PENDING，但不阻塞读取已由研究人员确认的最终边界。
 
+### 5.7A `array_file + GFile LCFS reference` 候选工作流
+
+状态：**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+
+正式目标命令：
+
+```text
+python -m linkmesh \
+  --target trimeg \
+  --profile single_region \
+  --boundary-source array_file \
+  --array-file <boundary-path> \
+  --plot-lcfs \
+  --gfile <gfile-path> \
+  --plot <png-path> \
+  --hdf5 <hdf5-path>
+```
+
+参数语义：
+
+- `--boundary-source array_file`：array file 是唯一实际计算域边界。
+- `--array-file PATH`：提供实际计算域边界。
+- `--plot-lcfs`：要求读取 GFile LCFS 并叠加到 PNG。
+- `--gfile PATH`：仅在该组合中提供 LCFS 参考数据，不参与网格生成。
+- `--plot PATH`：提供包含实际网格边界和 LCFS reference 的 PNG 路径。
+- 既有 `boundary_source=lcfs` 或 `artificial_outer` 路径中，`gfile_path` 继续承担
+  原有网格输入职责，新功能不得改变其语义。
+
+合法组合：
+
+1. 纯 `array_file`：提供 `array_file_path`，`plot_lcfs=False`，不要求或读取 GFile。
+2. `array_file + LCFS reference`：同时提供 `array_file_path`、`gfile_path`、
+   `plot_path`，并设置 `plot_lcfs=True`。
+
+必须在配置层失败：
+
+1. `array_file + plot_lcfs=True` 缺少 `gfile_path`。
+2. `array_file + plot_lcfs=True` 缺少 `plot_path`。
+3. `array_file` 同时提供 `gfile_path` 但 `plot_lcfs=False`。
+4. 非 `array_file` 路径设置 `plot_lcfs=True`。
+5. `[output].plot_lcfs` 类型不是 bool。
+6. 配置文件使用未知键。
+
+业务执行阶段必须明确失败：
+
+1. 参考 GFile 无法读取。
+2. OFT `GEQDSKEquilibrium` 未提供可用 LCFS，或 LCFS shape、有限性、最低点数
+   不满足 `GFileData`/Plotter 参考曲线要求。
+3. 参考 LCFS 完全或部分位于实际计算域外。首版将其定义为明确的非致命诊断：
+   必须向终端输出英文 warning，说明 LCFS reference 不完全位于 actual mesh
+   boundary 内；仍允许生成 PNG，且不得据此修改、裁剪或拒绝实际网格。不得静默
+   假定二者包含关系有效。
+
+CLI 编排要求：
+
+1. 正好读取一次 boundary file，形成唯一 Mesher 输入。
+2. `plot_lcfs=True` 时正好读取一次 GFile，形成只供 Plotter 使用的 `GFileData`。
+3. `GFileData` 不传给 OFT Adapter、`Mesh2D`、Writer、ModelSpec 或 helper。
+4. 两条支路只在 `plot_mesh(gfile_data, mesh, plot_path, ...)` 调用处汇合。
+5. `plot_lcfs=False` 的旧 `array_file` 路径继续把 `None` 传给 Plotter，并且完全
+   不读取 GFile。
+
+绘图语义：
+
+- PNG 至少视觉区分三角网格、actual mesh boundary 和可选 LCFS reference。
+- 图例不得把 array boundary 标为 LCFS，不得把 LCFS 标为 mesh boundary，不得把
+  limiter contour 标为 LCFS。
+- LCFS 可使用虚线，但正式契约只要求视觉和图例可区分，不固定颜色。
+- 坐标轴保持 R、Z，单位 m。
+- PNG 只用于几何检查，不代表 TRIMEG/M3D-C1 已加载、初始化、时间推进或物理验证。
+
+确定性不变量：
+
+对同一个 array file 和同一组网格参数，以下两次执行：
+
+- A：不提供参考 GFile；
+- B：提供 GFile 并启用 `plot_lcfs`；
+
+必须产生完全相同的 `Mesh2D.nodes`、`triangles`、`region_ids`、
+`outer_boundary`、TRIMEG 11 个 dataset 的路径/shape/dtype/值，以及 M3D-C1
+TXT/SMB 的几何和 classification 输入。唯一允许差异是 B 的 PNG 增加 LCFS
+reference。若 HDF5 容器存在非确定性元数据，不要求比较整个文件原始字节。
+
+该工作流不新增 `Mesh2D` 字段，不修改任何 Writer、`M3DC1ModelSpec`、helper
+exchange schema 或目标格式。
+
 ### 5.8 `boundary_source`
 
 | 来源 | 正式来源 | 状态 | 规则 |
@@ -732,8 +909,9 @@ EAST 直接证据：
 
 - 每次任务只有一个计算域外边界来源。
 - `lcfs`、`first_wall`、`artificial_outer` 需要 GFile。
-- `array_file` v1 需要 array file，并禁止 GFile；未来若允许额外 GFile，只能作为
-  蓝图明确批准的可选平衡参考，且不得改变实际计算边界，本版不开放该能力。
+- `array_file` v1 需要 array file。纯 array 工作流继续禁止 GFile；已批准但尚未实现的
+  `plot_lcfs=True` 例外允许额外 `gfile_path`，且该 GFile 只能提供 PNG LCFS
+  reference，不得改变实际计算边界、网格或 Writer 输出。
 - `flux_surface` 不是文件格式或第二网格生成器，不能替代需要包含 X-point 或其附近
   区域的 EAST 外部边界。本轮不批准其业务实现；后续必须先只读确认 OFT 26.6
   的磁通场、归一化磁通、轮廓提取、多轮廓选择、闭合和方向接口。
@@ -753,6 +931,8 @@ EAST 直接证据：
 | `mesh_only` | `single_region` | `array_file` | 已实现 |
 | `trimeg` | `single_region` | `array_file` | 已实现；不改变 HDF5 契约 |
 | `m3dc1` | `single_region` | `array_file` | 已实现；EAST 生成侧通过，外部消费待验收 |
+| `mesh_only` / `trimeg` / `m3dc1` | `single_region` | `array_file + plot_lcfs` | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**；GFile 只供 PNG 参考，不改变 target 输出 |
+| 任意非 `array_file` | 任意 | `plot_lcfs=True` | 禁止，使用 `ConfigError` |
 | 任意 | `single_region` | `flux_surface` | 实现候选，未实现，待 OFT 26.6 只读侦察 |
 | `m3dc1` | `single_region` | `first_wall` / `flux_surface` | 未开放 |
 | `m3dc1` | `nested_three_region` | 任意 | 禁止 |
@@ -771,7 +951,8 @@ EAST 直接证据：
 | `lcfs` | `gfile_path` | `array_file_path` |
 | `first_wall` | `gfile_path` | `array_file_path` |
 | `artificial_outer` | `gfile_path` | `array_file_path` |
-| `array_file` | `array_file_path` | `gfile_path`（v1 不开放可选平衡参考） |
+| `array_file`，`plot_lcfs=False` | `array_file_path` | `gfile_path` |
+| `array_file`，`plot_lcfs=True` | `array_file_path`、`gfile_path`、`plot_path` | 无；`gfile_path` 仅作 LCFS PNG reference |
 | `flux_surface` | 未定义，阶段闸门报未实现 | 不得猜测 |
 
 按 target：
@@ -866,6 +1047,8 @@ OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多�
 | 输入层 III | `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED** |
 | 输入层 IV | counted R-Z Boundary Reader 与 `single_region + array_file` | **IMPLEMENTED / PASSED** |
 | 输入层 V | 真实 `flux_surface` | **实现候选 / NOT IMPLEMENTED / 待 OFT 26.6 只读侦察** |
+| 初期交付 I | `array_file + 可选 GFile LCFS PNG reference` | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED** |
+| 初期交付 II | 普通用户可调用的发布候选 | **PENDING / NOT YET IMPLEMENTED** |
 | M5 第一条 | M3D-C1 TXT+SMB+PNG CLI | **PASSED；时间推进 PENDING** |
 
 输入层 IV 的 Reader、几何验证、配置放行、CLI 编排、single-region OFT Domain、
@@ -888,7 +1071,8 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
   `[output].hdf5`，旧 `--output` 必须由 argparse 拒绝；
 - TOML 与 CLI 两套路径基准；
 - 路径不展开；
-- `EffectiveConfig` 冻结且恰为 15 字段；
+- 当前源码 `EffectiveConfig` 冻结且恰为 15 字段；实施 `plot_lcfs` 后必须恰为
+  16 字段，并覆盖默认 `False`、TOML bool、CLI `UNSET` 与三层合并；
 - 已实现、禁止和未实现组合的异常类型；
 - boundary source 和 target required-fields；
 - `mesh_only` 不调用 Writer；
@@ -904,6 +1088,14 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
   interface、vacuum annulus 或 artificial outer；
 - EAST `outer_boundary` 必须表达实际计算边界并满足正式顺时针约定，Writer 不感知来源；
 - 无 GFile 时仍可生成显示实际边界和三角网格的 R-Z 米制 PNG；
+- `array_file + plot_lcfs` 必须正好读取一次 boundary file 和一次 GFile，两条 Reader
+  支路只在 Plotter 汇合，`GFileData` 不得传给 Mesher、Writer、ModelSpec 或 helper；
+- 缺 `gfile_path`、缺 `plot_path`、未启用 `plot_lcfs` 却提供 GFile、非
+  `array_file` 启用 `plot_lcfs`、GFile 不可读或 LCFS 非法必须按正式边界失败；
+- 同一 array boundary 和网格参数在有无 LCFS reference 时必须产生完全相同的
+  `Mesh2D`、TRIMEG 11 dataset 值和 M3D-C1 几何/classification 输入；
+- LCFS 不完全位于 actual mesh boundary 内时必须产生明确英文 warning，不得静默
+  假定有效，也不得修改实际网格；
 - EAST TXT、rank-0 SMB 和 PNG 生成、PNG 人工检查、M3D-C1 加载、初始化与时间推进
   必须分层记录，时间推进不得由前述结果替代；
 - first wall 缺失不得回退；
@@ -954,7 +1146,26 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
 - Writer 必须在打开文件前完成所有 shape、有限性、整数、索引、面积、非流形和边界
   验证，并不得修改输入。
 
-### 6.3 真实 CLI 和 MATLAB 验收
+### 6.3 LCFS reference 与 TRIMEG 格式边界
+
+当前授权的标准网格 Loader `docs/trimeg/loadfemmesh_h5.m` 读取第 6.1 节定义的
+完整 11 个 `/femmesh/` dataset。该 Loader 和当前正式 11 数据集契约中未发现独立
+LCFS、separatrix、equilibrium contour 或 reference-curve dataset。
+
+因此：
+
+1. `nbcRZ/Rbc/Zbc` 继续表示实际网格计算域边界。
+2. `Rbc/Zbc` 必须继续直接来自 `Mesh2D.outer_boundary`。
+3. `array_file + plot_lcfs` 的 GFile LCFS 不得写入 `Rbc/Zbc`。
+4. 本工作流不新增、改名或扩展任何 HDF5 dataset。
+5. 不修改 HDF5 Writer或 `docs/trimeg/loadfemmesh_h5.m`。
+6. 未获得 TRIMEG 开发者直接确认前，不设计私有 LCFS 扩展 dataset。
+7. 第一版 LCFS reference 只存在于 LinkMesh PNG。
+
+该结论仅表示当前授权的标准网格 Loader 与正式 11 数据集契约中未发现独立 LCFS
+输入位置，不得扩大表述为整个 TRIMEG 系统永远不支持 LCFS。
+
+### 6.4 真实 CLI 和 MATLAB 验收
 
 | 链路 | 结果 |
 |---|---|
@@ -1677,7 +1888,26 @@ Fake OFT。
 
 任何状态更新必须有对应直接证据，不得由 PNG、生成、加载或初始化向后续层级外推。
 
-### 9.7 组内发布与部署验收
+### 9.7 初期交付候选工作流验收
+
+新增能力当前状态为
+**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。实施后至少验收：
+
+1. 无 GFile 的旧 `array_file` 命令继续成功，且不读取 GFile。
+2. `array_file + plot_lcfs` 正好读取一次 boundary file 和一次 GFile。
+3. `GFileData` 只传给 Plotter，不传给 OFT Adapter、`Mesh2D`、Writer、
+   `M3DC1ModelSpec` 或 helper。
+4. 同一 array file 和相同网格参数在有无参考 GFile时产生完全相同的
+   `nodes`、`triangles`、`region_ids` 和 `outer_boundary`。
+5. TRIMEG 比较 11 个 dataset 的路径、shape、dtype和值；不因 HDF5 容器元数据
+   要求整个文件字节相同。
+6. M3D-C1 TXT/SMB 的几何和 classification 输入保持相同。
+7. 唯一允许的输出差异是参考工作流 PNG 增加视觉可区分的 LCFS reference。
+8. LCFS 不完全位于实际边界内时出现明确英文 warning。
+9. 所有 required-fields、非法组合、GFile 读取和 LCFS 数据错误均明确失败。
+10. PNG 结果不得记录为 TRIMEG/M3D-C1 消费或物理验收。
+
+### 9.8 组内发布与部署验收
 
 以下验收当前均为 **PENDING / NOT RUN**，不得写成 PASSED。
 
@@ -1777,7 +2007,16 @@ Fake OFT。
 - 无法可靠捕获唯一 outer Region；
 - 必须从最终拓扑或最近距离猜测有序边界；
 - 必须放宽 `outer_boundary` 简单闭环契约；
-- 新来源缺少真实输入、物理语义或验收证据。
+- 新来源缺少真实输入、物理语义或验收证据；
+- `plot_mesh()` 无法在不修改 `Mesh2D` 的情况下接收参考 `GFileData`；
+- 实现要求 `boundary_reader` 与 `gfile_reader` 直接依赖；
+- 参考 GFile 必须进入 Mesher 或 Writer 才能绘制 LCFS；
+- `array_file_path` 与只读参考 `gfile_path` 无法在 `plot_lcfs` 条件下无歧义校验；
+- 当前授权 TRIMEG Loader 出现本蓝图未定义的正式 LCFS dataset；
+- HDF5 Writer 的 `Rbc/Zbc` 不再直接来自 `Mesh2D.outer_boundary`；
+- 必须修改 `Mesh2D`、Writer、ModelSpec 或 helper exchange 才能完成 PNG 叠加；
+- 必须把 LCFS 写入目标格式才能完成参考绘图；
+- 发布候选相对路径设计依赖未经验证的 ABI、RPATH、临时解压或系统库假设。
 
 ### 10.4 当前禁止事项
 
@@ -1793,9 +2032,18 @@ Fake OFT。
 - Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；
 - 自动猜测物理边界、通用插件、注册表或区域 DSL；
 - 为展示 OFT 功能而把 LinkMesh 扩展为 OFT 通用前端；
+- 让 Reader 互相调用，或让 Mesher/Writer读取参考 GFile；
+- 把 array boundary 解释为 LCFS，或把 LCFS 解释为 array 实际计算边界；
+- 把 LCFS 写入 TRIMEG `Rbc/Zbc` 或私自新增 HDF5 dataset；
+- 在实现和验收前把 `plot_lcfs` 工作流写成 IMPLEMENTED、PASSED 或 GENERATED；
+- 在打包探针完成前宣称已实现物理意义上的真正单文件可执行程序；
 - 修改 M3D-C1、TokaMaker 或 SCOREC/PUMI 只读参考源码。
 
-### 10.5 v4.0 调查边界与待决事项
+### 10.5 v4.1 交付优先级、调查边界与待决事项
+
+当前优先顺序是现有功能收口、`array_file + LCFS reference`、普通用户发布候选和
+初期使用报告。以下 OFT 高级能力调查契约继续保留，但属于 P2 后续任务，不阻塞初期
+交付：
 
 必须区分：
 
@@ -1828,6 +2076,8 @@ OFT 26.6 调查必须确认：
 
 其他待决事项：
 
+- 实施并验证 `plot_lcfs` 的 16 字段配置、CLI 双 Reader 编排、诊断和确定性回归；
+- 构建普通用户可调用的发布候选并取得初期 M3D-C1/TRIMEG 使用报告；
 - 已交付 M3D-C1 网格的后续加载、初始化、时间推进、稳定性和物理结果；
 - 卢老师对最新 LinkMesh TRIMEG HDF5 的测试反馈；
 - EAST 边界物理构造算法和网格尺度需求；
@@ -1868,13 +2118,31 @@ TRIMEG 完整 11 数据集契约均未改变。
 二进制审计、共享根目录、包装入口、modulefile、第一个共享 release 和普通用户验收
 仍为 `PENDING`，不得写成已实施。
 
-进入 v4.0 表示项目主线切换，不表示新增网格能力已经实现。既有 M3D-C1 网格已交付
-组内同学继续运行，最新 TRIMEG HDF5 已交付卢老师测试；尚未返回的外部加载、初始化、
-时间推进、稳定性和物理正确性证据继续为 `PENDING`。OFT 单区域静态空间变密度、
-多区域界面拓扑、M3D-C1 C1 与多区域/多 face 兼容性均处于调查阶段。动态自适应、
-磁面对齐、M3D-C1 多区域、多 face、三维和并行分区均未开放。
+进入 v4.1 表示初期交付优先级重排，不表示新增工作流或发布候选已经实现。新增
+`array_file + 可选 GFile LCFS PNG reference` 正式状态为
+**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。当前源码
+`EffectiveConfig` 仍为 15 字段，`--plot-lcfs`、TOML `[output].plot_lcfs`、
+双 Reader 编排和 LCFS 包含关系诊断均尚未编码；实施后配置对象必须更新为 16 字段。
 
-本次 v4.0 重基线只修改 `Project_Tree.md`、`History.md` 和根目录本文档；未修改
-业务源码、native helper、测试、示例、依赖、`CONTEXT.md` 或 `docs/linkmesh/`
-资料，未运行 OFT、M3D-C1、TRIMEG、SCOREC/PUMI、native 构建或自动测试，状态为
-**NOT RUN**。`docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 保持只读且未修改。
+该候选工作流中，array file 永远是唯一实际计算域边界，GFile LCFS 只供 Plotter。
+因此不修改 `Mesh2D`、TRIMEG 11 数据集、HDF5 Writer、M3D-C1 ModelSpec、TXT、
+SMB、classification 或 helper exchange。当前授权 TRIMEG Loader 和正式 11 数据集
+契约中未发现独立 LCFS reference 输入位置，第一版参考曲线只进入 PNG。
+
+普通用户发布候选仍为 `PENDING / NOT YET IMPLEMENTED`。文档必须区分一个统一用户
+入口命令、一个可移动发布目录和物理意义上的单文件可执行程序；在打包及 ABI 探针完成
+前不得宣称真正单文件已经实现。候选运行时仍需专门处理 OFT 26.6、
+`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，不得提前写死
+未经验证的相对目录、RPATH、临时解压方案或系统库兼容性。
+
+OFT 单区域静态空间变密度、Triangle refinement、多区域界面拓扑、M3D-C1 C1 与
+多区域/多 face 兼容性调查继续保留为 P2。动态自适应、磁面对齐、M3D-C1 多区域、
+多 face、三维和并行分区均未开放。
+
+本次 v4.1 文档重排只修改根目录 `LinkMesh_Architecture_Plan.md` 和
+`Project_Tree.md`；未修改业务源码、native helper、测试、示例、依赖、`History.md`、
+`CONTEXT.md`、历史蓝图、外部参考源码或 `docs/trimeg/loadfemmesh_h5.m`。未运行
+代码、自动测试、OFT、TRIMEG、M3D-C1、SCOREC/PUMI、native 构建或打包验收，状态为
+**NOT RUN**。静态核对未发现当前蓝图、已提供业务源码与授权 TRIMEG Loader 在关键
+接口上的阻塞冲突；现有源码中 `array_file` 与 `gfile_path` 互斥、array 路径只读取
+boundary file 并向 Plotter 传 `None`，属于本次获批但尚待实施的明确变更点。
