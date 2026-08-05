@@ -200,11 +200,16 @@ class TestParserDefaults:
         assert args.profile is UNSET
         assert args.boundary_source is UNSET
         assert args.array_file is UNSET
+        assert args.plot_lcfs is False
 
     @pytest.mark.parametrize("flag", ["--hdf5", "--h5"])
     def test_hdf5_output_aliases_share_dest(self, flag):
         args = _parse(["--gfile", "dummy.eqdsk", flag, "mesh.h5"])
         assert args.hdf5 == "mesh.h5"
+
+    def test_plot_lcfs_parsed(self):
+        args = _parse(["--plot-lcfs"])
+        assert args.plot_lcfs is True
 
     def test_output_option_removed(self):
         with pytest.raises(SystemExit):
@@ -243,6 +248,8 @@ class TestParserHelp:
         assert "--profile" in out
         assert "--boundary-source" in out
         assert "--array-file" in out
+        assert "--plot-lcfs" in out
+        assert "LCFS reference" in out
 
     def test_help_uses_hdf5_names_and_omits_output(self, capsys):
         with pytest.raises(SystemExit):
@@ -779,6 +786,32 @@ class TestInputLayerIRunIntegration:
             cli._run(args)
         assert mocks["generate_mesh"].call_count == 0
 
+    def test_plot_lcfs_explicitly_enters_overrides(self):
+        args = _parse(["--plot-lcfs"])
+        overrides = cli._build_overrides(args)
+        assert overrides.plot_lcfs is True
+
+    def test_plot_lcfs_unset_does_not_override_toml_true(
+        self, monkeypatch, tmp_path
+    ):
+        (tmp_path / "linkmesh.in").write_text(
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[input]\narray_file = 'boundary'\ngfile = 'eq.gfile'\n"
+            "[domain]\nprofile = 'single_region'\n"
+            "boundary_source = 'array_file'\n"
+            "[output]\nplot = 'mesh.png'\nplot_lcfs = true\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([])
+        cli._run(args)
+
+        assert mocks["read_boundary_file"].call_count == 1
+        assert mocks["read_gfile"].call_count == 1
+        assert mocks["plot_mesh"].call_args.args[0] is mocks["gfile_data"]
+
     def test_single_region_array_file_uses_boundary_reader_only(
         self, monkeypatch, tmp_path
     ):
@@ -800,6 +833,75 @@ class TestInputLayerIRunIntegration:
         assert mesh_args[0] is mocks["boundary"]
         assert mesh_kwargs["profile"] == "single_region"
         assert mesh_kwargs["boundary_source"] == "array_file"
+
+    def test_array_file_plot_lcfs_keeps_reference_out_of_mesher(
+        self, monkeypatch, tmp_path
+    ):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--no-config",
+            "--target", "mesh_only",
+            "--profile", "single_region",
+            "--boundary-source", "array_file",
+            "--array-file", "EAST",
+            "--plot-lcfs",
+            "--gfile", "equilibrium.eqdsk",
+            "--plot", "mesh.png",
+        ])
+        cli._run(args)
+
+        assert mocks["read_boundary_file"].call_count == 1
+        assert mocks["read_gfile"].call_count == 1
+        assert mocks["generate_mesh"].call_count == 1
+        mesh_args, _ = mocks["generate_mesh"].call_args
+        assert mesh_args[0] is mocks["boundary"]
+        assert mesh_args[0] is not mocks["gfile_data"]
+
+        plot_args, plot_kwargs = mocks["plot_mesh"].call_args
+        assert plot_args[0] is mocks["gfile_data"]
+        assert plot_args[1] is mocks["mesh"]
+        assert plot_kwargs["show_region_ids"] is True
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            [
+                "--no-config", "--target", "mesh_only",
+                "--profile", "single_region",
+                "--boundary-source", "array_file",
+                "--array-file", "EAST", "--plot-lcfs", "--plot", "mesh.png",
+            ],
+            [
+                "--no-config", "--target", "mesh_only",
+                "--profile", "single_region",
+                "--boundary-source", "array_file",
+                "--array-file", "EAST", "--plot-lcfs",
+                "--gfile", "equilibrium.eqdsk",
+            ],
+            [
+                "--no-config", "--target", "mesh_only",
+                "--profile", "single_region",
+                "--boundary-source", "lcfs",
+                "--gfile", "equilibrium.eqdsk",
+                "--plot-lcfs", "--plot", "mesh.png",
+            ],
+        ],
+    )
+    def test_invalid_plot_lcfs_combinations_fail_before_readers(
+        self, monkeypatch, tmp_path, argv
+    ):
+        monkeypatch.chdir(tmp_path)
+        mocks = _install_cli_mocks(monkeypatch)
+        args = _parse(argv)
+
+        from linkmesh.config import ConfigError
+        with pytest.raises(ConfigError):
+            cli._run(args)
+
+        assert mocks["read_boundary_file"].call_count == 0
+        assert mocks["read_gfile"].call_count == 0
+        assert mocks["generate_mesh"].call_count == 0
 
     def test_forbidden_nested_lcfs_fails_before_oft(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)
@@ -1034,7 +1136,7 @@ class TestInputLayerIISingleRegionLcfs:
             "--gfile", "dummy.eqdsk", "--no-config",
             "--target", "trimeg",
             "--profile", "single_region", "--boundary-source", "lcfs",
-            "--output", out_path,
+            "--hdf5", out_path,
             "--no-smb",
         ])
         cli._run(args)

@@ -28,7 +28,7 @@ CLI 依赖契约（供 cli.py 导入）：
     - 可变输入载体：CliOverrides；
     - 异常：ConfigError；
     - 合并入口：load_effective_config(overrides, config_arg=..., no_config=...)；
-    - 只读结果：EffectiveConfig（15 字段）。
+    - 只读结果：EffectiveConfig（16 字段）。
 
 键名约定（重要）：
     - CliOverrides 使用 CLI 短键名：gfile/array_file/hdf5/plot/model/smb（与 argparse
@@ -75,6 +75,7 @@ DEFAULT_PLASMA_DX = 0.08
 DEFAULT_VACUUM_DX = 0.10
 DEFAULT_OUTER_DX = 0.15
 DEFAULT_VERBOSE = False
+DEFAULT_PLOT_LCFS = False
 
 # 路径默认值（第 6A.3 节，经只读核对实时 cli.py）：
 #   - hdf5 默认 mesh.h5（仅当 target=trimeg 需要时作为默认输出）；
@@ -90,7 +91,7 @@ _ALLOWED_SECTION_KEYS = {
     "input": {"gfile", "array_file"},
     "domain": {"profile", "boundary_source"},
     "mesh": {"plasma_dx", "vacuum_dx", "outer_dx"},
-    "output": {"hdf5", "plot", "model", "smb"},
+    "output": {"hdf5", "plot", "model", "smb", "plot_lcfs"},
     "runtime": {"verbose"},
 }
 
@@ -104,14 +105,14 @@ class ConfigError(ValueError):
 
 
 # --------------------------------------------------------------------------- #
-# EffectiveConfig（frozen dataclass，第 6A.2 节，15 字段）                      #
+# EffectiveConfig（frozen dataclass，第 6A.2 节，16 字段）                      #
 # --------------------------------------------------------------------------- #
 
 @dataclass(frozen=True)
 class EffectiveConfig:
     """LinkMesh 只读/不可变有效配置（合并「默认 < TOML < 显式 CLI」的最终结果）。
 
-    字段逐项对齐蓝图 v2.3 第 6A.2 节字段表（共 15 字段）。所有非 None Path
+    字段逐项对齐当前蓝图字段表（共 16 字段）。所有非 None Path
     均为规范化绝对路径。不保存值来源字典、NumPy 数组、句柄或 Namespace。
     """
 
@@ -132,6 +133,7 @@ class EffectiveConfig:
     model_path: Optional[Path]
     smb_path: Optional[Path]
     verbose: bool
+    plot_lcfs: bool
 
 
 # --------------------------------------------------------------------------- #
@@ -182,6 +184,7 @@ class CliOverrides:
     model: Any = UNSET
     smb: Any = UNSET
     verbose: Any = UNSET
+    plot_lcfs: Any = UNSET
 
 
 # --------------------------------------------------------------------------- #
@@ -339,6 +342,10 @@ def _load_toml(config_path: Path) -> dict:
         )
     if "smb" in output:
         out["smb_path"] = _check_str_path(output["smb"], "[output].smb", config_path)
+    if "plot_lcfs" in output:
+        out["plot_lcfs"] = _check_bool(
+            output["plot_lcfs"], "[output].plot_lcfs", config_path
+        )
 
     runtime = raw.get("runtime", {})
     if "verbose" in runtime:
@@ -477,6 +484,7 @@ def load_effective_config(
     vacuum_dx = _merge_scalar("vacuum_dx", DEFAULT_VACUUM_DX)
     outer_dx = _merge_scalar("outer_dx", DEFAULT_OUTER_DX)
     verbose = _merge_scalar("verbose", DEFAULT_VERBOSE)
+    plot_lcfs = _merge_scalar("plot_lcfs", DEFAULT_PLOT_LCFS)
 
     # 枚举/类型再校验（覆盖 CLI 直接注入的情况；TOML 侧已在 _load_toml 校验）。
     target = _check_enum(target, TARGETS, "target", config_path)
@@ -488,6 +496,7 @@ def load_effective_config(
     vacuum_dx = _check_positive_float(vacuum_dx, "vacuum_dx", config_path)
     outer_dx = _check_positive_float(outer_dx, "outer_dx", config_path)
     verbose = _check_bool(verbose, "verbose", config_path)
+    plot_lcfs = _check_bool(plot_lcfs, "plot_lcfs", config_path)
 
     # ------------------------------------------------------------------ #
     # 路径字段合并 + 基准解析                                               #
@@ -537,6 +546,7 @@ def load_effective_config(
         model_path=model_path,
         smb_path=smb_path,
         verbose=verbose,
+        plot_lcfs=plot_lcfs,
     )
 
     # required-field 校验发生在路径合并完成之后。
@@ -582,6 +592,13 @@ def _validate_compatibility(cfg: EffectiveConfig) -> None:
             f"禁止的组合（{_combo(cfg)}）：single_region 不使用 artificial_outer"
         )
 
+    # LCFS reference 只适用于 array_file 实际计算域边界。
+    if cfg.plot_lcfs and b != "array_file":
+        raise ConfigError(
+            f"禁止的组合（{_combo(cfg)}）：plot_lcfs 只适用于 "
+            "boundary_source=array_file"
+        )
+
 
 # --------------------------------------------------------------------------- #
 # required fields（第 6A.10 节）                                               #
@@ -610,9 +627,21 @@ def _validate_required_fields(cfg: EffectiveConfig) -> None:
                 "boundary_source=array_file 需要 array_file_path"
                 "（--array-file 或 [input].array_file）"
             )
-        if cfg.gfile_path is not None:
+        if cfg.plot_lcfs:
+            if cfg.gfile_path is None:
+                raise ConfigError(
+                    "boundary_source=array_file 且 plot_lcfs=True 时需要 "
+                    "gfile_path（--gfile 或 [input].gfile）"
+                )
+            if cfg.plot_path is None:
+                raise ConfigError(
+                    "boundary_source=array_file 且 plot_lcfs=True 时需要 "
+                    "plot_path（--plot 或 [output].plot）"
+                )
+        elif cfg.gfile_path is not None:
             raise ConfigError(
-                "boundary_source=array_file 禁止同时提供 gfile_path"
+                "boundary_source=array_file 仅在 plot_lcfs=True 时允许提供 "
+                "gfile_path"
             )
     # flux_surface 的 required 判定由 _validate_current_stage 统一报未实现。
 

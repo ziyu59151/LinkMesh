@@ -151,6 +151,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="可视化自检图输出路径（默认：不生成）",
     )
     parser.add_argument(
+        "--plot-lcfs",
+        action="store_true",
+        help=(
+            "仅用于 boundary_source=array_file：从 --gfile 读取 LCFS reference，"
+            "只叠加到 --plot PNG，不改变实际网格边界"
+        ),
+    )
+    parser.add_argument(
         "--model",
         default=UNSET,
         metavar="PATH",
@@ -313,9 +321,11 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
         model=args.model,
         smb=args.smb,
     )
-    # verbose：仅显式 True 覆盖，否则保持 UNSET 不覆盖 TOML。
+    # store_true 配置项仅在显式为 True 时覆盖，否则保持 UNSET，不覆盖 TOML。
     if args.verbose:
         overrides.verbose = True
+    if args.plot_lcfs:
+        overrides.plot_lcfs = True
     return overrides
 
 
@@ -354,9 +364,10 @@ def _run(args: argparse.Namespace) -> None:
         )
 
     # ------------------------------------------------------------------ #
-    # Step 2：按 boundary_source 读取唯一输入。                              #
-    # lcfs/artificial_outer 读取一次 GFile；array_file 读取一次 counted      #
-    # R-Z boundary text，且不得读取 GFile。                                  #
+    # Step 2：按 boundary_source 读取唯一网格输入。                           #
+    # lcfs/artificial_outer 读取一次 GFile 作为网格输入；array_file 读取一次  #
+    # counted R-Z boundary text。plot_lcfs 启用时额外读取一次 GFile，但该     #
+    # GFileData 只供 Plotter 使用，不进入 Mesher、Mesh2D 或 Writer。          #
     # ------------------------------------------------------------------ #
     gfile_data = None
     if cfg.boundary_source == "array_file":
@@ -368,6 +379,19 @@ def _run(args: argparse.Namespace) -> None:
         mesh_input = read_boundary_file(boundary_path)
         if verbose:
             print(f"  计算边界点数: {mesh_input.shape[0]}")
+
+        if cfg.plot_lcfs:
+            from linkmesh.readers.gfile_reader import read_gfile
+
+            reference_path = str(cfg.gfile_path)
+            if verbose:
+                print(
+                    "[LinkMesh] 读取 GFile LCFS reference（仅用于 PNG）："
+                    f"{reference_path}"
+                )
+            gfile_data = read_gfile(reference_path)
+            if verbose:
+                print(f"  LCFS reference 点数: {len(gfile_data.lcfs_r)}")
     else:
         from linkmesh.readers.gfile_reader import read_gfile
 

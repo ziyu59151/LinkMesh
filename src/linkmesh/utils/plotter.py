@@ -60,6 +60,61 @@ def _closed_for_display(r, z):
     return r_arr, z_arr
 
 
+def _reference_outside_boundary(
+    reference_r,
+    reference_z,
+    boundary: np.ndarray,
+) -> bool:
+    """Return whether any finite reference point lies outside the boundary."""
+    points = np.column_stack(
+        (
+            np.asarray(reference_r, dtype=np.float64).reshape(-1),
+            np.asarray(reference_z, dtype=np.float64).reshape(-1),
+        )
+    )
+    polygon = np.asarray(boundary, dtype=np.float64)
+    if (
+        points.shape[0] == 0
+        or polygon.ndim != 2
+        or polygon.shape[0] < 3
+        or polygon.shape[1] != 2
+        or not np.all(np.isfinite(points))
+    ):
+        return True
+
+    scale = max(1.0, float(np.max(np.abs(polygon))))
+    tolerance = 1e-12 * scale
+
+    for point in points:
+        x, y = float(point[0]), float(point[1])
+        inside = False
+        on_boundary = False
+        previous = polygon[-1]
+
+        for current in polygon:
+            x1, y1 = float(previous[0]), float(previous[1])
+            x2, y2 = float(current[0]), float(current[1])
+            cross = (x - x1) * (y2 - y1) - (y - y1) * (x2 - x1)
+            if (
+                abs(cross) <= tolerance * scale
+                and min(x1, x2) - tolerance <= x <= max(x1, x2) + tolerance
+                and min(y1, y2) - tolerance <= y <= max(y1, y2) + tolerance
+            ):
+                on_boundary = True
+                break
+
+            if (y1 > y) != (y2 > y):
+                intersection_x = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+                if x < intersection_x:
+                    inside = not inside
+            previous = current
+
+        if not (inside or on_boundary):
+            return True
+
+    return False
+
+
 def plot_mesh(
     gfile_data: Optional["GFileData"],
     mesh: "Mesh2D",
@@ -166,12 +221,25 @@ def plot_mesh(
             boundary_z,
             color="black",
             linewidth=1.6,
-            label="Computational boundary",
+            label="Mesh boundary",
             zorder=3,
         )
 
     # --- GFile 平衡信息仅作为可选参考叠加 ---
     if gfile_data is not None:
+        if (
+            mesh.outer_boundary is not None
+            and _reference_outside_boundary(
+                gfile_data.lcfs_r,
+                gfile_data.lcfs_z,
+                mesh.outer_boundary,
+            )
+        ):
+            print(
+                "WARNING: LCFS reference is not completely inside "
+                "the actual mesh boundary."
+            )
+
         lcfs_r_disp, lcfs_z_disp = _closed_for_display(
             gfile_data.lcfs_r,
             gfile_data.lcfs_z,
@@ -181,7 +249,8 @@ def plot_mesh(
             lcfs_z_disp,
             color="red",
             linewidth=1.5,
-            label="LCFS",
+            linestyle="--",
+            label="LCFS reference",
             zorder=3,
         )
 

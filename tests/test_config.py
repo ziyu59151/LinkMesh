@@ -102,16 +102,16 @@ class TestEffectiveConfigStructure:
         assert params.frozen is True
 
     def test_has_exactly_blueprint_fields(self):
-        # 蓝图 v2.3 第 6A.2 节：15 字段。
         names = [f.name for f in dataclasses.fields(EffectiveConfig)]
         expected = [
             "schema_version", "config_path", "target", "profile",
             "boundary_source", "gfile_path", "array_file_path",
             "plasma_dx", "vacuum_dx", "outer_dx",
             "hdf5_path", "plot_path", "model_path", "smb_path", "verbose",
+            "plot_lcfs",
         ]
         assert names == expected
-        assert len(names) == 15
+        assert len(names) == 16
 
     def test_frozen_instance_immutable(self, tmp_path):
         cfg = load_effective_config(
@@ -138,6 +138,7 @@ class TestBuiltinDefaults:
         assert cfg.vacuum_dx == 0.10
         assert cfg.outer_dx == 0.15
         assert cfg.verbose is False
+        assert cfg.plot_lcfs is False
 
     def test_default_hdf5_path_for_trimeg(self, tmp_path):
         cfg = load_effective_config(
@@ -288,6 +289,13 @@ class TestTomlStrict:
                 tmp_path, "schema_version = 1\n[runtime]\nverbose = 'yes'\n"
             )
 
+    def test_bad_plot_lcfs_type_fails(self, tmp_path):
+        with pytest.raises(ConfigError, match="plot_lcfs"):
+            self._load(
+                tmp_path,
+                "schema_version = 1\n[output]\nplot_lcfs = 'yes'\n",
+            )
+
     def test_error_message_contains_config_path(self, tmp_path):
         p = _write_toml(tmp_path, "schema_version = 1\nfoo = 1\n")
         with pytest.raises(ConfigError) as ei:
@@ -371,6 +379,49 @@ class TestMerge:
         )
         assert cfg.gfile_path == (tmp_path / "from_cli.eqdsk").resolve()
         assert cfg.gfile_path != (tmp_path / "from_toml.eqdsk").resolve()
+
+    def test_toml_plot_lcfs_true_is_used(self, tmp_path):
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[input]\narray_file = 'boundary'\ngfile = 'eq.gfile'\n"
+            "[domain]\nprofile = 'single_region'\n"
+            "boundary_source = 'array_file'\n"
+            "[output]\nplot = 'mesh.png'\nplot_lcfs = true\n",
+        )
+        cfg = load_effective_config(_overrides(), no_config=False, cwd=tmp_path)
+        assert cfg.plot_lcfs is True
+
+    def test_cli_plot_lcfs_true_overrides_toml_false(self, tmp_path):
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[input]\narray_file = 'boundary'\ngfile = 'eq.gfile'\n"
+            "[domain]\nprofile = 'single_region'\n"
+            "boundary_source = 'array_file'\n"
+            "[output]\nplot = 'mesh.png'\nplot_lcfs = false\n",
+        )
+        cfg = load_effective_config(
+            _overrides(plot_lcfs=True),
+            no_config=False,
+            cwd=tmp_path,
+        )
+        assert cfg.plot_lcfs is True
+
+    def test_unset_cli_plot_lcfs_does_not_override_toml_true(self, tmp_path):
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[input]\narray_file = 'boundary'\ngfile = 'eq.gfile'\n"
+            "[domain]\nprofile = 'single_region'\n"
+            "boundary_source = 'array_file'\n"
+            "[output]\nplot = 'mesh.png'\nplot_lcfs = true\n",
+        )
+        cfg = load_effective_config(_overrides(), no_config=False, cwd=tmp_path)
+        assert cfg.plot_lcfs is True
 
     def test_toml_selects_single_region_lcfs(self, tmp_path):
         # 输入层 II：配置文件可选择 single_region + lcfs。
@@ -528,12 +579,75 @@ class TestRequiredFields:
                 no_config=True, cwd=tmp_path,
             )
 
-    def test_array_file_forbids_gfile(self, tmp_path):
+    def test_array_file_forbids_gfile_without_plot_lcfs(self, tmp_path):
         with pytest.raises(ConfigError):
             load_effective_config(
                 _overrides(profile="single_region", boundary_source="array_file",
                            array_file="b.csv", gfile="g.eqdsk"),
                 no_config=True, cwd=tmp_path,
+            )
+
+    def test_array_file_plot_lcfs_with_gfile_and_plot_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(
+                target="mesh_only",
+                profile="single_region",
+                boundary_source="array_file",
+                array_file="boundary",
+                gfile="g.eqdsk",
+                plot="mesh.png",
+                plot_lcfs=True,
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert cfg.plot_lcfs is True
+        assert cfg.gfile_path == (tmp_path / "g.eqdsk").resolve()
+        assert cfg.plot_path == (tmp_path / "mesh.png").resolve()
+
+    def test_array_file_plot_lcfs_requires_gfile(self, tmp_path):
+        with pytest.raises(ConfigError, match="gfile_path"):
+            load_effective_config(
+                _overrides(
+                    target="mesh_only",
+                    profile="single_region",
+                    boundary_source="array_file",
+                    array_file="boundary",
+                    plot="mesh.png",
+                    plot_lcfs=True,
+                ),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
+    def test_array_file_plot_lcfs_requires_plot(self, tmp_path):
+        with pytest.raises(ConfigError, match="plot_path"):
+            load_effective_config(
+                _overrides(
+                    target="mesh_only",
+                    profile="single_region",
+                    boundary_source="array_file",
+                    array_file="boundary",
+                    gfile="g.eqdsk",
+                    plot_lcfs=True,
+                ),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
+    def test_non_array_file_plot_lcfs_forbidden(self, tmp_path):
+        with pytest.raises(ConfigError, match="plot_lcfs"):
+            load_effective_config(
+                _overrides(
+                    target="mesh_only",
+                    profile="single_region",
+                    boundary_source="lcfs",
+                    gfile="g.eqdsk",
+                    plot="mesh.png",
+                    plot_lcfs=True,
+                ),
+                no_config=True,
+                cwd=tmp_path,
             )
 
     def test_artificial_outer_requires_gfile(self, tmp_path):
