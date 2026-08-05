@@ -121,6 +121,8 @@ def plot_mesh(
     filepath: str,
     show_boundary_markers: bool = True,
     show_region_ids: bool = False,
+    *,
+    lcfs_reference_only: bool = False,
 ) -> None:
     """绘制 LCFS 边界与生成三角网格的叠加图，输出 PNG 自检图。
 
@@ -130,6 +132,8 @@ def plot_mesh(
         filepath:              输出 .png 文件路径
         show_boundary_markers: 是否用不同颜色标注边界标记类型（仅当存在边界段时）
         show_region_ids:       是否按实际 region_ids 着色填充
+        lcfs_reference_only:   为 True 时，GFileData 仅提供 LCFS reference，
+                               不绘制第一壁或磁轴；默认 False 保持既有 GFile 绘图行为
 
     实现要点（v1.9 M2）：
         1. 使用 matplotlib.tri.Triangulation 绘制三角网格（仅依赖 nodes/triangles）
@@ -254,7 +258,11 @@ def plot_mesh(
             zorder=3,
         )
 
-        if gfile_data.wall_r is not None and gfile_data.wall_z is not None:
+        if (
+            not lcfs_reference_only
+            and gfile_data.wall_r is not None
+            and gfile_data.wall_z is not None
+        ):
             wall_r_disp, wall_z_disp = _closed_for_display(
                 gfile_data.wall_r,
                 gfile_data.wall_z,
@@ -269,19 +277,20 @@ def plot_mesh(
                 zorder=3,
             )
 
-        ax.plot(
-            gfile_data.rmaxis,
-            gfile_data.zmaxis,
-            marker="x",
-            color="red",
-            markersize=8,
-            markeredgewidth=2,
-            label=(
-                f"Magnetic axis ({gfile_data.rmaxis:.3f}, "
-                f"{gfile_data.zmaxis:.3f})"
-            ),
-            zorder=4,
-        )
+        if not lcfs_reference_only:
+            ax.plot(
+                gfile_data.rmaxis,
+                gfile_data.zmaxis,
+                marker="x",
+                color="red",
+                markersize=8,
+                markeredgewidth=2,
+                label=(
+                    f"Magnetic axis ({gfile_data.rmaxis:.3f}, "
+                    f"{gfile_data.zmaxis:.3f})"
+                ),
+                zorder=4,
+            )
 
     # --- 旧边界段绘制：仅当 boundary_segments/boundary_markers 非空时 ---
     has_boundary = (

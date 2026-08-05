@@ -28,7 +28,7 @@ CLI 依赖契约（供 cli.py 导入）：
     - 可变输入载体：CliOverrides；
     - 异常：ConfigError；
     - 合并入口：load_effective_config(overrides, config_arg=..., no_config=...)；
-    - 只读结果：EffectiveConfig（16 字段）。
+    - 只读结果：EffectiveConfig（17 字段）。
 
 键名约定（重要）：
     - CliOverrides 使用 CLI 短键名：gfile/array_file/hdf5/plot/model/smb（与 argparse
@@ -71,6 +71,7 @@ BOUNDARY_SOURCES = (
 DEFAULT_TARGET = "trimeg"
 DEFAULT_PROFILE = "nested_three_region"
 DEFAULT_BOUNDARY_SOURCE = "artificial_outer"
+DEFAULT_MESH_DX = 0.08
 DEFAULT_PLASMA_DX = 0.08
 DEFAULT_VACUUM_DX = 0.10
 DEFAULT_OUTER_DX = 0.15
@@ -90,7 +91,7 @@ _ALLOWED_SECTION_KEYS = {
     "task": {"target"},
     "input": {"gfile", "array_file"},
     "domain": {"profile", "boundary_source"},
-    "mesh": {"plasma_dx", "vacuum_dx", "outer_dx"},
+    "mesh": {"mesh_dx", "plasma_dx", "vacuum_dx", "outer_dx"},
     "output": {"hdf5", "plot", "model", "smb", "plot_lcfs"},
     "runtime": {"verbose"},
 }
@@ -105,14 +106,14 @@ class ConfigError(ValueError):
 
 
 # --------------------------------------------------------------------------- #
-# EffectiveConfig（frozen dataclass，第 6A.2 节，16 字段）                      #
+# EffectiveConfig（frozen dataclass，17 字段）                                 #
 # --------------------------------------------------------------------------- #
 
 @dataclass(frozen=True)
 class EffectiveConfig:
     """LinkMesh 只读/不可变有效配置（合并「默认 < TOML < 显式 CLI」的最终结果）。
 
-    字段逐项对齐当前蓝图字段表（共 16 字段）。所有非 None Path
+    字段逐项对齐当前蓝图字段表（共 17 字段）。所有非 None Path
     均为规范化绝对路径。不保存值来源字典、NumPy 数组、句柄或 Namespace。
     """
 
@@ -125,6 +126,7 @@ class EffectiveConfig:
     ]
     gfile_path: Optional[Path]
     array_file_path: Optional[Path]
+    mesh_dx: float
     plasma_dx: float
     vacuum_dx: float
     outer_dx: float
@@ -176,6 +178,7 @@ class CliOverrides:
     boundary_source: Any = UNSET
     gfile: Any = UNSET
     array_file: Any = UNSET
+    mesh_dx: Any = UNSET
     plasma_dx: Any = UNSET
     vacuum_dx: Any = UNSET
     outer_dx: Any = UNSET
@@ -318,6 +321,10 @@ def _load_toml(config_path: Path) -> dict:
         )
 
     mesh = raw.get("mesh", {})
+    if "mesh_dx" in mesh:
+        out["mesh_dx"] = _check_positive_float(
+            mesh["mesh_dx"], "[mesh].mesh_dx", config_path
+        )
     if "plasma_dx" in mesh:
         out["plasma_dx"] = _check_positive_float(
             mesh["plasma_dx"], "[mesh].plasma_dx", config_path
@@ -480,6 +487,7 @@ def load_effective_config(
     target = _merge_scalar("target", DEFAULT_TARGET)
     profile = _merge_scalar("profile", DEFAULT_PROFILE)
     boundary_source = _merge_scalar("boundary_source", DEFAULT_BOUNDARY_SOURCE)
+    mesh_dx = _merge_scalar("mesh_dx", DEFAULT_MESH_DX)
     plasma_dx = _merge_scalar("plasma_dx", DEFAULT_PLASMA_DX)
     vacuum_dx = _merge_scalar("vacuum_dx", DEFAULT_VACUUM_DX)
     outer_dx = _merge_scalar("outer_dx", DEFAULT_OUTER_DX)
@@ -492,6 +500,7 @@ def load_effective_config(
     boundary_source = _check_enum(
         boundary_source, BOUNDARY_SOURCES, "boundary_source", config_path
     )
+    mesh_dx = _check_positive_float(mesh_dx, "mesh_dx", config_path)
     plasma_dx = _check_positive_float(plasma_dx, "plasma_dx", config_path)
     vacuum_dx = _check_positive_float(vacuum_dx, "vacuum_dx", config_path)
     outer_dx = _check_positive_float(outer_dx, "outer_dx", config_path)
@@ -530,6 +539,20 @@ def load_effective_config(
     hdf5_default_name = DEFAULT_HDF5_NAME if target == "trimeg" else None
     hdf5_path = _merge_path("hdf5", "hdf5_path", hdf5_default_name)
 
+    explicit_mesh_dx = (
+        _explicit("mesh_dx") is not None or "mesh_dx" in toml_values
+    )
+    explicit_region_dx = tuple(
+        name
+        for name in ("plasma_dx", "vacuum_dx", "outer_dx")
+        if _explicit(name) is not None or name in toml_values
+    )
+    _validate_mesh_resolution_inputs(
+        profile,
+        explicit_mesh_dx=explicit_mesh_dx,
+        explicit_region_dx=explicit_region_dx,
+    )
+
     cfg = EffectiveConfig(
         schema_version=SCHEMA_VERSION,
         config_path=config_path,
@@ -538,6 +561,7 @@ def load_effective_config(
         boundary_source=boundary_source,
         gfile_path=gfile_path,
         array_file_path=array_file_path,
+        mesh_dx=mesh_dx,
         plasma_dx=plasma_dx,
         vacuum_dx=vacuum_dx,
         outer_dx=outer_dx,
@@ -555,6 +579,30 @@ def load_effective_config(
     _validate_current_stage(cfg)
 
     return cfg
+
+
+# --------------------------------------------------------------------------- #
+# 网格尺度适用性                                                                #
+# --------------------------------------------------------------------------- #
+
+def _validate_mesh_resolution_inputs(
+    profile: str,
+    *,
+    explicit_mesh_dx: bool,
+    explicit_region_dx: tuple[str, ...],
+) -> None:
+    """Reject explicitly supplied mesh scales that do not apply to profile."""
+    if profile == "single_region" and explicit_region_dx:
+        conflicts = ", ".join(explicit_region_dx)
+        raise ConfigError(
+            "profile=single_region 不接受显式多区域网格尺度 "
+            f"{conflicts}；请使用 mesh_dx（--mesh-dx 或 [mesh].mesh_dx）"
+        )
+    if profile == "nested_three_region" and explicit_mesh_dx:
+        raise ConfigError(
+            "profile=nested_three_region 不接受显式 mesh_dx；请使用 "
+            "plasma_dx、vacuum_dx、outer_dx"
+        )
 
 
 # --------------------------------------------------------------------------- #

@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.1**（初期交付重排：当前最高优先级调整为现有功能产品化收口、`array_file` 网格配可选 GFile LCFS PNG 参考、普通用户发布候选和初期使用报告；OFT 高级网格能力调查保留为后续任务。新增参考曲线工作流状态为 **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**）
+- 文档状态：正式版 **4.2**（初期交付 CLI 收口：正式区分 single-region `mesh_dx` 与 nested-three-region 三区域尺度，删除历史 Triangle 参数，按用户任务重组 CLI help，并收紧 `array_file + plot_lcfs` 为仅叠加 LCFS reference）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；下一阶段执行拆解见 `docs/linkmesh/work_plan.md`；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -123,8 +123,8 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | TCV/TRIMEG 实际消费 | **PENDING** |
 | `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED；未开放** |
 | `single_region + array_file` | **IMPLEMENTED / PASSED；EAST 生成侧已验收** |
-| `array_file + 可选 GFile LCFS PNG 参考` | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED** |
-| `plot_lcfs` 配置字段与 `--plot-lcfs` CLI | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED** |
+| `array_file + 可选 GFile LCFS PNG 参考` | **IMPLEMENTED；自动测试与真实 PNG 回归待本轮实施后记录** |
+| `plot_lcfs` 配置字段与 `--plot-lcfs` CLI | **IMPLEMENTED；仅允许 LCFS reference 进入 array-file PNG** |
 | 普通用户可调用的发布候选 | **PENDING / NOT YET IMPLEMENTED** |
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | 多区域、多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
@@ -293,9 +293,9 @@ Writer、CLI、Plotter 或 config。
 `EffectiveConfig` 是 `@dataclass(frozen=True)`，是默认值、配置文件和显式 CLI
 合并、类型校验、路径解析、兼容矩阵及 required-fields 校验后的唯一配置对象。
 
-当前源码对象有 15 个字段。已批准的 `array_file + LCFS reference` 实施将新增
-`plot_lcfs: bool`，实施完成后的正式对象必须准确包含 16 个字段；在业务源码尚未修改
-前，该字段状态为 **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+`EffectiveConfig` 正式包含 17 个字段：既有 16 字段加
+`mesh_dx: float`。`mesh_dx` 与区域尺度均保存经过有限正数校验的最终值；尺度是否由
+TOML 或 CLI 显式提供只在配置合并期间以局部布尔值判断，绝不保存进最终对象。
 
 | 字段 | 类型 |
 |---|---|
@@ -306,9 +306,10 @@ Writer、CLI、Plotter 或 config。
 | `boundary_source` | `Literal["lcfs","first_wall","array_file","artificial_outer","flux_surface"]` |
 | `gfile_path` | `Optional[Path]` |
 | `array_file_path` | `Optional[Path]` |
-| `plasma_dx` | `float` |
-| `vacuum_dx` | `float` |
-| `outer_dx` | `float` |
+| `mesh_dx` | `float`；single-region 唯一目标网格长度尺度 [m] |
+| `plasma_dx` | `float`；仅用于 nested-three-region plasma 区域 [m] |
+| `vacuum_dx` | `float`；仅用于 nested-three-region vacuum 区域 [m] |
+| `outer_dx` | `float`；仅用于 nested-three-region outer 区域 [m] |
 | `hdf5_path` | `Optional[Path]` |
 | `plot_path` | `Optional[Path]` |
 | `model_path` | `Optional[Path]` |
@@ -567,9 +568,10 @@ gfile → gfile_reader → GFileData ──────────────�
 | `target` | `"trimeg"` |
 | `profile` | `"nested_three_region"` |
 | `boundary_source` | `"artificial_outer"` |
-| `plasma_dx` | `0.08` |
-| `vacuum_dx` | `0.10` |
-| `outer_dx` | `0.15` |
+| `mesh_dx` | `0.08`；仅用于 `single_region` |
+| `plasma_dx` | `0.08`；仅用于 `nested_three_region` |
+| `vacuum_dx` | `0.10`；仅用于 `nested_three_region` |
+| `outer_dx` | `0.15`；仅用于 `nested_three_region` |
 | `verbose` | `False` |
 | `plot_lcfs` | `False`（已批准、尚未实现） |
 | `gfile_path` | `None` |
@@ -614,6 +616,7 @@ schema_version = 1
   boundary_source
 
 [mesh]
+  mesh_dx
   plasma_dx
   vacuum_dx
   outer_dx
@@ -637,9 +640,10 @@ schema_version = 1
 | `[input].array_file` | 非空字符串 | `array_file_path` |
 | `[domain].profile` | 枚举字符串 | `profile` |
 | `[domain].boundary_source` | 枚举字符串 | `boundary_source` |
-| `[mesh].plasma_dx` | 有限正数 | `plasma_dx` |
-| `[mesh].vacuum_dx` | 有限正数 | `vacuum_dx` |
-| `[mesh].outer_dx` | 有限正数 | `outer_dx` |
+| `[mesh].mesh_dx` | 有限正数 | `mesh_dx`；仅适用于 `single_region` |
+| `[mesh].plasma_dx` | 有限正数 | `plasma_dx`；仅适用于 `nested_three_region` |
+| `[mesh].vacuum_dx` | 有限正数 | `vacuum_dx`；仅适用于 `nested_three_region` |
+| `[mesh].outer_dx` | 有限正数 | `outer_dx`；仅适用于 `nested_three_region` |
 | `[output].hdf5` | 非空字符串 | `hdf5_path` |
 | `[output].plot` | 非空字符串 | `plot_path` |
 | `[output].model` | 非空字符串 | `model_path` |
@@ -670,9 +674,10 @@ schema_version = 1
 | `--boundary-source VALUE` | `boundary_source` | 覆盖 `[domain].boundary_source` |
 | `--gfile PATH` | `gfile` | 覆盖 `[input].gfile` |
 | `--array-file PATH` | `array_file` | 覆盖 `[input].array_file` |
-| `--plasma-dx FLOAT` | `plasma_dx` | 覆盖 `[mesh].plasma_dx` |
-| `--vacuum-dx FLOAT` | `vacuum_dx` | 覆盖 `[mesh].vacuum_dx` |
-| `--outer-dx FLOAT` | `outer_dx` | 覆盖 `[mesh].outer_dx` |
+| `--mesh-dx FLOAT` | `mesh_dx` | 覆盖 `[mesh].mesh_dx`；仅适用于 `single_region` |
+| `--plasma-dx FLOAT` | `plasma_dx` | 覆盖 `[mesh].plasma_dx`；仅适用于 `nested_three_region` |
+| `--vacuum-dx FLOAT` | `vacuum_dx` | 覆盖 `[mesh].vacuum_dx`；仅适用于 `nested_three_region` |
+| `--outer-dx FLOAT` | `outer_dx` | 覆盖 `[mesh].outer_dx`；仅适用于 `nested_three_region` |
 | `--hdf5 PATH` / `--h5 PATH` | `hdf5` | 完全同义；覆盖 `[output].hdf5`，最终形成 `EffectiveConfig.hdf5_path` |
 | `--plot PATH` | `plot` | 覆盖 `[output].plot` |
 | `--model PATH` | `model` | 覆盖 `[output].model` |
@@ -706,8 +711,9 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
   `EffectiveConfig.plot_lcfs`。
 - `--no-hdf5` 和 `--no-smb` 是执行期开关，不进入 `EffectiveConfig`，不取消
   required-fields；`--no-hdf5` 不改变 `--hdf5`/`--h5` 的配置合并语义。
-- `--min-angle` 默认 `20.0`；非默认值在读取配置或调用 OFT 前拒绝。
-- `--max-area` 默认 `None`；一旦提供立即拒绝。
+- 历史 Python Triangle 参数 `--min-angle` 与 `--max-area` 已从正式 CLI 删除。
+  前者曾表示旧路径最小角度，后者曾表示旧路径最大三角形面积；OFT 正式路径不消费
+  二者。不得保留兼容别名、隐藏入口或弃用警告，使用时由 argparse 按未知参数拒绝。
 - CLI 不将 `--smb` 改写为 rank-0 文件名。
 - CLI 不解析 `LINKMESH_SCOREC_HELPER`。
 - CLI 不硬编码 PUMI 安装路径。
@@ -742,12 +748,54 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
 7. 合并后再次校验枚举、数值和 bool。
 8. `plot_lcfs` 按同一标量规则取显式 CLI，否则 TOML，否则默认 `False`，并严格校验
    为 bool。
-9. 构造冻结的 16 字段 `EffectiveConfig`。
-10. 执行兼容矩阵、required-fields 和阶段闸门。
-11. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
+9. `mesh_dx` 和三个区域 dx 分别按同一优先级合并并校验为有限正数。
+10. 使用 `CliOverrides` 是否为 `UNSET` 及 TOML 是否含键，在局部判断尺度是否显式提供：
+    - `single_region` 只允许显式 `mesh_dx`，显式区域 dx 必须失败；
+    - `nested_three_region` 只允许显式三个区域 dx，显式 `mesh_dx` 必须失败；
+    - 内建默认值不构成冲突。
+11. 构造冻结的 17 字段 `EffectiveConfig`，不保存来源信息。
+12. 执行兼容矩阵、required-fields 和阶段闸门。
+13. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
 
 配置层不要求输出文件已经存在，不创建父目录。输入业务文件存在性由 Reader 报告。
 helper 定位不属于 `EffectiveConfig`。
+
+### 5.6A 网格尺度适用性与 Adapter 兼容映射
+
+网格尺度按 profile 严格消歧：
+
+1. `profile=single_region` 只使用 `mesh_dx`，单位 m。该字段表示单一计算域的目标
+   网格长度尺度，不表示 plasma、vacuum 或 outer 的物理区域尺度。用户通过 TOML
+   或 CLI 显式提供任一 `plasma_dx/vacuum_dx/outer_dx` 时必须 `ConfigError`。
+2. `profile=nested_three_region` 只使用 `plasma_dx/vacuum_dx/outer_dx`，分别表示
+   三个物理区域的目标尺度。用户显式提供 `mesh_dx` 时必须 `ConfigError`。
+3. 所有字段保留内建默认值，但冲突只根据 TOML/CLI 显式性判断，默认值不得制造冲突。
+4. 同一适用字段继续遵循内建默认值 < TOML < 显式 CLI。
+5. 不建立任意 N 区域尺度配置语言。
+
+现有 OFT Adapter 公共签名保持不变。CLI 对 single-region 执行唯一兼容映射：
+
+```text
+EffectiveConfig.mesh_dx
+  → generate_mesh(..., plasma_dx=cfg.mesh_dx, profile="single_region", ...)
+```
+
+该映射只适配既有 Adapter 参数名，不把 single-region 重新定义为 plasma 物理区域；
+Adapter 的 single-region 分支仍只消费该一个尺度。本轮不修改 `oft_adapter.py`。
+
+### 5.6B CLI help 分组
+
+argparse 帮助按用户任务顺序分组：
+
+1. `Configuration`：`--config`、`--no-config`；
+2. `Task`：`--target`、`--profile`、`--boundary-source`；
+3. `Input`：`--gfile`、`--array-file`、`--plot-lcfs`；
+4. `Mesh Resolution`：`--mesh-dx`、`--plasma-dx`、`--vacuum-dx`、`--outer-dx`；
+5. `Output`：`--hdf5/--h5`、`--model`、`--smb`、`--plot`、
+   `--no-hdf5`、`--no-smb`；
+6. `Runtime`：`--verbose`。
+
+`-h/--help` 继续由 argparse 自动提供。不得重复注册参数或手写整段帮助输出。
 
 ### 5.7 `array_file` v1：counted R-Z boundary text
 
@@ -1035,15 +1083,21 @@ OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多�
    域边界来源。
 2. `GFileData` 是可选平衡参考；候选 `plot_lcfs` 工作流只叠加
    `GFileData.lcfs_r/lcfs_z` 作为 LCFS reference。
-3. 无 GFile 的旧 `array_file` 路径必须仍能绘制实际计算边界和三角网格。
-4. 三角网格、actual mesh boundary 和 LCFS reference 必须在视觉与图例上可区分；
+3. `array_file + plot_lcfs` 模式只允许从参考 `GFileData` 绘制
+   `lcfs_r/lcfs_z`；不得绘制 `wall_r/wall_z`、limiter、First wall、
+   `rmaxis/zmaxis`、Magnetic axis 或其他平衡字段。
+4. 无 GFile 的旧 `array_file` 路径必须仍能绘制实际计算边界和三角网格。
+5. 三角网格、actual mesh boundary 和 LCFS reference 必须在视觉与图例上可区分；
    正式契约不固定具体颜色。
-5. 不得为兼容 Plotter 把外部边界伪装成 LCFS，也不得把 LCFS、limiter 或第一壁
+6. 不得为兼容 Plotter 把外部边界伪装成 LCFS，也不得把 LCFS、limiter 或第一壁
    标成 actual mesh boundary。
-6. 参考 LCFS 不完全位于实际计算域内时，首版输出明确英文 warning，但不修改或拒绝
+7. `plot_mesh()` 使用默认兼容模式时，既有以 GFile 作为实际网格输入的绘图仍可显示
+   LCFS、第一壁和磁轴；CLI 仅在 `array_file + plot_lcfs` 时启用
+   `lcfs_reference_only=True`。
+8. 参考 LCFS 不完全位于实际计算域内时，首版输出明确英文 warning，但不修改或拒绝
    实际网格。
-7. 坐标轴继续明确为 R、Z，单位 m。
-8. PNG 仅用于几何检查，不替代 M3D-C1 或 TRIMEG 加载、初始化、时间推进或物理验收。
+9. 坐标轴继续明确为 R、Z，单位 m。
+10. PNG 仅用于几何检查，不替代 M3D-C1 或 TRIMEG 加载、初始化、时间推进或物理验收。
 
 ### 5.12 输入层实施拆分
 
@@ -1078,8 +1132,8 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
   `[output].hdf5`，旧 `--output` 必须由 argparse 拒绝；
 - TOML 与 CLI 两套路径基准；
 - 路径不展开；
-- 当前源码 `EffectiveConfig` 冻结且恰为 15 字段；实施 `plot_lcfs` 后必须恰为
-  16 字段，并覆盖默认 `False`、TOML bool、CLI `UNSET` 与三层合并；
+- `EffectiveConfig` 冻结且恰为 17 字段，覆盖 `mesh_dx` 默认值、TOML、CLI、
+  有限正数校验及 profile 显式尺度冲突；
 - 已实现、禁止和未实现组合的异常类型；
 - boundary source 和 target required-fields；
 - `mesh_only` 不调用 Writer；
@@ -1097,6 +1151,7 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
 - 无 GFile 时仍可生成显示实际边界和三角网格的 R-Z 米制 PNG；
 - `array_file + plot_lcfs` 必须正好读取一次 boundary file 和一次 GFile，两条 Reader
   支路只在 Plotter 汇合，`GFileData` 不得传给 Mesher、Writer、ModelSpec 或 helper；
+  PNG 只从参考 GFile 绘制 LCFS，不绘制 limiter、First wall 或 Magnetic axis；
 - 缺 `gfile_path`、缺 `plot_path`、未启用 `plot_lcfs` 却提供 GFile、非
   `array_file` 启用 `plot_lcfs`、GFile 不可读或 LCFS 非法必须按正式边界失败；
 - 同一 array boundary 和网格参数在有无 LCFS reference 时必须产生完全相同的
@@ -2042,7 +2097,7 @@ Fake OFT。
 - 让 Reader 互相调用，或让 Mesher/Writer读取参考 GFile；
 - 把 array boundary 解释为 LCFS，或把 LCFS 解释为 array 实际计算边界；
 - 把 LCFS 写入 TRIMEG `Rbc/Zbc` 或私自新增 HDF5 dataset；
-- 在实现和验收前把 `plot_lcfs` 工作流写成 IMPLEMENTED、PASSED 或 GENERATED；
+- 在没有对应测试或真实运行证据时把 `plot_lcfs` 工作流写成 PASSED 或 GENERATED；
 - 在打包探针完成前宣称已实现物理意义上的真正单文件可执行程序；
 - 修改 M3D-C1、TokaMaker 或 SCOREC/PUMI 只读参考源码。
 
@@ -2125,11 +2180,11 @@ TRIMEG 完整 11 数据集契约均未改变。
 二进制审计、共享根目录、包装入口、modulefile、第一个共享 release 和普通用户验收
 仍为 `PENDING`，不得写成已实施。
 
-进入 v4.1 表示初期交付优先级重排，不表示新增工作流或发布候选已经实现。新增
-`array_file + 可选 GFile LCFS PNG reference` 正式状态为
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。当前源码
-`EffectiveConfig` 仍为 15 字段，`--plot-lcfs`、TOML `[output].plot_lcfs`、
-双 Reader 编排和 LCFS 包含关系诊断均尚未编码；实施后配置对象必须更新为 16 字段。
+v4.2 正式收口 `array_file + 可选 GFile LCFS PNG reference`、CLI help 分组和
+profile 尺度消歧。`EffectiveConfig` 为 17 字段；single-region 用户接口使用
+`mesh_dx`，nested-three-region 用户接口使用三个区域 dx。旧 `--min-angle` 与
+`--max-area` 不再属于 CLI。array reference PNG 仅绘制 Mesh boundary 与 LCFS
+reference，不绘制参考 GFile 的 limiter、First wall 或 Magnetic axis。
 
 该候选工作流中，array file 永远是唯一实际计算域边界，GFile LCFS 只供 Plotter。
 因此不修改 `Mesh2D`、TRIMEG 11 数据集、HDF5 Writer、M3D-C1 ModelSpec、TXT、

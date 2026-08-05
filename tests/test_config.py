@@ -106,12 +106,12 @@ class TestEffectiveConfigStructure:
         expected = [
             "schema_version", "config_path", "target", "profile",
             "boundary_source", "gfile_path", "array_file_path",
-            "plasma_dx", "vacuum_dx", "outer_dx",
+            "mesh_dx", "plasma_dx", "vacuum_dx", "outer_dx",
             "hdf5_path", "plot_path", "model_path", "smb_path", "verbose",
             "plot_lcfs",
         ]
         assert names == expected
-        assert len(names) == 16
+        assert len(names) == 17
 
     def test_frozen_instance_immutable(self, tmp_path):
         cfg = load_effective_config(
@@ -134,6 +134,7 @@ class TestBuiltinDefaults:
         assert cfg.target == "trimeg"
         assert cfg.profile == "nested_three_region"
         assert cfg.boundary_source == "artificial_outer"
+        assert cfg.mesh_dx == 0.08
         assert cfg.plasma_dx == 0.08
         assert cfg.vacuum_dx == 0.10
         assert cfg.outer_dx == 0.15
@@ -252,6 +253,22 @@ class TestTomlStrict:
         with pytest.raises(ConfigError, match="未知键"):
             self._load(tmp_path, "schema_version = 1\n[output]\nbogus = 'x'\n")
 
+    def test_bad_mesh_dx_type_fails(self, tmp_path):
+        with pytest.raises(ConfigError, match="mesh_dx"):
+            self._load(
+                tmp_path,
+                "schema_version = 1\n[mesh]\nmesh_dx = 'small'\n",
+            )
+
+    @pytest.mark.parametrize("value", ["0", "-0.1", "nan", "inf"])
+    def test_invalid_mesh_dx_fails(self, tmp_path, value):
+        literal = value if value not in {"nan", "inf"} else f"'{value}'"
+        with pytest.raises(ConfigError, match="mesh_dx"):
+            self._load(
+                tmp_path,
+                f"schema_version = 1\n[mesh]\nmesh_dx = {literal}\n",
+            )
+
     def test_bad_dx_type_fails(self, tmp_path):
         with pytest.raises(ConfigError, match="plasma_dx"):
             self._load(
@@ -310,6 +327,34 @@ class TestTomlStrict:
 # --------------------------------------------------------------------------- #
 
 class TestMerge:
+    def test_single_region_toml_mesh_dx(self, tmp_path):
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[domain]\nprofile = 'single_region'\nboundary_source = 'lcfs'\n"
+            "[input]\ngfile = 'g.eqdsk'\n"
+            "[mesh]\nmesh_dx = 0.04\n",
+        )
+        cfg = load_effective_config(_overrides(), no_config=False, cwd=tmp_path)
+        assert cfg.mesh_dx == 0.04
+
+    def test_cli_mesh_dx_overrides_toml(self, tmp_path):
+        _write_toml(
+            tmp_path,
+            "schema_version = 1\n"
+            "[task]\ntarget = 'mesh_only'\n"
+            "[domain]\nprofile = 'single_region'\nboundary_source = 'lcfs'\n"
+            "[input]\ngfile = 'g.eqdsk'\n"
+            "[mesh]\nmesh_dx = 0.04\n",
+        )
+        cfg = load_effective_config(
+            _overrides(mesh_dx=0.06),
+            no_config=False,
+            cwd=tmp_path,
+        )
+        assert cfg.mesh_dx == 0.06
+
     def test_toml_overrides_default(self, tmp_path):
         _write_toml(tmp_path, "schema_version = 1\n[mesh]\nplasma_dx = 0.03\n")
         cfg = load_effective_config(
@@ -682,6 +727,83 @@ class TestRequiredFields:
 # --------------------------------------------------------------------------- #
 
 class TestCompatibility:
+    def test_single_region_explicit_mesh_dx_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(
+                target="mesh_only",
+                profile="single_region",
+                boundary_source="lcfs",
+                gfile="g.eqdsk",
+                mesh_dx=0.03,
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert cfg.mesh_dx == 0.03
+
+    @pytest.mark.parametrize("field", ["plasma_dx", "vacuum_dx", "outer_dx"])
+    def test_single_region_explicit_region_dx_forbidden(
+        self, tmp_path, field
+    ):
+        values = {
+            "target": "mesh_only",
+            "profile": "single_region",
+            "boundary_source": "lcfs",
+            "gfile": "g.eqdsk",
+            field: 0.03,
+        }
+        with pytest.raises(ConfigError, match=rf"single_region.*{field}.*mesh_dx"):
+            load_effective_config(
+                _overrides(**values),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
+    def test_nested_explicit_mesh_dx_forbidden(self, tmp_path):
+        with pytest.raises(
+            ConfigError,
+            match=r"nested_three_region.*mesh_dx.*plasma_dx",
+        ):
+            load_effective_config(
+                _overrides(mesh_dx=0.03, **_MINIMAL_GFILE_OVR),
+                no_config=True,
+                cwd=tmp_path,
+            )
+
+    def test_nested_explicit_region_dx_allowed(self, tmp_path):
+        cfg = load_effective_config(
+            _overrides(
+                plasma_dx=0.04,
+                vacuum_dx=0.05,
+                outer_dx=0.06,
+                **_MINIMAL_GFILE_OVR,
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert (cfg.plasma_dx, cfg.vacuum_dx, cfg.outer_dx) == (
+            0.04, 0.05, 0.06
+        )
+
+    def test_profile_defaults_do_not_conflict(self, tmp_path):
+        single = load_effective_config(
+            _overrides(
+                target="mesh_only",
+                profile="single_region",
+                boundary_source="lcfs",
+                gfile="g.eqdsk",
+            ),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        nested = load_effective_config(
+            _overrides(**_MINIMAL_GFILE_OVR),
+            no_config=True,
+            cwd=tmp_path,
+        )
+        assert single.mesh_dx == 0.08
+        assert nested.plasma_dx == 0.08
+
     def test_valid_trimeg_nested_artificial(self, tmp_path):
         cfg = load_effective_config(
             _overrides(**_MINIMAL_GFILE_OVR), no_config=True, cwd=tmp_path

@@ -24,10 +24,11 @@ cli.py —— LinkMesh 命令行入口。
            write_m3dc1_model() + write_smb()（SMB 除非 --no-smb）
          → plot_mesh()（若配置 plot_path）
 
-CLI 分区域网格密度参数（v1.13 契约）：
-    --plasma-dx / --vacuum-dx / --outer-dx 三个目标区域网格长度尺度参数（单位 m）。
-    CLI 只负责解析、标记显式输入并把值交给 config 合并；有限正数校验集中在 config.py，
-    合并后 EffectiveConfig 的 dx 已保证为有限正数。
+网格尺度参数：
+    - --mesh-dx：single_region 唯一目标网格长度尺度（单位 m）；
+    - --plasma-dx / --vacuum-dx / --outer-dx：仅用于 nested_three_region。
+    CLI 只负责解析、标记显式输入并把值交给 config 合并；有限正数和 profile
+    适用性校验集中在 config.py。
 
 输入层 I（v2.3）新增参数（蓝图第 6A.5 节）：
     --config / --no-config（互斥）、--target、--profile、--boundary-source、--array-file。
@@ -70,10 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    configuration_group = parser.add_argument_group("Configuration")
+    task_group = parser.add_argument_group("Task")
+    input_group = parser.add_argument_group("Input")
+    mesh_group = parser.add_argument_group("Mesh Resolution")
+    output_group = parser.add_argument_group("Output")
+    runtime_group = parser.add_argument_group("Runtime")
+
     # ------------------------------------------------------------------ #
-    # 输入层 I 新增：配置发现                                              #
+    # 配置发现                                                            #
     # ------------------------------------------------------------------ #
-    config_group = parser.add_mutually_exclusive_group()
+    config_group = configuration_group.add_mutually_exclusive_group()
     config_group.add_argument(
         "--config",
         default=None,
@@ -90,26 +98,26 @@ def build_parser() -> argparse.ArgumentParser:
     # 输入层 I 新增：target / profile / boundary_source / array_file      #
     # 默认值交给 config.py；此处 default=UNSET 表示未显式提供。            #
     # ------------------------------------------------------------------ #
-    parser.add_argument(
+    task_group.add_argument(
         "--target",
         default=UNSET,
         choices=list(config_mod.TARGETS),
         help="目标输出族（mesh_only/trimeg/m3dc1）；覆盖配置文件",
     )
-    parser.add_argument(
+    task_group.add_argument(
         "--profile",
         default=UNSET,
         choices=list(config_mod.PROFILES),
         help="区域策略（single_region/nested_three_region）；覆盖配置文件",
     )
-    parser.add_argument(
+    task_group.add_argument(
         "--boundary-source",
         dest="boundary_source",
         default=UNSET,
         choices=list(config_mod.BOUNDARY_SOURCES),
         help="计算域外边界来源；覆盖配置文件",
     )
-    parser.add_argument(
+    input_group.add_argument(
         "--array-file",
         dest="array_file",
         default=UNSET,
@@ -120,17 +128,20 @@ def build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------ #
     # 既有：GFile 输入                                                     #
     # ------------------------------------------------------------------ #
-    parser.add_argument(
+    input_group.add_argument(
         "--gfile",
         default=UNSET,
         metavar="PATH",
-        help="GFile/EQDSK 平衡文件路径",
+        help=(
+            "GFile/EQDSK 路径；按 boundary_source 用作网格输入，或在 "
+            "array_file + --plot-lcfs 时仅提供 LCFS reference"
+        ),
     )
 
     # ------------------------------------------------------------------ #
     # 既有：输出路径参数（default=UNSET 交给 config 合并）                  #
     # ------------------------------------------------------------------ #
-    parser.add_argument(
+    output_group.add_argument(
         "--hdf5",
         "--h5",
         dest="hdf5",
@@ -138,19 +149,19 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="TRIMEG HDF5 输出路径（默认：mesh.h5，target=trimeg 时生效）",
     )
-    parser.add_argument(
+    output_group.add_argument(
         "--smb",
         default=UNSET,
         metavar="PATH",
         help="PUMI .smb 输出路径（M4；默认无可执行路径）",
     )
-    parser.add_argument(
+    output_group.add_argument(
         "--plot",
         default=UNSET,
         metavar="PATH",
         help="可视化自检图输出路径（默认：不生成）",
     )
-    parser.add_argument(
+    input_group.add_argument(
         "--plot-lcfs",
         action="store_true",
         help=(
@@ -158,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
             "只叠加到 --plot PNG，不改变实际网格边界"
         ),
     )
-    parser.add_argument(
+    output_group.add_argument(
         "--model",
         default=UNSET,
         metavar="PATH",
@@ -166,68 +177,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ------------------------------------------------------------------ #
-    # 既有：分区域网格密度参数（default=UNSET，合并/校验交给 config）        #
+    # 网格尺度（default=UNSET，合并、校验和 profile 适用性由 config 负责）  #
     # ------------------------------------------------------------------ #
-    parser.add_argument(
+    mesh_group.add_argument(
+        "--mesh-dx",
+        dest="mesh_dx",
+        type=float,
+        default=UNSET,
+        metavar="FLOAT",
+        help="single_region 的唯一目标网格长度尺度，单位 m（默认：0.08）",
+    )
+    mesh_group.add_argument(
         "--plasma-dx",
         dest="plasma_dx",
         type=float,
         default=UNSET,
         metavar="FLOAT",
-        help="target plasma-region mesh scale in meters (inside LCFS; default: 0.08)",
+        help="仅用于 nested_three_region 的 plasma 区域尺度，单位 m（默认：0.08）",
     )
-    parser.add_argument(
+    mesh_group.add_argument(
         "--vacuum-dx",
         dest="vacuum_dx",
         type=float,
         default=UNSET,
         metavar="FLOAT",
-        help=(
-            "target vacuum-region mesh scale in meters "
-            "(between LCFS and first wall; default: 0.10)"
-        ),
+        help="仅用于 nested_three_region 的 vacuum 区域尺度，单位 m（默认：0.10）",
     )
-    parser.add_argument(
+    mesh_group.add_argument(
         "--outer-dx",
         dest="outer_dx",
         type=float,
         default=UNSET,
         metavar="FLOAT",
-        help=(
-            "target outer-region mesh scale in meters "
-            "(between first wall and outer boundary; default: 0.15)"
-        ),
-    )
-
-    # ------------------------------------------------------------------ #
-    # 历史 Python Triangle 参数（OFT 正式路径不支持，非默认值报错）          #
-    # ------------------------------------------------------------------ #
-    parser.add_argument(
-        "--min-angle",
-        dest="min_angle",
-        type=float,
-        default=20.0,
-        metavar="FLOAT",
-        help="[历史参数] Triangle 最小内角约束（度，默认：20.0）；OFT 正式路径暂不支持",
-    )
-    parser.add_argument(
-        "--max-area",
-        dest="max_area",
-        type=float,
-        default=None,
-        metavar="FLOAT",
-        help="[历史参数] Triangle 最大三角形面积约束（m²，默认：不限制）；OFT 正式路径暂不支持",
+        help="仅用于 nested_three_region 的 outer 区域尺度，单位 m（默认：0.15）",
     )
 
     # ------------------------------------------------------------------ #
     # 既有：跳过开关（保持旧行为）                                          #
     # ------------------------------------------------------------------ #
-    parser.add_argument(
+    output_group.add_argument(
         "--no-smb",
         action="store_true",
         help="跳过 .smb 文件生成",
     )
-    parser.add_argument(
+    output_group.add_argument(
         "--no-hdf5",
         action="store_true",
         help="跳过 HDF5 文件生成",
@@ -236,7 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
     # ------------------------------------------------------------------ #
     # 既有：详细日志（store_true；显式 True 时覆盖 TOML verbose）           #
     # ------------------------------------------------------------------ #
-    parser.add_argument(
+    runtime_group.add_argument(
         "--verbose",
         action="store_true",
         help="打印详细日志（节点数、三角形数、写入状态、配置文件路径）",
@@ -280,25 +273,6 @@ def main() -> None:
         raise
 
 
-def _check_unsupported_legacy_params(args: argparse.Namespace) -> None:
-    """检查历史 Triangle 参数：若用户给出非默认值则抛清晰错误。
-
-    OFT 正式路径不支持 --min-angle / --max-area 这两个旧 Python Triangle 参数。
-    不得静默忽略，也不得映射为 OFT dx。默认值不传给 OFT Adapter。
-    """
-    if args.min_angle != 20.0:
-        raise ValueError(
-            "OFT 正式网格生成路径暂不支持历史参数 --min-angle。"
-            "该参数属于旧 Python Triangle 路线；OFT 网格尺度由 dx 参数控制。"
-            "请去除 --min-angle 后重试。"
-        )
-    if args.max_area is not None:
-        raise ValueError(
-            "OFT 正式网格生成路径暂不支持历史参数 --max-area。"
-            "该参数属于旧 Python Triangle 路线；OFT 网格尺度由 dx 参数控制。"
-            "请去除 --max-area 后重试。"
-        )
-
 
 def _build_overrides(args: argparse.Namespace) -> CliOverrides:
     """把 argparse Namespace 中用户显式提供的字段收集为 CliOverrides。
@@ -313,6 +287,7 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
         boundary_source=args.boundary_source,
         gfile=args.gfile,
         array_file=args.array_file,
+        mesh_dx=args.mesh_dx,
         plasma_dx=args.plasma_dx,
         vacuum_dx=args.vacuum_dx,
         outer_dx=args.outer_dx,
@@ -331,11 +306,6 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
 
 def _run(args: argparse.Namespace) -> None:
     """LinkMesh 主执行逻辑（由 main() 调用，异常由 main() 统一捕获）。"""
-
-    # ------------------------------------------------------------------ #
-    # Step 0：历史参数拦截（在任何配置/网格生成之前）                       #
-    # ------------------------------------------------------------------ #
-    _check_unsupported_legacy_params(args)
 
     # ------------------------------------------------------------------ #
     # Step 1：收集显式 CLI 输入并合并配置                                   #
@@ -427,7 +397,7 @@ def _run(args: argparse.Namespace) -> None:
                 "[LinkMesh] 调用 OFT gs_Domain 生成 single-region "
                 f"{cfg.boundary_source} 二维三角网格..."
             )
-            print(f"  网格尺度: plasma_dx={cfg.plasma_dx} m（single-region 唯一尺度）")
+            print(f"  网格尺度: mesh_dx={cfg.mesh_dx} m")
         else:
             print("[LinkMesh] 调用 OFT gs_Domain 生成 nested-three-region 二维三角网格...")
             print(
@@ -435,9 +405,12 @@ def _run(args: argparse.Namespace) -> None:
                 f"vacuum_dx={cfg.vacuum_dx} m, outer_dx={cfg.outer_dx} m"
             )
 
+    adapter_plasma_dx = (
+        cfg.mesh_dx if cfg.profile == "single_region" else cfg.plasma_dx
+    )
     mesh = generate_mesh(
         mesh_input,
-        plasma_dx=cfg.plasma_dx,
+        plasma_dx=adapter_plasma_dx,
         vacuum_dx=cfg.vacuum_dx,
         outer_dx=cfg.outer_dx,
         profile=cfg.profile,
@@ -496,7 +469,15 @@ def _run(args: argparse.Namespace) -> None:
         plot_str = str(cfg.plot_path)
         if verbose:
             print(f"[LinkMesh] 生成网格自检图：{plot_str}")
-        plot_mesh(gfile_data, mesh, plot_str, show_region_ids=True)
+        plot_mesh(
+            gfile_data,
+            mesh,
+            plot_str,
+            show_region_ids=True,
+            lcfs_reference_only=(
+                cfg.boundary_source == "array_file" and cfg.plot_lcfs
+            ),
+        )
         if verbose:
             print(f"[LinkMesh] PNG 路径：{plot_str}")
 

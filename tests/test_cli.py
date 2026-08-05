@@ -151,6 +151,7 @@ class TestParserDefaults:
         # 输入层 I 后，dx 默认交给 config；未显式提供时 argparse 值为 UNSET 哨兵。
         args = _parse(["--gfile", "dummy.eqdsk"])
         from linkmesh.config import UNSET
+        assert args.mesh_dx is UNSET
         assert args.plasma_dx is UNSET
         assert args.vacuum_dx is UNSET
         assert args.outer_dx is UNSET
@@ -158,10 +159,12 @@ class TestParserDefaults:
     def test_explicit_scale_values(self):
         args = _parse([
             "--gfile", "dummy.eqdsk",
+            "--mesh-dx", "0.06",
             "--plasma-dx", "0.12",
             "--vacuum-dx", "0.16",
             "--outer-dx", "0.24",
         ])
+        assert args.mesh_dx == 0.06
         assert args.plasma_dx == 0.12
         assert args.vacuum_dx == 0.16
         assert args.outer_dx == 0.24
@@ -189,8 +192,6 @@ class TestParserDefaults:
         assert args.hdf5 is UNSET
         assert args.smb is UNSET
         assert args.plot is UNSET
-        assert args.min_angle == 20.0
-        assert args.max_area is None
         assert args.no_smb is False
         assert args.no_hdf5 is False
         assert args.verbose is False
@@ -219,24 +220,30 @@ class TestParserDefaults:
 class TestParserHelp:
     """--help 中出现三个参数、区域含义与单位。"""
 
-    def test_help_contains_scale_params(self, capsys):
-        with pytest.raises(SystemExit):
+    def test_help_contains_grouped_scale_params(self, capsys):
+        with pytest.raises(SystemExit) as exc_info:
             _parse(["--help"])
+        assert exc_info.value.code == 0
         out = capsys.readouterr().out
+        assert "--mesh-dx" in out
         assert "--plasma-dx" in out
         assert "--vacuum-dx" in out
         assert "--outer-dx" in out
 
-    def test_help_contains_regions_and_unit(self, capsys):
+    def test_help_groups_follow_task_order(self, capsys):
         with pytest.raises(SystemExit):
             _parse(["--help"])
         out = capsys.readouterr().out
-        # 区域含义
-        assert "plasma-region" in out
-        assert "vacuum-region" in out
-        assert "outer-region" in out
-        # 单位（meters / m）
-        assert "meters" in out
+        headings = [
+            "Configuration:",
+            "Task:",
+            "Input:",
+            "Mesh Resolution:",
+            "Output:",
+            "Runtime:",
+        ]
+        positions = [out.index(heading) for heading in headings]
+        assert positions == sorted(positions)
 
     def test_help_contains_input_layer_params(self, capsys):
         with pytest.raises(SystemExit):
@@ -250,6 +257,26 @@ class TestParserHelp:
         assert "--array-file" in out
         assert "--plot-lcfs" in out
         assert "LCFS reference" in out
+        assert out.count("--plot-lcfs") == 1
+        assert out.index("--plot-lcfs") < out.index("Mesh Resolution:")
+
+    def test_help_omits_removed_triangle_options(self, capsys):
+        with pytest.raises(SystemExit):
+            _parse(["--help"])
+        out = capsys.readouterr().out
+        assert "--min-angle" not in out
+        assert "--max-area" not in out
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--min-angle", "20"],
+            ["--max-area", "0.01"],
+        ],
+    )
+    def test_removed_triangle_options_rejected(self, argv):
+        with pytest.raises(SystemExit):
+            _parse(argv)
 
     def test_help_uses_hdf5_names_and_omits_output(self, capsys):
         with pytest.raises(SystemExit):
@@ -524,32 +551,6 @@ class TestCombinations:
         assert mocks["write_smb"].call_count == 0
         # 未指定 --plot：Plotter 不调用
         assert mocks["plot_mesh"].call_count == 0
-
-    def test_legacy_min_angle_rejection_still_applies(self, monkeypatch):
-        # 历史参数拦截行为不受本次改动影响
-        mocks = _install_cli_mocks(monkeypatch)
-        args = _parse([
-            "--gfile", "dummy.eqdsk",
-            "--min-angle", "25.0",
-            "--no-hdf5", "--no-smb",
-        ])
-        with pytest.raises(ValueError) as excinfo:
-            cli._run(args)
-        assert "--min-angle" in str(excinfo.value)
-        # 历史参数在前置拦截阶段失败，未进入 OFT 网格生成
-        assert mocks["generate_mesh"].call_count == 0
-
-    def test_legacy_max_area_rejection_still_applies(self, monkeypatch):
-        mocks = _install_cli_mocks(monkeypatch)
-        args = _parse([
-            "--gfile", "dummy.eqdsk",
-            "--max-area", "0.01",
-            "--no-hdf5", "--no-smb",
-        ])
-        with pytest.raises(ValueError) as excinfo:
-            cli._run(args)
-        assert "--max-area" in str(excinfo.value)
-        assert mocks["generate_mesh"].call_count == 0
 
 
 # ==========================================================================
@@ -862,6 +863,7 @@ class TestInputLayerIRunIntegration:
         assert plot_args[0] is mocks["gfile_data"]
         assert plot_args[1] is mocks["mesh"]
         assert plot_kwargs["show_region_ids"] is True
+        assert plot_kwargs["lcfs_reference_only"] is True
 
     @pytest.mark.parametrize(
         "argv",
@@ -1077,19 +1079,18 @@ class TestInputLayerIISingleRegionLcfs:
         assert kwargs["profile"] == "single_region"
         assert kwargs["boundary_source"] == "lcfs"
 
-    def test_single_region_lcfs_uses_plasma_dx(self, monkeypatch, tmp_path):
-        # single-region 网格尺度用 plasma_dx；vacuum_dx/outer_dx 仍随合并结果转发
-        # （generate_mesh 兼容签名接收三个 dx，single-region 分支只消费 plasma_dx，
-        # 但 CLI 转发契约仍原样传三个值，不删除、不换算）。
+    def test_single_region_mesh_dx_maps_to_adapter_plasma_dx(
+        self, monkeypatch, tmp_path
+    ):
+        # Adapter 公共签名保持不变；CLI 将无物理歧义的 mesh_dx 映射到其既有
+        # single-region plasma_dx 参数槽。
         monkeypatch.chdir(tmp_path)
         mocks = _install_cli_mocks(monkeypatch)
         args = _parse([
             "--gfile", "dummy.eqdsk", "--no-config",
             "--target", "mesh_only",
             "--profile", "single_region", "--boundary-source", "lcfs",
-            "--plasma-dx", "0.04",
-            "--vacuum-dx", "0.11",
-            "--outer-dx", "0.19",
+            "--mesh-dx", "0.04",
             "--no-smb",
         ])
         cli._run(args)
@@ -1097,14 +1098,28 @@ class TestInputLayerIISingleRegionLcfs:
         # generate_mesh 只调用一次
         assert mocks["generate_mesh"].call_count == 1
         _, kwargs = mocks["generate_mesh"].call_args
-        # single-region 网格尺度显式值经 plasma_dx 转发
         assert kwargs["plasma_dx"] == 0.04
-        # profile / boundary_source 正确转发
         assert kwargs["profile"] == "single_region"
         assert kwargs["boundary_source"] == "lcfs"
-        # 其余两个 dx 仍按当前 generate_mesh 兼容签名原样转发（不虚构参数）
-        assert kwargs["vacuum_dx"] == 0.11
-        assert kwargs["outer_dx"] == 0.19
+        assert kwargs["vacuum_dx"] == 0.10
+        assert kwargs["outer_dx"] == 0.15
+
+    def test_single_region_verbose_uses_mesh_dx_name(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        _install_cli_mocks(monkeypatch)
+        args = _parse([
+            "--gfile", "dummy.eqdsk", "--no-config",
+            "--target", "mesh_only",
+            "--profile", "single_region", "--boundary-source", "lcfs",
+            "--mesh-dx", "0.04",
+            "--verbose",
+        ])
+        cli._run(args)
+        out = capsys.readouterr().out
+        assert "mesh_dx=0.04 m" in out
+        assert "plasma_dx=" not in out
 
     def test_trimeg_single_region_lcfs_calls_hdf5(self, monkeypatch, tmp_path):
         # trimeg + single_region + lcfs：调用 Mesher 与 HDF5 Writer。

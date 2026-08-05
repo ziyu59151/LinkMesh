@@ -52,6 +52,7 @@ def test_plot_mesh_with_gfile_keeps_reference_overlays(
     lcfs_r_before = gfile.lcfs_r.copy()
     lcfs_z_before = gfile.lcfs_z.copy()
     plotted_styles = {}
+    plotted_labels = []
 
     import matplotlib.axes
 
@@ -59,6 +60,8 @@ def test_plot_mesh_with_gfile_keeps_reference_overlays(
 
     def recording_plot(self, *args, **kwargs):
         label = kwargs.get("label")
+        if label is not None:
+            plotted_labels.append(label)
         if label in {"Mesh boundary", "LCFS reference"}:
             plotted_styles[label] = kwargs.get("linestyle", "-")
         return original_plot(self, *args, **kwargs)
@@ -66,14 +69,53 @@ def test_plot_mesh_with_gfile_keeps_reference_overlays(
     monkeypatch.setattr(matplotlib.axes.Axes, "plot", recording_plot)
 
     output = tmp_path / "gfile-overlay.png"
-    plot_mesh(gfile, mesh, str(output), show_region_ids=True)
+    plot_mesh(
+        gfile,
+        mesh,
+        str(output),
+        show_region_ids=True,
+        lcfs_reference_only=True,
+    )
 
     assert output.is_file()
     assert output.stat().st_size > 0
     assert plotted_styles["Mesh boundary"] != plotted_styles["LCFS reference"]
+    assert "First wall" not in plotted_labels
+    assert not any(label.startswith("Magnetic axis") for label in plotted_labels)
+    assert not any("Limiter" in label for label in plotted_labels)
     np.testing.assert_array_equal(mesh.outer_boundary, mesh_boundary_before)
     np.testing.assert_array_equal(gfile.lcfs_r, lcfs_r_before)
     np.testing.assert_array_equal(gfile.lcfs_z, lcfs_z_before)
+
+
+def test_default_gfile_mode_keeps_wall_and_axis(tmp_path, monkeypatch):
+    class GFile:
+        lcfs_r = np.array([0.1, 0.9, 0.9, 0.1])
+        lcfs_z = np.array([0.1, 0.1, 0.9, 0.9])
+        wall_r = np.array([-0.1, 1.1, 1.1, -0.1])
+        wall_z = np.array([-0.1, -0.1, 1.1, 1.1])
+        rmaxis = 0.5
+        zmaxis = 0.5
+
+    labels = []
+    import matplotlib.axes
+
+    original_plot = matplotlib.axes.Axes.plot
+
+    def recording_plot(self, *args, **kwargs):
+        label = kwargs.get("label")
+        if label is not None:
+            labels.append(label)
+        return original_plot(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "plot", recording_plot)
+    output = tmp_path / "default-gfile.png"
+    plot_mesh(GFile(), _mesh(), str(output))
+
+    assert "First wall" in labels
+    assert any(label.startswith("Magnetic axis") for label in labels)
+    assert output.is_file()
+    assert output.stat().st_size > 0
 
 
 def test_plot_mesh_warns_when_lcfs_reference_is_outside(
