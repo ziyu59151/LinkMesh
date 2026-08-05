@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.2**（初期交付 CLI 收口：正式区分 single-region `mesh_dx` 与 nested-three-region 三区域尺度，删除历史 Triangle 参数，按用户任务重组 CLI help，并收紧 `array_file + plot_lcfs` 为仅叠加 LCFS reference）
+- 文档状态：正式版 **4.3**（初版 Linux 可移动 Release 构建契约：由 Windows Git 仓库维护发布源码和脚本，在 Linux 服务器离线组装包含 LinkMesh、OFT 26.6 与已验证 SCOREC helper 的可移动目录及 tar.gz）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；下一阶段执行拆解见 `docs/linkmesh/work_plan.md`；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -125,7 +125,8 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `single_region + array_file` | **IMPLEMENTED / PASSED；EAST 生成侧已验收** |
 | `array_file + 可选 GFile LCFS PNG 参考` | **IMPLEMENTED；自动测试与真实 PNG 回归待本轮实施后记录** |
 | `plot_lcfs` 配置字段与 `--plot-lcfs` CLI | **IMPLEMENTED；仅允许 LCFS reference 进入 array-file PNG** |
-| 普通用户可调用的发布候选 | **PENDING / NOT YET IMPLEMENTED** |
+| 普通用户可调用的发布构建系统 | **IMPLEMENTED / STATICALLY CHECKED；Linux 构建与运行 NOT RUN** |
+| Linux 可移动 Release 目录与 tar.gz | **PENDING；必须在 Linux 服务器组装和验证** |
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | 多区域、多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
@@ -1659,10 +1660,15 @@ Linux 服务器负责接收本地上传的已确认源码版本或发布包，�
 编译 helper，运行 Python 自动测试和 OFT/Triangle，生成 `Mesh2D`、HDF5、TXT、
 SMB、PNG，并执行 M3D-C1/TRIMEG 真实消费验收和保存命令、日志、环境及产物。
 
-当前服务器源码目录为 `/home/lxzeng/LinkMesh_server`，源码由 User 从本地直接上传，
-不是通过服务器 Git 拉取和管理。不得把 `git pull`、服务器 `git status` 或服务器
-`git log` 写成当前既有工作流。Linux 服务器原则上不修改正式源码和文档；问题必须
-携带直接证据返回本地修复。服务器构建目录、测试缓存、日志和 Case 输出不是正式源码。
+Linux 服务器源码由 User 从本地上传的源码归档展开，不通过服务器 Git 拉取或管理。
+不得把 `git pull`、服务器 `git status` 或服务器 `git log` 写成当前工作流。Linux
+服务器原则上不修改正式源码和文档；问题必须携带直接证据返回本地修复。服务器构建
+目录、测试缓存、日志、Release 目录、tar.gz 和 Case 输出均为服务器生成物，不提交
+到本地 Git。
+
+本地 Windows 只维护正式源码、Git 历史、Release 构建脚本和发布版本标识；不得在
+Windows 重组 Linux OFT 安装、编译 helper、生成 Linux Release，或把静态检查写成
+Linux 运行验证。Release 必须由 Linux 服务器从上传的干净源码归档离线组装。
 
 正式闭环为：
 
@@ -1837,15 +1843,78 @@ LinkMesh，原样传递参数并保留退出状态。不得硬编码 `/home/lxze
 
 交付环境和环境管理原则已经完成讨论，但共享部署仍为 `PENDING`。实施时必须：
 
-1. 建立不依赖个人 `PYTHONPATH` 的正式 Python 安装。
-2. 通过 CMake install 安装 `linkmesh-scorec-helper`。
-3. 在个人干净候选环境完成自动测试、真实输入、格式输出和外部消费回归。
-4. 审计 helper 的完整动态库、MPI、SCOREC/PUMI、编译器和 ABI 信息。
-5. 等待老师确认共享根目录、组权限和 modulefile 能力。
-6. 创建新的版本化只读 release，验收后切换 `current`，保留旧版本回退。
-7. 使用普通用户或等价权限验证统一入口、输出目录和退出状态。
+1. 使用 `packaging/release/build_release.sh` 在 Linux 服务器离线组装初版候选。
+2. 在个人干净候选环境完成自动测试、真实输入、格式输出和外部消费回归。
+3. 审计 helper 的完整动态库、MPI、SCOREC/PUMI、编译器和 ABI 信息。
+4. 等待老师确认共享根目录、组权限和 modulefile 能力。
+5. 创建新的版本化只读 release，验收后切换 `current`，保留旧版本回退。
+6. 使用普通用户或等价权限验证统一入口、输出目录和退出状态。
 
-不得因为个人开发环境可运行而宣告正式共享部署完成。
+不得因为构建脚本已实现、静态检查通过或个人开发环境可运行而宣告 Linux Release、
+正式共享部署或外部消费已经完成。
+
+### 8.15 初版 Linux 可移动 Release 契约
+
+初版交付物是可移动目录和同名 `tar.gz`，不是物理意义上的单文件程序：
+
+```text
+linkmesh-release-<version>-linux-x86_64/
+├── bin/
+│   ├── linkmesh
+│   ├── linkmesh-check
+│   ├── linkmesh-bootstrap.py
+│   └── linkmesh-scorec-helper
+├── python/
+│   └── site-packages/
+│       ├── linkmesh/
+│       ├── OpenFUSIONToolkit/
+│       └── OpenFUSIONToolkit-*.dist-info/
+├── manifest/
+│   ├── build-info.txt
+│   ├── python-requirements.txt
+│   ├── native-requirements.txt
+│   └── SHA256SUMS
+└── README.md
+```
+
+构建和使用边界：
+
+1. Windows Git 仓库维护源码、构建脚本和版本；Linux 服务器不执行 Git 工作流，只
+   接收本地 `git archive` 产生的源码归档。
+2. `build_release.sh` 只在 Linux 服务器执行，从脚本位置定位展开后的源码根目录；
+   不调用 Git、不联网、不运行 pip，也不安装或修改 Conda 环境。
+3. Release 自带 LinkMesh Python 包、服务器正式安装的 OpenFUSIONToolkit 26.6
+   完整包、对应 dist-info、服务器已编译验证的 `linkmesh-scorec-helper`、启动器、
+   bootstrap、分层检查器、README、构建信息、依赖信息和 SHA-256。
+4. Release 不自带 Python 解释器、NumPy、h5py、Matplotlib、SciPy、netCDF4、
+   pytest、MPI、glibc、libstdc++、PUMI 库、tests、examples 或外部参考源码。
+5. PUMI 2.2.9 的 mds、apf、gmi、pcu、mth 和 lion 已静态进入 helper，不复制
+   PUMI `.a` 或 `.so`。helper 动态需要 `libmpi.so.40` 与系统 C/C++ 运行库。
+6. MPI、glibc、libstdc++ 不封装，MPI 和 ABI 兼容性属于首轮外部反馈与验收项。
+7. TRIMEG 路径不使用 helper，不得被 helper 或 MPI 检查阻塞；只有 M3D-C1 SMB
+   路径需要 helper 和兼容 MPI。
+8. 普通用户解压后运行 `bin/linkmesh`，不执行 `pip install` 安装 LinkMesh 或 OFT，
+   不手工设置 `PYTHONPATH` 或 `LINKMESH_SCOREC_HELPER`，也不编译 helper 或安装
+   PUMI。
+9. `bin/linkmesh` 通过自身真实路径定位 Release，支持 `LINKMESH_PYTHON` 显式选择
+   Python，否则依次使用 `python3`、`python`；只为当前子进程设置 Release 内 helper
+   路径，不设置 `PYTHONPATH` 或全局 `LD_LIBRARY_PATH`。
+10. bootstrap 把 Release 内 `python/site-packages` 插入当前进程 `sys.path` 首位，
+    再通过 `runpy` 启动 `linkmesh.__main__`；NumPy、h5py、Matplotlib 等通用包继续
+    由选定 Python 的正常环境提供。
+11. 启动器、manifest 和 README 不得依赖维护者个人目录、服务器源码展开目录或
+    开发构建目录。
+12. `linkmesh-check` 分为 `core`、`trimeg`、`plot`、`m3dc1` 和 `all`。TRIMEG
+    检查不得因 helper 或 MPI 不可用而失败；SciPy/netCDF4 只作非阻塞诊断。
+13. 构建器必须确认 OFT 精确为 26.6，复制完整包并保留内部 Linux 符号链接；确认
+    helper 为可执行 Linux x86-64 ELF；`ldd` 出现 `not found` 时构建失败。
+14. 构建器不得覆盖既有 Release 目录或 tar.gz；必须删除 `__pycache__` 和 `*.pyc`，
+    生成全部普通文件的 `SHA256SUMS`，并记录源码归档、构建环境和 native 审计摘要。
+15. 本地实现状态最多为 `IMPLEMENTED / STATICALLY CHECKED`；Linux Release 构建、
+    检查、OFT、helper、TRIMEG、M3D-C1、MPI 与真实案例均为 `NOT RUN`，直到服务器
+    返回直接证据。
+16. 外部加载、初始化、时间推进、稳定性和物理结果继续按既有层级分别记录为
+    `PENDING`，不得由 Release 构建结果外推。
 
 ---
 
@@ -2042,13 +2111,15 @@ Fake OFT。
 
 以下验收当前均为 **PENDING / NOT RUN**，不得写成 PASSED。
 
-**Python 安装**
+**Python 与可移动目录**
 
-- LinkMesh 安装到 release `site-packages`；
-- 不设置 `PYTHONPATH` 也可导入；
+- LinkMesh 与 OFT 26.6 位于 release `python/site-packages`；
+- 不设置 `PYTHONPATH` 也可由 bootstrap 优先导入；
 - 从源码目录外可启动；
 - OFT 从 release `site-packages` 导入；
-- 不使用 `TOKAMAKER` 源码路径。
+- 通用 Python 包由选定 Python 环境提供；
+- 不使用 `TOKAMAKER` 源码路径；
+- 不要求最终用户执行 `pip install` 安装 LinkMesh 或 OFT。
 
 **CLI**
 
@@ -2060,8 +2131,8 @@ Fake OFT。
 **helper**
 
 - 正式名称为 `linkmesh-scorec-helper`；
-- 安装到 release `env/bin`；
-- Writer 按正式定位规则找到；
+- 复制到 release `bin`；
+- launcher 为当前子进程设置正式 helper 路径；
 - 可执行权限和 `file` 正确；
 - 完整 `ldd` 无 `not found`；
 - MPI、PUMI、编译器及链接信息已记录；
@@ -2207,8 +2278,8 @@ OFT 26.6 调查必须确认：
 
 其他待决事项：
 
-- 实施并验证 `plot_lcfs` 的 16 字段配置、CLI 双 Reader 编排、诊断和确定性回归；
-- 构建普通用户可调用的发布候选并取得初期 M3D-C1/TRIMEG 使用报告；
+- 实施并验证 `plot_lcfs` 的 17 字段配置、CLI 双 Reader 编排、诊断和确定性回归；
+- 在 Linux 服务器组装并验证初版可移动 Release，取得初期 M3D-C1/TRIMEG 使用报告；
 - 已交付 M3D-C1 网格的后续加载、初始化、时间推进、稳定性和物理结果；
 - 卢老师对最新 LinkMesh TRIMEG HDF5 的测试反馈；
 - EAST 边界物理构造算法和网格尺度需求；

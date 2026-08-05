@@ -2,7 +2,7 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v4.1；`array_file + 可选 GFile LCFS PNG 参考`已批准设计但尚未实现）
+- 文档状态：当前有效（对应技术蓝图 v4.3；初版 Linux 可移动 Release 构建系统已在本地实现，Linux 组装与运行验证尚未执行）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -58,7 +58,8 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | `single_region + array_file` | 已实现；EAST 生成侧 PASSED |
 | `array_file + 可选 GFile LCFS PNG 参考` | DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED |
 | `--plot-lcfs` 与 `[output].plot_lcfs` | 已批准设计，尚未实现 |
-| 普通用户可调用的发布候选 | PENDING / NOT YET IMPLEMENTED |
+| Release 构建脚本、launcher、bootstrap 与分层检查器 | IMPLEMENTED / STATICALLY CHECKED |
+| Linux 可移动 Release 目录与 tar.gz | PENDING；Linux 构建与运行 NOT RUN |
 | EAST M3D-C1 后续运行 | 已交付，加载、初始化、时间推进结果 PENDING |
 | 最新 TRIMEG HDF5 | 已生成并交付卢老师测试，反馈 PENDING |
 | `single_region + first_wall` | 未实现 |
@@ -139,6 +140,14 @@ LinkMesh/
 │       ├── CMakeLists.txt
 │       └── main.cc
 │
+├── packaging/
+│   └── release/
+│       ├── build_release.sh
+│       ├── linkmesh-launcher
+│       ├── linkmesh-bootstrap.py
+│       ├── linkmesh-check
+│       └── README.md
+│
 ├── tests/
 │   ├── test_configuration_contract.py
 │   ├── test_geometry_and_readers.py
@@ -177,6 +186,11 @@ LinkMesh/
 - `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 是进入 v4.0 前的完整 3.x 历史快照。
 - `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md` 是更早的历史版本参考。
 - 根目录当前 `LinkMesh_Architecture_Plan.md` 是唯一有效技术蓝图；历史快照和专题报告不得覆盖其正式裁决。
+- `packaging/release/` 由 Windows 本地 Git 仓库维护；其中 `build_release.sh` 只在
+  Linux 服务器对上传源码归档执行。
+- Release 目录和同名 tar.gz 是 Linux 服务器生成物，不提交 Git。
+- Linux 服务器不承担 LinkMesh 源码 Git 管理；真实构建和验证结果返回本地后再按
+  直接证据归档。
 - `build/` 是 native helper 的构建产物目录，不是正式源码目录，也不应作为 Git 源码提交。
 - 当前仓库树只列出已经存在且属于当前导读范围的文件；不存在或尚未确认存在的文件，不应被当成当前仓库组成。
 - 编译 native helper 时产生的 `build/` 目录属于构建产物，不是正式源码目录，也不应作为 Git 源码提交。
@@ -535,10 +549,16 @@ native/linkmesh_scorec_helper/
 
 ## 11. 开发、验证与发布环境导读
 
-正式源码在本地 Windows Git Bash 仓库维护；本地负责源码、文档和 Git 审查，不运行
-测试、OFT/Triangle、native 构建或消费端验证。当前服务器源码由 User 从本地直接
-上传，不采用服务器 `git pull` 工作流。Linux 服务器负责创建环境、编译 helper、
-运行测试、生成产物和执行 M3D-C1/TRIMEG 验收。
+正式源码在本地 Windows Git Bash 仓库维护；本地负责源码、文档、Git 审查、Release
+构建脚本和发布版本，不运行测试、OFT/Triangle、native 构建或消费端验证。服务器只
+接收本地 `git archive` 产生的源码归档，不采用服务器 Git 工作流。Linux 服务器负责
+展开归档、执行 `packaging/release/build_release.sh`、创建环境、编译或选择已验证
+helper、运行测试、生成 Release 目录与 tar.gz，并执行 M3D-C1/TRIMEG 验收。
+
+初版 Release 是可移动目录，不是单文件程序。它携带 LinkMesh、OFT 26.6、helper、
+启动器和 manifest，但不携带 Python、通用 Python 包、MPI、glibc、libstdc++ 或
+PUMI 库。普通用户通过 `bin/linkmesh` 启动，不设置 `PYTHONPATH` 或 helper 环境
+变量；通用 Python 包由选定的目标 Python 环境提供。
 
 服务器环境分为：
 
@@ -555,6 +575,21 @@ native/linkmesh_scorec_helper/
 普通用户目标体验是通过统一入口运行 LinkMesh，不自行安装 Conda、不编译 helper、
 不设置个人 `PYTHONPATH` 或 helper 环境变量，也不进入维护者个人主目录。已确认的
 网格可由后续 M3D-C1 作业重复使用，不需要每次时间推进前重新生成。
+
+### Release 构建文件
+
+`packaging/release/` 中各文件职责如下：
+
+| 文件 | 职责 |
+|---|---|
+| `build_release.sh` | 在 Linux 服务器离线组装可移动目录、manifest、SHA-256 与 tar.gz |
+| `linkmesh-launcher` | 安装为 `bin/linkmesh`，定位 Release 和目标 Python |
+| `linkmesh-bootstrap.py` | 将 Release site-packages 插入当前 Python 进程并启动 LinkMesh |
+| `linkmesh-check` | 执行 core、TRIMEG、plot、M3D-C1 分层环境检查 |
+| `README.md` | 维护者两阶段构建流程和最终用户解压使用说明 |
+
+这些文件在 Windows 本地维护和静态检查；Linux Release 构建、OFT 导入、helper、
+MPI、TRIMEG 与 M3D-C1 运行状态只有服务器直接证据才能更新。
 
 ## 12. 普通用户最短使用路径
 

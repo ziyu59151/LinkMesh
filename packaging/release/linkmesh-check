@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+resolve_script() {
+    local source_path=${BASH_SOURCE[0]}
+    local directory
+
+    while [[ -L "$source_path" ]]; do
+        directory=$(cd -P "$(dirname "$source_path")" && pwd)
+        source_path=$(readlink "$source_path")
+        if [[ "$source_path" != /* ]]; then
+            source_path="$directory/$source_path"
+        fi
+    done
+
+    directory=$(cd -P "$(dirname "$source_path")" && pwd)
+    printf '%s/%s\n' "$directory" "$(basename "$source_path")"
+}
+
+SCRIPT_PATH=$(resolve_script)
+BIN_DIR=$(dirname "$SCRIPT_PATH")
+RELEASE_ROOT=$(cd -P "$BIN_DIR/.." && pwd)
+SITE_PACKAGES="$RELEASE_ROOT/python/site-packages"
+HELPER="$BIN_DIR/linkmesh-scorec-helper"
+
+status() {
+    printf '%-12s %s\n' "$1" "$2"
+}
+
+select_python() {
+    if [[ -n "${LINKMESH_PYTHON:-}" ]]; then
+        if [[ "$LINKMESH_PYTHON" == */* ]]; then
+            [[ -x "$LINKMESH_PYTHON" ]] || return 1
+            printf '%s\n' "$LINKMESH_PYTHON"
+            return 0
+        fi
+        command -v "$LINKMESH_PYTHON"
+        return
+    fi
+
+    command -v python3 2>/dev/null || command -v python 2>/dev/null
+}
+
+check_core() {
+    local python_executable
+
+    if ! python_executable=$(select_python); then
+        status MISSING "Python interpreter; set LINKMESH_PYTHON"
+        return 1
+    fi
+    status OK "Python: $python_executable"
+
+    if [[ ! -d "$SITE_PACKAGES" ]]; then
+        status MISSING "Release site-packages: $SITE_PACKAGES"
+        return 1
+    fi
+
+    RELEASE_SITE_PACKAGES="$SITE_PACKAGES" "$python_executable" - <<'PY'
+from __future__ import annotations
+
+import importlib
+import importlib.metadata
+import os
+import sys
+from pathlib import Path
+
+site_packages = Path(os.environ["RELEASE_SITE_PACKAGES"]).resolve()
+sys.path.insert(0, str(site_packages))
+failed = False
+
+
+def status(label: str, detail: str) -> None:
+    print(f"{label:<12} {detail}")
+
+
+def import_from_release(module_name: str) -> object | None:
+    global failed
+    try:
+        module = importlib.import_module(module_name)
+    except Exception as exc:
+        status("MISSING", f"{module_name}: {exc}")
+        failed = True
+        return None
+
+    module_file = getattr(module, "__file__", None)
+    if module_file is None:
+        status("MISSING", f"{module_name}: module has no __file__")
+        failed = True
+        return None
+
+    origin = Path(module_file).resolve()
+    try:
+        origin.relative_to(site_packages)
+    except ValueError:
+        status(
+            "MISSING",
+            f"{module_name}: imported outside release ({origin})",
+        )
+        failed = True
+        return None
+
+    status("OK", f"{module_name}: {origin}")
+    return module
+
+
+if sys.version_info < (3, 11):
+    status("MISSING", f"Python >= 3.11 required; found {sys.version.split()[0]}")
+    failed = True
+else:
+    status("OK", f"Python version: {sys.version.split()[0]}")
+
+import_from_release("linkmesh")
+import_from_release("OpenFUSIONToolkit")
+
+try:
+    oft_version = importlib.metadata.version("OpenFUSIONToolkit")
+except importlib.metadata.PackageNotFoundError:
+    status("MISSING", "OpenFUSIONToolkit distribution metadata")
+    failed = True
+else:
+    if oft_version != "26.6":
+        status("MISSING", f"OpenFUSIONToolkit==26.6 required; found {oft_version}")
+        failed = True
+    else:
+        status("OK", f"OpenFUSIONToolkit distribution: {oft_version}")
+
+try:
+    numpy = importlib.import_module("numpy")
+except Exception as exc:
+    status("MISSING", f"NumPy: {exc}")
+    failed = True
+else:
+    status("OK", f"NumPy: {getattr(numpy, '__version__', 'unknown')}")
+
+for distribution_name, import_name in (
+    ("SciPy", "scipy"),
+    ("netCDF4", "netCDF4"),
+):
+    try:
+        module = importlib.import_module(import_name)
+    except Exception:
+        status(
+            "WARNING",
+            f"{distribution_name} unavailable; non-blocking OFT metadata diagnostic",
+        )
+    else:
+        status(
+            "OK",
+            f"{distribution_name}: {getattr(module, '__version__', 'unknown')} "
+            "(non-blocking diagnostic)",
+        )
+
+raise SystemExit(1 if failed else 0)
+PY
+}
+
+check_python_module() {
+    local distribution_name=$1
+    local import_name=$2
+    local python_executable
+
+    if ! python_executable=$(select_python); then
+        status MISSING "Python interpreter; set LINKMESH_PYTHON"
+        return 1
+    fi
+
+    RELEASE_SITE_PACKAGES="$SITE_PACKAGES" \
+        CHECK_DISTRIBUTION="$distribution_name" \
+        CHECK_IMPORT="$import_name" \
+        MPLBACKEND=Agg \
+        "$python_executable" - <<'PY'
+from __future__ import annotations
+
+import importlib
+import os
+import sys
+from pathlib import Path
+
+site_packages = Path(os.environ["RELEASE_SITE_PACKAGES"]).resolve()
+sys.path.insert(0, str(site_packages))
+distribution_name = os.environ["CHECK_DISTRIBUTION"]
+import_name = os.environ["CHECK_IMPORT"]
+
+try:
+    module = importlib.import_module(import_name)
+    if import_name == "matplotlib":
+        module.use("Agg", force=True)
+        importlib.import_module("matplotlib.pyplot")
+except Exception as exc:
+    print(f"{'MISSING':<12} {distribution_name}: {exc}")
+    raise SystemExit(1)
+
+version = getattr(module, "__version__", "unknown")
+print(f"{'OK':<12} {distribution_name}: {version}")
+PY
+}
+
+check_m3dc1_native() {
+    local failed=0
+    local ldd_output
+    local mpi_line
+
+    if [[ ! -f "$HELPER" ]]; then
+        status MISSING "SCOREC helper: $HELPER"
+        return 1
+    fi
+    if [[ ! -x "$HELPER" ]]; then
+        status MISSING "SCOREC helper is not executable: $HELPER"
+        return 1
+    fi
+    status OK "SCOREC helper: $HELPER"
+
+    if ! command -v ldd >/dev/null 2>&1; then
+        status MISSING "ldd command"
+        return 1
+    fi
+
+    if ! ldd_output=$(ldd "$HELPER" 2>&1); then
+        status MISSING "ldd failed for SCOREC helper"
+        printf '%s\n' "$ldd_output"
+        return 1
+    fi
+
+    if grep -Fq 'not found' <<<"$ldd_output"; then
+        status MISSING "SCOREC helper has unresolved dynamic libraries"
+        printf '%s\n' "$ldd_output"
+        failed=1
+    else
+        status OK "SCOREC helper dynamic libraries resolved"
+    fi
+
+    mpi_line=$(grep -E '^[[:space:]]*libmpi\.so(\.[0-9]+)*[[:space:]]*=>' \
+        <<<"$ldd_output" | head -n 1 || true)
+    if [[ -z "$mpi_line" ]]; then
+        status MISSING "libmpi runtime was not reported by ldd"
+        failed=1
+    else
+        status OK "MPI runtime: ${mpi_line#"${mpi_line%%[![:space:]]*}"}"
+    fi
+
+    return "$failed"
+}
+
+run_mode() {
+    local mode=$1
+    local failed=0
+
+    case "$mode" in
+        core)
+            check_core || failed=1
+            status "NOT CHECKED" "h5py, Matplotlib and native helper"
+            ;;
+        trimeg)
+            check_core || failed=1
+            check_python_module h5py h5py || failed=1
+            status "NOT CHECKED" "SCOREC helper and MPI are not required by TRIMEG"
+            ;;
+        plot)
+            check_core || failed=1
+            check_python_module Matplotlib matplotlib || failed=1
+            status "NOT CHECKED" "SCOREC helper and MPI are not required for PNG"
+            ;;
+        m3dc1)
+            check_core || failed=1
+            check_m3dc1_native || failed=1
+            status "NOT CHECKED" "M3D-C1 loading, initialization and time stepping"
+            ;;
+        *)
+            printf 'Usage: %s {core|trimeg|plot|m3dc1|all}\n' "$0" >&2
+            return 2
+            ;;
+    esac
+
+    return "$failed"
+}
+
+if [[ $# -ne 1 ]]; then
+    printf 'Usage: %s {core|trimeg|plot|m3dc1|all}\n' "$0" >&2
+    exit 2
+fi
+
+if [[ "$1" == "all" ]]; then
+    overall=0
+    for mode in core trimeg plot m3dc1; do
+        printf '\n== %s ==\n' "$mode"
+        run_mode "$mode" || overall=1
+    done
+    exit "$overall"
+fi
+
+run_mode "$1"

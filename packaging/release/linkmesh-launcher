@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_script() {
+    local source_path=${BASH_SOURCE[0]}
+    local directory
+
+    while [[ -L "$source_path" ]]; do
+        directory=$(cd -P "$(dirname "$source_path")" && pwd)
+        source_path=$(readlink "$source_path")
+        if [[ "$source_path" != /* ]]; then
+            source_path="$directory/$source_path"
+        fi
+    done
+
+    directory=$(cd -P "$(dirname "$source_path")" && pwd)
+    printf '%s/%s\n' "$directory" "$(basename "$source_path")"
+}
+
+SCRIPT_PATH=$(resolve_script)
+BIN_DIR=$(dirname "$SCRIPT_PATH")
+RELEASE_ROOT=$(cd -P "$BIN_DIR/.." && pwd)
+BOOTSTRAP="$BIN_DIR/linkmesh-bootstrap.py"
+HELPER="$BIN_DIR/linkmesh-scorec-helper"
+
+if [[ ! -f "$BOOTSTRAP" ]]; then
+    printf 'LinkMesh launcher error: bootstrap is missing: %s\n' "$BOOTSTRAP" >&2
+    exit 1
+fi
+
+select_python() {
+    if [[ -n "${LINKMESH_PYTHON:-}" ]]; then
+        if [[ "$LINKMESH_PYTHON" == */* ]]; then
+            [[ -x "$LINKMESH_PYTHON" ]] || return 1
+            printf '%s\n' "$LINKMESH_PYTHON"
+            return 0
+        fi
+        command -v "$LINKMESH_PYTHON"
+        return
+    fi
+
+    command -v python3 2>/dev/null || command -v python 2>/dev/null
+}
+
+PYTHON_EXECUTABLE=$(select_python) || {
+    printf '%s\n' \
+        'LinkMesh launcher error: no Python interpreter found.' \
+        'Set LINKMESH_PYTHON to an executable Python command or path.' >&2
+    exit 1
+}
+
+export LINKMESH_SCOREC_HELPER="$HELPER"
+export LINKMESH_RELEASE_ROOT="$RELEASE_ROOT"
+
+exec "$PYTHON_EXECUTABLE" "$BOOTSTRAP" "$@"
