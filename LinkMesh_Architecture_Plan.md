@@ -1029,14 +1029,21 @@ exchange schema 或目标格式。
 OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多轮廓选择规则、闭合和方向
 约定及失败行为。禁止径向缩放、中心缩放或任意几何插值伪造内部磁面。
 
-#### 5.11.5 Plotter 的 array-file 最小调整
+#### 5.11.5 Plotter 的 array-file 与 LCFS reference 契约
 
-1. 基础 `plot_mesh()` 以 `Mesh2D` 及其实际计算边界作为必需数据。
-2. `GFileData` 改为可选平衡参考；存在时可叠加 LCFS、limiter/第一壁和磁轴。
-3. 无 GFile 的 `array_file` 路径必须仍能绘制实际计算边界和三角网格。
-4. 不得为兼容 Plotter 把外部边界伪装成 LCFS。
-5. 坐标轴继续明确为 R、Z，单位 m。
-6. PNG 仅用于几何检查，不替代 M3D-C1 或 TRIMEG 消费验收。
+1. 基础 `plot_mesh()` 以 `Mesh2D` 及其 `outer_boundary` 作为实际网格和实际计算
+   域边界来源。
+2. `GFileData` 是可选平衡参考；候选 `plot_lcfs` 工作流只叠加
+   `GFileData.lcfs_r/lcfs_z` 作为 LCFS reference。
+3. 无 GFile 的旧 `array_file` 路径必须仍能绘制实际计算边界和三角网格。
+4. 三角网格、actual mesh boundary 和 LCFS reference 必须在视觉与图例上可区分；
+   正式契约不固定具体颜色。
+5. 不得为兼容 Plotter 把外部边界伪装成 LCFS，也不得把 LCFS、limiter 或第一壁
+   标成 actual mesh boundary。
+6. 参考 LCFS 不完全位于实际计算域内时，首版输出明确英文 warning，但不修改或拒绝
+   实际网格。
+7. 坐标轴继续明确为 R、Z，单位 m。
+8. PNG 仅用于几何检查，不替代 M3D-C1 或 TRIMEG 加载、初始化、时间推进或物理验收。
 
 ### 5.12 输入层实施拆分
 
