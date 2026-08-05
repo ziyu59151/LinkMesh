@@ -1,0 +1,235 @@
+from __future__ import annotations
+
+import builtins
+import sys
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+
+import numpy as np
+import pytest
+
+from linkmesh.mesh import Mesh2D
+from linkmesh.readers.boundary_reader import (
+    BoundaryFormatError,
+    read_boundary_file,
+)
+from linkmesh.readers.gfile_reader import read_gfile
+
+
+def _clockwise_square() -> np.ndarray:
+    return np.array(
+        [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]],
+        dtype=np.float64,
+    )
+
+
+def _mesh(boundary=None) -> Mesh2D:
+    return Mesh2D(
+        nodes=_clockwise_square(),
+        triangles=np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32),
+        region_ids=np.array([1, 1], dtype=np.int32),
+        outer_boundary=_clockwise_square() if boundary is None else boundary,
+    )
+
+
+def _signed_area(points: np.ndarray) -> float:
+    following = np.roll(points, -1, axis=0)
+    return 0.5 * float(
+        np.sum(
+            points[:, 0] * following[:, 1]
+            - following[:, 0] * points[:, 1]
+        )
+    )
+
+
+def test_mesh2d_preserves_core_arrays_and_owns_outer_boundary():
+    nodes = _clockwise_square()
+    triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+    regions = np.array([7, 7], dtype=np.int32)
+    boundary = _clockwise_square()
+
+    mesh = Mesh2D(nodes, triangles, regions, outer_boundary=boundary)
+    snapshot = mesh.outer_boundary.copy()
+    boundary[0, 0] = 99.0
+
+    assert mesh.nodes is nodes
+    assert mesh.triangles is triangles
+    assert mesh.region_ids is regions
+    assert (mesh.n_nodes, mesh.n_triangles, mesh.n_boundary_segments) == (4, 2, 0)
+    assert mesh.outer_boundary.dtype == np.float64
+    assert not np.shares_memory(mesh.outer_boundary, boundary)
+    np.testing.assert_array_equal(mesh.outer_boundary, snapshot)
+
+
+@pytest.mark.parametrize(
+    "boundary, message",
+    [
+        (
+            np.array([0.0, 1.0, 2.0]),
+            "二维",
+        ),
+        (
+            np.array([[0.0, 0.0], [1.0, 0.0]]),
+            "3",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0], [0.0, np.nan], [1.0, 1.0], [1.0, 0.0]]
+            ),
+            "有限",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0], [0.0, 1.0], [0.0, 1.0], [1.0, 0.0]]
+            ),
+            "相邻重复",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [0.0, 0.0]]
+            ),
+            "首点与末点",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+            ),
+            "顺时针",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0], [2.0, 3.0], [0.0, 2.0], [3.0, 0.0]]
+            ),
+            "自交",
+        ),
+    ],
+)
+def test_outer_boundary_independent_failure_modes(boundary, message):
+    with pytest.raises(ValueError, match=message):
+        _mesh(boundary)
+
+
+def test_boundary_reader_reads_real_text_and_normalizes_direction(tmp_path):
+    path = tmp_path / "EAST"
+    path.write_text(
+        "4\n0 0\n1 0\n1 1\n0 1\n",
+        encoding="utf-8",
+    )
+
+    boundary = read_boundary_file(path)
+
+    assert boundary.shape == (4, 2)
+    assert boundary.dtype == np.float64
+    np.testing.assert_array_equal(boundary[0], [0.0, 0.0])
+    assert _signed_area(boundary) < 0.0
+    assert not np.array_equal(boundary[0], boundary[-1])
+
+
+@pytest.mark.parametrize(
+    "content, exception",
+    [
+        ("header\n0 0\n0 1\n1 0\n", BoundaryFormatError),
+        ("4\n0 0\n0 1\n1 1\n", BoundaryFormatError),
+        ("3\n0 0\nnan 1\n1 0\n", BoundaryFormatError),
+        ("3\n0 0\n0 1\n1 0 2\n", BoundaryFormatError),
+        ("4\n0 0\n2 3\n0 2\n3 0\n", ValueError),
+    ],
+)
+def test_boundary_reader_rejects_distinct_format_and_geometry_errors(
+    tmp_path,
+    content,
+    exception,
+):
+    path = tmp_path / "boundary"
+    path.write_text(content, encoding="utf-8")
+
+    with pytest.raises(exception):
+        read_boundary_file(path)
+
+
+def _install_fake_oft(monkeypatch, equilibrium) -> None:
+    root = ModuleType("OpenFUSIONToolkit")
+    tokamaker = ModuleType("OpenFUSIONToolkit.TokaMaker")
+    eqdsk = ModuleType("OpenFUSIONToolkit.TokaMaker.eqdsk")
+    eqdsk.GEQDSKEquilibrium = lambda _path: equilibrium
+    root.TokaMaker = tokamaker
+    tokamaker.eqdsk = eqdsk
+
+    monkeypatch.setitem(sys.modules, "OpenFUSIONToolkit", root)
+    monkeypatch.setitem(sys.modules, "OpenFUSIONToolkit.TokaMaker", tokamaker)
+    monkeypatch.setitem(
+        sys.modules,
+        "OpenFUSIONToolkit.TokaMaker.eqdsk",
+        eqdsk,
+    )
+
+
+def test_gfile_reader_maps_fields_and_normalizes_lcfs(monkeypatch, tmp_path):
+    equilibrium = SimpleNamespace(
+        boundary_R=np.array([0.0, 0.0, 1.0, 1.0]),
+        boundary_Z=np.array([0.0, 1.0, 1.0, 0.0]),
+        R_mag=0.5,
+        Z_mag=0.25,
+        limiter_R=np.array([0.0, 2.0, 2.0]),
+        limiter_Z=np.array([0.0, 0.0, 2.0]),
+        R_center=1.7,
+        B_center=2.1,
+        Ip=3.2e6,
+    )
+    _install_fake_oft(monkeypatch, equilibrium)
+
+    result = read_gfile(str(tmp_path / "eq.gfile"))
+    lcfs = np.column_stack((result.lcfs_r, result.lcfs_z))
+
+    assert result.rmaxis == 0.5
+    assert result.zmaxis == 0.25
+    assert result.rcentr == 1.7
+    assert result.bcentr == 2.1
+    assert result.current == 3.2e6
+    assert result.wall_r is not None
+    assert result.wall_z is not None
+    np.testing.assert_array_equal(lcfs[0], lcfs[-1])
+    assert _signed_area(lcfs[:-1]) > 0.0
+
+
+def test_gfile_reader_represents_missing_limiter_as_none(monkeypatch):
+    equilibrium = SimpleNamespace(
+        boundary_R=np.array([0.0, 1.0, 0.0]),
+        boundary_Z=np.array([0.0, 0.0, 1.0]),
+        R_mag=0.5,
+        Z_mag=0.25,
+        limiter_R=np.array([]),
+        limiter_Z=np.array([]),
+        R_center=None,
+        B_center=None,
+        Ip=None,
+    )
+    _install_fake_oft(monkeypatch, equilibrium)
+
+    result = read_gfile("eq.gfile")
+
+    assert result.wall_r is None
+    assert result.wall_z is None
+
+
+def test_gfile_reader_reports_oft_import_failure(monkeypatch):
+    for name in (
+        "OpenFUSIONToolkit.TokaMaker.eqdsk",
+        "OpenFUSIONToolkit.TokaMaker",
+        "OpenFUSIONToolkit",
+    ):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+    real_import = builtins.__import__
+
+    def failing_import(name, *args, **kwargs):
+        if name.startswith("OpenFUSIONToolkit"):
+            raise OSError("native OFT unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+
+    with pytest.raises(ImportError) as captured:
+        read_gfile("eq.gfile")
+
+    assert isinstance(captured.value.__cause__, OSError)

@@ -140,12 +140,12 @@ LinkMesh/
 │       └── main.cc
 │
 ├── tests/
-│   ├── test_gfile_reader.py
-│   ├── test_mesh.py
-│   ├── test_oft_adapter.py
-│   ├── test_hdf5_writer.py
-│   ├── test_m3dc1_model_writer.py
-│   └── test_smb_writer.py
+│   ├── test_configuration_contract.py
+│   ├── test_geometry_and_readers.py
+│   ├── test_oft_adapter_contract.py
+│   ├── test_format_contracts.py
+│   ├── test_cli_contract.py
+│   └── test_plotter_contract.py
 │
 ├── docs/
 │   ├── linkmesh/
@@ -447,18 +447,21 @@ MPI/ABI 约束、交换契约和生命周期规则请查阅当前技术蓝图。
 
 ## 8. 测试与证据导读
 
-测试目录按模块组织，主要覆盖：
+`tests/` 是小型内部契约回归集，按稳定契约组织：
 
 | 测试文件 | 主要关注内容 |
 |---|---|
-| `tests/test_gfile_reader.py` | GFile Reader 字段提取、LCFS 后处理和薄 Adapter 边界。 |
-| `tests/test_mesh.py` | `Mesh2D` 数据对象及有序外边界验证。 |
-| `tests/test_oft_adapter.py` | OFT Adapter 输出转换、区域校验、策略分派和外边界传递。 |
-| `tests/test_hdf5_writer.py` | TRIMEG HDF5 写出、拓扑边界和非法输入拒绝。 |
-| `tests/test_m3dc1_model_writer.py` | M3D-C1 ModelSpec 与 TXT model 序列化契约。 |
-| `tests/test_smb_writer.py` | Python SMB Writer 输入校验、helper 调用边界和输出确认。 |
+| `tests/test_configuration_contract.py` | 配置默认值、合并优先级、路径基准、required-fields 和兼容矩阵。 |
+| `tests/test_geometry_and_readers.py` | `Mesh2D.outer_boundary`、counted R-Z Reader 和最小 GFile Adapter 契约。 |
+| `tests/test_oft_adapter_contract.py` | OFT 三数组转换、最终区域 ID、outer Region 时序、版本锁定和最小策略。 |
+| `tests/test_format_contracts.py` | TRIMEG 11 dataset、M3D-C1 TXT、exchange schema 及 helper 子进程边界。 |
+| `tests/test_cli_contract.py` | mesh-only、TRIMEG、M3D-C1、array reference 和配置提前失败的最小编排。 |
+| `tests/test_plotter_contract.py` | 非空 PNG、reference 选择语义和输入不可变性。 |
 
-测试文件只能说明测试意图和覆盖范围。某个测试文件存在，不等于它已在当前环境运行通过；正式测试结果应查阅 `History.md` 和当前技术蓝图。
+测试优先直接检查返回值、真实临时文本、HDF5、TXT、交换文件和 PNG。mock 只用于
+OFT、CLI 外部副作用和 native helper 等不可避免边界，不复制第三方内部算法，也不
+把 mock 结果提升为外部消费证据。自动测试不能替代真实 OFT、TRIMEG、
+M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
 
 当前记录需要保留以下边界：
 
@@ -467,8 +470,8 @@ MPI/ABI 约束、交换契约和生命周期规则请查阅当前技术蓝图。
 - PNG 已由 User 人工检查通过。
 - 配套 TXT+SMB 已完成 M3D-C1 外部加载和初始化。
 - M3D-C1 时间推进主循环、中等或长时运行稳定性以及物理结果正确性仍为 `PENDING`。
-- 最近记录的服务器配置与 CLI 专项测试仍有两项旧预期不一致，不能表述为“自动测试全部通过”。
-- 其中一项旧测试对未开放组合的异常类型预期过时；另一项仍期待 TRIMEG target 调用 SMB Writer，与当前 target 分派不一致。
+- 历史上对未开放组合异常类型的过时预期，以及要求 TRIMEG target 调用 SMB Writer
+  的过时预期，均不属于当前正式测试契约；当前以蓝图兼容矩阵和 target 分派为准。
 - 未实际执行的测试命令不能记录为通过或失败。
 - 精确测试计数、运行环境和阶段证据统一查阅 `History.md`。
 
