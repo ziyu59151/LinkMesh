@@ -103,11 +103,16 @@ def import_from_release(module_name: str) -> object | None:
     return module
 
 
-if sys.version_info < (3, 11):
-    status("MISSING", f"Python >= 3.11 required; found {sys.version.split()[0]}")
-    failed = True
-else:
-    status("OK", f"Python version: {sys.version.split()[0]}")
+status(
+    "OK",
+    "Python interpreter: "
+    f"{sys.implementation.name} {sys.version.split()[0]}",
+)
+status(
+    "WARNING",
+    "Currently validated Python is CPython 3.12.13; "
+    "other Python 3 versions require external validation",
+)
 
 import_from_release("linkmesh")
 import_from_release("OpenFUSIONToolkit")
@@ -197,8 +202,12 @@ PY
 
 check_m3dc1_native() {
     local failed=0
+    local file_output
     local ldd_output
     local mpi_line
+    local mpi_path
+    local readelf_output
+    local dynamic_entry
 
     if [[ ! -f "$HELPER" ]]; then
         status MISSING "SCOREC helper: $HELPER"
@@ -210,8 +219,66 @@ check_m3dc1_native() {
     fi
     status OK "SCOREC helper: $HELPER"
 
+    if command -v file >/dev/null 2>&1; then
+        if ! file_output=$(file -b "$HELPER" 2>&1); then
+            status MISSING "file failed for SCOREC helper"
+            printf '%s\n' "$file_output"
+            failed=1
+        else
+            status OK "Helper file type: $file_output"
+            if grep -Fq 'ELF 64-bit LSB' <<<"$file_output" &&
+                grep -Eq 'x86-64|x86_64' <<<"$file_output"; then
+                status OK "Helper architecture: Linux x86-64 ELF"
+            else
+                status MISSING "Helper is not a Linux x86-64 ELF"
+                failed=1
+            fi
+        fi
+    else
+        status WARNING "file unavailable; helper type and architecture not checked"
+    fi
+
+    if command -v readelf >/dev/null 2>&1; then
+        if ! readelf_output=$(readelf -d "$HELPER" 2>&1); then
+            status MISSING "readelf -d failed for SCOREC helper"
+            printf '%s\n' "$readelf_output"
+            failed=1
+        else
+            dynamic_entry=$(
+                grep -E '\(NEEDED\)' <<<"$readelf_output" || true
+            )
+            if [[ -n "$dynamic_entry" ]]; then
+                while IFS= read -r entry; do
+                    status OK "ELF NEEDED: ${entry#"${entry%%[![:space:]]*}"}"
+                done <<<"$dynamic_entry"
+            else
+                status OK "ELF NEEDED: no entries reported"
+            fi
+
+            dynamic_entry=$(
+                grep -E '\(RPATH\)' <<<"$readelf_output" || true
+            )
+            if [[ -n "$dynamic_entry" ]]; then
+                status OK "ELF RPATH: ${dynamic_entry#"${dynamic_entry%%[![:space:]]*}"}"
+            else
+                status OK "ELF RPATH: not present"
+            fi
+
+            dynamic_entry=$(
+                grep -E '\(RUNPATH\)' <<<"$readelf_output" || true
+            )
+            if [[ -n "$dynamic_entry" ]]; then
+                status OK "ELF RUNPATH: ${dynamic_entry#"${dynamic_entry%%[![:space:]]*}"}"
+            else
+                status OK "ELF RUNPATH: not present"
+            fi
+        fi
+    else
+        status WARNING "readelf unavailable; ELF dynamic section not checked"
+    fi
+
     if ! command -v ldd >/dev/null 2>&1; then
-        status MISSING "ldd command"
+        status MISSING "ldd unavailable; dynamic libraries and MPI not checked"
         return 1
     fi
 
@@ -229,15 +296,34 @@ check_m3dc1_native() {
         status OK "SCOREC helper dynamic libraries resolved"
     fi
 
-    mpi_line=$(grep -E '^[[:space:]]*libmpi\.so(\.[0-9]+)*[[:space:]]*=>' \
-        <<<"$ldd_output" | head -n 1 || true)
+    mpi_line=$(
+        grep -E \
+            '^[[:space:]]*libmpi\.so(\.[0-9]+)*([[:space:]]*=>|[[:space:]])' \
+            <<<"$ldd_output" |
+            head -n 1 || true
+    )
     if [[ -z "$mpi_line" ]]; then
         status MISSING "libmpi runtime was not reported by ldd"
         failed=1
     else
-        status OK "MPI runtime: ${mpi_line#"${mpi_line%%[![:space:]]*}"}"
+        mpi_path=$(
+            awk '{
+                if ($2 == "=>") {
+                    print $3
+                } else {
+                    print $1
+                }
+            }' <<<"$mpi_line"
+        )
+        if [[ -z "$mpi_path" || "$mpi_path" == "not" ]]; then
+            status MISSING "ldd did not resolve an actual libmpi path"
+            failed=1
+        else
+            status OK "MPI runtime path: $mpi_path"
+        fi
     fi
 
+    status "NOT CHECKED" "SMB writing and M3D-C1 loading were not executed"
     return "$failed"
 }
 

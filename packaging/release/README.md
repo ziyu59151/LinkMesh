@@ -83,11 +83,19 @@ tar -xzf linkmesh-release-<version>-linux-x86_64.tar.gz
 ./linkmesh-release-<version>-linux-x86_64/bin/linkmesh -h
 ```
 
-默认依次查找 `python3`、`python`。需要选择特定 Python 时，仅为当前命令设置：
+默认依次查找 `python3`、`python`。当前已验证的构建和运行环境是
+**CPython 3.12.13**。现有直接证据没有确认通用最低 Python 版本；其他 Python 3
+版本必须通过目标服务器实际导入和运行反馈确认。OFT wheel 的 `py3` 标签不表示所有
+Python 3 版本均已由 LinkMesh 验证。
+
+需要选择特定 Python 时，仅为当前命令设置：
 
 ```bash
 LINKMESH_PYTHON=/path/to/python ./linkmesh-release-<version>-linux-x86_64/bin/linkmesh -h
 ```
+
+检查器不会根据未经确认的最低版本预先拒绝 Python；若目标解释器无法解析源码、导入
+LinkMesh 或导入 OFT，它会报告实际解析或导入错误。
 
 该 Python 环境负责提供任务所需的通用包：
 
@@ -110,11 +118,18 @@ LINKMESH_PYTHON=/path/to/python ./linkmesh-release-<version>-linux-x86_64/bin/li
 - `core`：Python、Release LinkMesh、Release OFT 26.6、NumPy；
 - `trimeg`：core 和 h5py，不检查 helper/MPI；
 - `plot`：core 和 Matplotlib headless import；
-- `m3dc1`：core、helper、动态库解析和实际 `libmpi` 路径；
-- `all`：依次运行全部模式。
+- `m3dc1`：core、helper 文件与执行权限；在工具可用时报告 `file` 类型和
+  Linux x86-64 ELF 架构，报告 `readelf` 的 `NEEDED`、`RPATH`、`RUNPATH`，
+  使用 `ldd` 检查未解析动态库并报告实际 `libmpi` 路径；不执行 SMB 写出；
+- `all`：依次运行全部模式，任一阻塞检查失败时最终返回非零状态。
+
+`file` 或 `readelf` 不可用时分别输出 `WARNING`，明确对应诊断未执行；`ldd` 不可用、
+存在 `not found` 或未报告实际 `libmpi` 时输出 `MISSING` 并返回非零状态。检查器
+不要求 module，不设置 `LD_LIBRARY_PATH`。
 
 输出状态包括 `OK`、`MISSING`、`WARNING` 和 `NOT CHECKED`。检查器只验证环境边界，
-不能替代真实 GFile/OFT、TRIMEG、M3D-C1 加载、初始化、时间推进或物理验收。
+不能替代真实 GFile/OFT、TRIMEG 消费、M3D-C1 SMB 写出、加载、初始化、时间推进或
+物理验收，也不得把动态库结构检查解释为 M3D-C1 已加载或 SMB 已验证。
 
 ## 运行时定位
 
@@ -125,3 +140,17 @@ helper 路径，然后调用 `linkmesh-bootstrap.py`。bootstrap 把 Release
 
 launcher 不设置 `PYTHONPATH`，不设置全局 `LD_LIBRARY_PATH`，不修改 shell 配置或
 Case 文件，也不在普通启动阶段强制检查 MPI。参数、信号和退出码由 `exec` 原样传递。
+
+## 外部验证反馈
+
+第一次 Linux 打包探针和后续外部用户验证至少应保存并反馈：
+
+- 所运行模式的完整 `linkmesh-check` 输出；
+- `python --version`（使用 `LINKMESH_PYTHON` 时同时记录其值）；
+- `uname -a`；
+- 实际 LinkMesh 命令；
+- stdout、stderr 和完整错误信息；
+- 生成物路径及目标消费端所达到的验证层级。
+
+构建器成功只表示 Release 目录和 tar.gz 已生成。Linux 结构检查、真实
+GFile/OFT、TRIMEG 和 M3D-C1 运行必须分别记录，不得笼统写成“全部通过”。

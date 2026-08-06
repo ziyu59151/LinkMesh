@@ -99,14 +99,13 @@ done
 [[ "$SOURCE_ARCHIVE_SHA256" =~ ^[0-9A-Fa-f]{64}$ ]] ||
     die "SOURCE_ARCHIVE_SHA256 must be a 64 character hexadecimal digest"
 
-command -v file >/dev/null 2>&1 || die "required command is missing: file"
-command -v ldd >/dev/null 2>&1 || die "required command is missing: ldd"
-command -v readelf >/dev/null 2>&1 || die "required command is missing: readelf"
-command -v sha256sum >/dev/null 2>&1 ||
-    die "required command is missing: sha256sum"
-command -v tar >/dev/null 2>&1 || die "required command is missing: tar"
-command -v hostname >/dev/null 2>&1 ||
-    die "required command is missing: hostname"
+for required_command in \
+    awk cp date file find grep hostname install ldd mktemp readelf readlink \
+    sha256sum sort tar uname xargs
+do
+    command -v "$required_command" >/dev/null 2>&1 ||
+        die "required command is missing: $required_command"
+done
 
 [[ -x "$PYTHON_EXECUTABLE" ]] ||
     die "selected Python is missing or not executable: $PYTHON_EXECUTABLE"
@@ -136,9 +135,16 @@ if grep -Fq 'not found' <<<"$HELPER_LDD_SUMMARY"; then
     die "helper has unresolved dynamic libraries"
 fi
 
-if ! HELPER_READELF_SUMMARY=$(readelf -d "$HELPER_PATH" 2>&1); then
-    printf '%s\n' "$HELPER_READELF_SUMMARY" >&2
+if ! HELPER_READELF_OUTPUT=$(readelf -d "$HELPER_PATH" 2>&1); then
+    printf '%s\n' "$HELPER_READELF_OUTPUT" >&2
     die "readelf -d failed for helper"
+fi
+HELPER_READELF_SUMMARY=$(
+    grep -E '\((NEEDED|RPATH|RUNPATH)\)' \
+        <<<"$HELPER_READELF_OUTPUT" || true
+)
+if [[ -z "$HELPER_READELF_SUMMARY" ]]; then
+    HELPER_READELF_SUMMARY="No NEEDED, RPATH or RUNPATH entries reported."
 fi
 
 mapfile -t OFT_LOCATION < <(
@@ -308,7 +314,13 @@ from __future__ import annotations
 import importlib.metadata
 import platform
 
-print(f"Python >= 3.11 (build interpreter: {platform.python_version()})")
+print(
+    "Build interpreter: "
+    f"{platform.python_implementation()} {platform.python_version()}"
+)
+print("Currently validated environment: CPython 3.12.13")
+print("Other Python 3 versions require external validation.")
+print("No unverified minimum Python version is declared by this release.")
 print("Bundled:")
 print("  LinkMesh source package")
 print(
@@ -343,6 +355,10 @@ Not bundled:
   glibc
   libstdc++
   standalone PUMI .a or .so files
+Native compatibility boundary:
+  The bundled helper is an independent process, not a Python extension.
+  MPI, glibc, libstdc++ and operating-system ABI compatibility require
+  validation on the target Linux server.
 TRIMEG note:
   The TRIMEG HDF5 path does not invoke the SCOREC helper and must not be
   blocked by helper or MPI availability.
@@ -373,4 +389,8 @@ mv "$ARCHIVE_TEMP" "$FINAL_ARCHIVE"
 
 printf 'Release directory: %s\n' "$FINAL_DIR"
 printf 'Release archive:   %s\n' "$FINAL_ARCHIVE"
-printf 'Linux runtime validation: NOT RUN by this build script\n'
+printf 'GENERATED: completed by build_release.sh\n'
+printf 'STRUCTURALLY CHECKED: PENDING\n'
+printf 'EXTERNAL SERVER VALIDATION: PENDING\n'
+printf 'TRIMEG REAL RUN: PENDING\n'
+printf 'M3D-C1 REAL RUN: PENDING\n'

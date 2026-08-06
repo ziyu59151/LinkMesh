@@ -2,7 +2,7 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v4.3；初版 Linux 可移动 Release 构建系统已在本地实现，Linux 组装与运行验证尚未执行）
+- 文档状态：当前有效（对应技术蓝图 v4.4；初版 Linux 可移动 Release 构建系统为 IMPLEMENTED / STATICALLY CHECKED，Linux 生成、结构检查与外部验证仍为 NOT RUN / PENDING）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -59,7 +59,7 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | `array_file + 可选 GFile LCFS PNG 参考` | DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED |
 | `--plot-lcfs` 与 `[output].plot_lcfs` | 已批准设计，尚未实现 |
 | Release 构建脚本、launcher、bootstrap 与分层检查器 | IMPLEMENTED / STATICALLY CHECKED |
-| Linux 可移动 Release 目录与 tar.gz | PENDING；Linux 构建与运行 NOT RUN |
+| Linux 可移动 Release 目录与 tar.gz | GENERATED: NOT RUN；STRUCTURALLY CHECKED: PENDING；EXTERNAL SERVER VALIDATION: PENDING |
 | EAST M3D-C1 后续运行 | 已交付，加载、初始化、时间推进结果 PENDING |
 | 最新 TRIMEG HDF5 | 已生成并交付卢老师测试，反馈 PENDING |
 | `single_region + first_wall` | 未实现 |
@@ -83,8 +83,15 @@ M3D-C1 时间推进、稳定性和物理正确性：PENDING
 array_file + 可选 GFile LCFS PNG 参考：
 DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED
 
-普通用户发布候选：
-PENDING / NOT YET IMPLEMENTED
+普通用户 Release 构建源码：
+IMPLEMENTED / STATICALLY CHECKED
+
+Linux Release：
+GENERATED: NOT RUN
+STRUCTURALLY CHECKED: PENDING
+EXTERNAL SERVER VALIDATION: PENDING
+TRIMEG REAL RUN: PENDING
+M3D-C1 REAL RUN: PENDING
 ```
 
 既有 TXT+SMB 已完成 M3D-C1 加载和初始化；后续交付给组内同学的网格仍在继续运行。
@@ -582,14 +589,18 @@ PUMI 库。普通用户通过 `bin/linkmesh` 启动，不设置 `PYTHONPATH` 或
 
 | 文件 | 职责 |
 |---|---|
-| `build_release.sh` | 在 Linux 服务器离线组装可移动目录、manifest、SHA-256 与 tar.gz |
-| `linkmesh-launcher` | 安装为 `bin/linkmesh`，定位 Release 和目标 Python |
-| `linkmesh-bootstrap.py` | 将 Release site-packages 插入当前 Python 进程并启动 LinkMesh |
-| `linkmesh-check` | 执行 core、TRIMEG、plot、M3D-C1 分层环境检查 |
-| `README.md` | 维护者两阶段构建流程和最终用户解压使用说明 |
+| `build_release.sh` | Linux 服务器构建入口；从上传源码根目录离线组装可移动目录、manifest、SHA-256 与 tar.gz |
+| `linkmesh-launcher` | 最终用户入口模板；安装为 `bin/linkmesh`，定位 Release、目标 Python 和 Release 内 helper |
+| `linkmesh-bootstrap.py` | Release Python 路径引导；将 Release site-packages 插入当前 Python 进程并启动 LinkMesh |
+| `linkmesh-check` | 部署诊断入口；执行 core、TRIMEG、plot、M3D-C1 分层环境检查 |
+| `README.md` | Release 构建和交付说明；面向维护者与物理模拟使用者 |
 
 这些文件在 Windows 本地维护和静态检查；Linux Release 构建、OFT 导入、helper、
-MPI、TRIMEG 与 M3D-C1 运行状态只有服务器直接证据才能更新。
+MPI、TRIMEG 与 M3D-C1 运行状态只有服务器直接证据才能更新。生成的 Release 目录和
+同名 tar.gz 是服务器构建产物，不是业务源码、Git 输入或技术依据。
+
+当前已验证 Python 环境为 CPython 3.12.13。现有证据不建立 `Python >= 3.11` 或其他
+通用最低版本；其他 Python 3 版本必须由实际导入和运行反馈确认。
 
 ## 12. 普通用户最短使用路径
 
@@ -653,10 +664,11 @@ python -m linkmesh --config linkmesh.in
 临时生成更细的单区域网格：
 
 ```bash
-python -m linkmesh --config linkmesh.in --plasma-dx 0.05
+python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 ```
 
-这里的 `0.05` 单位为米，是本次运行对配置文件网格尺度的临时覆盖，不会自动修改 `linkmesh.in`。
+这里的 `0.05` 单位为米，是本次运行对配置文件 single-region 网格尺度的临时覆盖，
+不会自动修改 `linkmesh.in`。
 
 配置优先级为：
 
@@ -778,9 +790,10 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 v4.1 主线优先完成老师和初期使用者需要的产品化收口：
 
 1. 保持现有 `array_file`、GFile、TRIMEG 和 M3D-C1 可用入口稳定。
-2. 实施已批准的 `array_file + 可选 GFile LCFS PNG reference` 工作流；array file
+2. 验证已实现的 `array_file + 可选 GFile LCFS PNG reference` 工作流；array file
    继续是唯一实际计算域边界，两条 Reader 只在 Plotter 汇合。
-3. 构建不依赖个人 `PYTHONPATH`、开发构建目录或维护者主目录的普通用户发布候选。
+3. 在 Linux 服务器首次生成并结构检查不依赖个人 `PYTHONPATH`、开发构建目录或
+   维护者主目录的普通用户 Release。
 4. 将发布候选交给 M3D-C1 和 TRIMEG 使用者，分别取得初期使用报告。
 5. 根据真实反馈修正 CLI、诊断、文档、打包和运行时定位。
 6. 在老师确认共享根目录、权限和 module 能力后继续推进版本化共享 release。
@@ -794,9 +807,19 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 验证 OFT 26.6、`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，
 不得预设未经验证的相对布局、RPATH 或系统库兼容性。
 
-本轮仅更新技术蓝图和本导读，没有实现 `--plot-lcfs`、修改业务源码、运行测试或完成
-发布候选。新增工作流状态保持
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+本轮 Release 构建系统在授权文件内完成独立修订，本地状态为
+**IMPLEMENTED / STATICALLY CHECKED**。未修改业务源码、native helper、CMake、
+tests、requirements、History 或权限范围外文件。
+
+Linux Release 状态必须继续分层记录：
+
+```text
+GENERATED: NOT RUN
+STRUCTURALLY CHECKED: PENDING
+EXTERNAL SERVER VALIDATION: PENDING
+TRIMEG REAL RUN: PENDING
+M3D-C1 REAL RUN: PENDING
+```
 
 遇到问题时：
 
