@@ -1,0 +1,5 @@
+/.gitattributes text eol=lf
+*.sh text eol=lf
+/packaging/release/linkmesh-launcher text eol=lf
+/packaging/release/linkmesh-check text eol=lf
+/packaging/release/linkmesh-bootstrap.py text eol=lf
