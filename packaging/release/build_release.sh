@@ -217,16 +217,17 @@ done
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR=$(cd -P "$OUTPUT_DIR" && pwd)
 RELEASE_NAME="linkmesh-release-${VERSION}-linux-x86_64"
-FINAL_DIR="$OUTPUT_DIR/$RELEASE_NAME"
-FINAL_ARCHIVE="$OUTPUT_DIR/$RELEASE_NAME.tar.gz"
-[[ ! -e "$FINAL_DIR" ]] ||
-    die "target release directory already exists: $FINAL_DIR"
-[[ ! -e "$FINAL_ARCHIVE" ]] ||
-    die "target release archive already exists: $FINAL_ARCHIVE"
+ARCHIVE_NAME="$RELEASE_NAME.tar.gz"
+CHECKSUM_NAME="$ARCHIVE_NAME.sha256"
+DELIVERY_NAME="LinkMesh-${VERSION}-linux-x86_64-release"
+FINAL_DELIVERY="$OUTPUT_DIR/$DELIVERY_NAME"
 
-WORK_PARENT=$(mktemp -d "$OUTPUT_DIR/.${RELEASE_NAME}.build.XXXXXX")
+[[ ! -e "$FINAL_DELIVERY" ]] ||
+    die "target delivery directory already exists: $FINAL_DELIVERY"
+
+WORK_PARENT=$(mktemp -d "$OUTPUT_DIR/.${DELIVERY_NAME}.build.XXXXXX")
 WORK_RELEASE="$WORK_PARENT/$RELEASE_NAME"
-ARCHIVE_TEMP="$WORK_PARENT/$RELEASE_NAME.tar.gz"
+WORK_DELIVERY="$WORK_PARENT/$DELIVERY_NAME"
 
 cleanup() {
     rm -rf "$WORK_PARENT"
@@ -234,9 +235,13 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p \
+    "$WORK_DELIVERY" \
     "$WORK_RELEASE/bin" \
     "$WORK_RELEASE/python/site-packages" \
     "$WORK_RELEASE/manifest"
+
+install -m 0644 "$SCRIPT_DIR/README.md" \
+    "$WORK_DELIVERY/README.md"
 
 cp -a "$SOURCE_ROOT/src/linkmesh" \
     "$WORK_RELEASE/python/site-packages/linkmesh"
@@ -253,18 +258,27 @@ install -m 0755 "$SCRIPT_DIR/linkmesh-check" \
     "$WORK_RELEASE/bin/linkmesh-check"
 install -m 0755 "$HELPER_PATH" \
     "$WORK_RELEASE/bin/linkmesh-scorec-helper"
-install -m 0644 "$SCRIPT_DIR/README.md" \
-    "$WORK_RELEASE/README.md"
 
 find "$WORK_RELEASE" -type d -name __pycache__ -prune -exec rm -rf {} +
 find "$WORK_RELEASE" -type f -name '*.pyc' -delete
 
 for forbidden_path in \
-    tests examples TOKAMAKER M3DC1 native packaging
+    tests examples TOKAMAKER M3DC1 native packaging README.md
 do
     [[ ! -e "$WORK_RELEASE/$forbidden_path" ]] ||
         die "forbidden source content was copied: $forbidden_path"
 done
+
+for required_directory in bin manifest python; do
+    [[ -d "$WORK_RELEASE/$required_directory" ]] ||
+        die "internal release directory is missing: $required_directory"
+done
+INTERNAL_ENTRY_COUNT=$(
+    find "$WORK_RELEASE" -mindepth 1 -maxdepth 1 -print |
+        awk 'END {print NR}'
+)
+[[ "$INTERNAL_ENTRY_COUNT" -eq 3 ]] ||
+    die "internal release root must contain only bin, manifest and python"
 
 for forbidden_package in \
     numpy h5py matplotlib scipy netCDF4 pytest mpi4py pumi
@@ -381,14 +395,30 @@ fi
 
 (
     cd "$WORK_PARENT"
-    tar -czf "$ARCHIVE_TEMP" "$RELEASE_NAME"
+    tar -czf "$WORK_DELIVERY/$ARCHIVE_NAME" "$RELEASE_NAME"
 )
 
-mv "$WORK_RELEASE" "$FINAL_DIR"
-mv "$ARCHIVE_TEMP" "$FINAL_ARCHIVE"
+(
+    cd "$WORK_DELIVERY"
+    sha256sum "$ARCHIVE_NAME" >"$CHECKSUM_NAME"
+)
 
-printf 'Release directory: %s\n' "$FINAL_DIR"
-printf 'Release archive:   %s\n' "$FINAL_ARCHIVE"
+for delivery_file in README.md "$ARCHIVE_NAME" "$CHECKSUM_NAME"; do
+    [[ -f "$WORK_DELIVERY/$delivery_file" ]] ||
+        die "delivery file is missing: $delivery_file"
+done
+DELIVERY_ENTRY_COUNT=$(
+    find "$WORK_DELIVERY" -mindepth 1 -maxdepth 1 -print |
+        awk 'END {print NR}'
+)
+[[ "$DELIVERY_ENTRY_COUNT" -eq 3 ]] ||
+    die "delivery directory must contain only README, archive and checksum"
+
+mv "$WORK_DELIVERY" "$FINAL_DELIVERY"
+
+printf 'Delivery directory: %s\n' "$FINAL_DELIVERY"
+printf 'Release archive:   %s\n' "$FINAL_DELIVERY/$ARCHIVE_NAME"
+printf 'Archive checksum:  %s\n' "$FINAL_DELIVERY/$CHECKSUM_NAME"
 printf 'GENERATED: completed by build_release.sh\n'
 printf 'STRUCTURALLY CHECKED: PENDING\n'
 printf 'EXTERNAL SERVER VALIDATION: PENDING\n'

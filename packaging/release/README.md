@@ -8,7 +8,6 @@
 README.md
 linkmesh-release-0.1.0-prototype2-linux-x86_64.tar.gz
 linkmesh-release-0.1.0-prototype2-linux-x86_64.tar.gz.sha256
-example
 ```
 
 其中：
@@ -16,8 +15,6 @@ example
 - `README.md`：环境检查和运行指南；
 - `linkmesh-release-0.1.0-prototype2-linux-x86_64.tar.gz`：LinkMesh Linux x86-64 Release；
 - `.sha256` 文件：用于检查 Release 压缩包在传输后是否完整。
-- `example`：包含 m3dc1 和 trimeg 样例文件夹各一个，用于测试。其中，m3
-dc1_case 中包含一个2d数组形式的边界 + 一个标准配置文件，trimeg_case 中包含一个2d数组形式的边界 + 一个 EQDSK 平衡文件。
 
 Release 已携带：
 
@@ -440,7 +437,10 @@ mesh.h5
 mesh.png
 ```
 
-本版本中，配置文件和 CLI 参数里的相对路径都相对于**执行 LinkMesh 命令时的当前目录**解析。
+配置文件与 CLI 参数使用不同但确定的相对路径基准：
+
+- 配置文件内部的相对路径相对于该配置文件所在目录解析；
+- 显式 CLI 参数中的相对路径相对于执行 LinkMesh 命令时的当前目录解析。
 
 例如：
 
@@ -489,9 +489,11 @@ cd /home/user/m3dc1_case
 /home/user/m3dc1_case/ellipse1.png
 ```
 
-即使通过绝对路径指定其他目录中的 `linkmesh.in`，配置文件内部的相对路径仍然依据运行命令时的当前目录解析。因此，推荐每个案例使用独立目录，并从该目录运行 LinkMesh。
+即使通过绝对路径指定其他目录中的 `linkmesh.in`，配置文件内部的相对路径仍然依据
+该配置文件所在目录解析。因此，配置文件可以与 Case 一起移动，不要求必须从配置文件
+目录运行 LinkMesh。
 
-CLI 中的相对路径遵循同样规则。例如：
+CLI 中显式提供的相对路径则相对于当前工作目录。例如：
 
 ```bash
 cd /home/user/trimeg_case
@@ -579,7 +581,7 @@ profile = "single_region"
 boundary_source = "array_file"
 
 [mesh]
-plasma_dx = 0.08
+mesh_dx = 0.08
 
 [output]
 model = "ellipse1.txt"

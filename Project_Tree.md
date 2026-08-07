@@ -2,7 +2,7 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v4.1；`array_file + 可选 GFile LCFS PNG 参考`已批准设计但尚未实现）
+- 文档状态：当前有效（对应技术蓝图 v4.3；Release 基础设施已实施，Linux 正式构建与普通用户验收待执行）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -58,7 +58,8 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | `single_region + array_file` | 已实现；EAST 生成侧 PASSED |
 | `array_file + 可选 GFile LCFS PNG 参考` | DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED |
 | `--plot-lcfs` 与 `[output].plot_lcfs` | 已批准设计，尚未实现 |
-| 普通用户可调用的发布候选 | PENDING / NOT YET IMPLEMENTED |
+| Release 构建、launcher、bootstrap 与分层检查基础设施 | IMPLEMENTED / Linux 验证待执行 |
+| 普通用户可调用的正式 Release | PENDING；尚未基于本轮 master 生成和验收 |
 | EAST M3D-C1 后续运行 | 已交付，加载、初始化、时间推进结果 PENDING |
 | 最新 TRIMEG HDF5 | 已生成并交付卢老师测试，反馈 PENDING |
 | `single_region + first_wall` | 未实现 |
@@ -82,8 +83,11 @@ M3D-C1 时间推进、稳定性和物理正确性：PENDING
 array_file + 可选 GFile LCFS PNG 参考：
 DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED
 
-普通用户发布候选：
-PENDING / NOT YET IMPLEMENTED
+Release 基础设施源码：
+IMPLEMENTED / NOT YET VALIDATED ON LINUX
+
+普通用户正式 Release：
+PENDING / NOT YET GENERATED OR VALIDATED
 ```
 
 既有 TXT+SMB 已完成 M3D-C1 加载和初始化；后续交付给组内同学的网格仍在继续运行。
@@ -139,13 +143,22 @@ LinkMesh/
 │       ├── CMakeLists.txt
 │       └── main.cc
 │
+├── packaging/
+│   └── release/
+│       ├── README.md
+│       ├── build_release.sh
+│       ├── linkmesh-launcher
+│       ├── linkmesh-bootstrap.py
+│       └── linkmesh-check
+│
 ├── tests/
 │   ├── test_configuration_contract.py
 │   ├── test_geometry_and_readers.py
 │   ├── test_oft_adapter_contract.py
 │   ├── test_format_contracts.py
 │   ├── test_cli_contract.py
-│   └── test_plotter_contract.py
+│   ├── test_plotter_contract.py
+│   └── test_release_packaging.py
 │
 ├── docs/
 │   ├── linkmesh/
@@ -177,6 +190,14 @@ LinkMesh/
 - `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 是进入 v4.0 前的完整 3.x 历史快照。
 - `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md` 是更早的历史版本参考。
 - 根目录当前 `LinkMesh_Architecture_Plan.md` 是唯一有效技术蓝图；历史快照和专题报告不得覆盖其正式裁决。
+- `packaging/release/README.md` 是唯一最终用户 Release README 来源；构建器只把它
+  复制到外部交付目录，不把 README 放入 tar.gz。
+- `packaging/release/build_release.sh` 组装内部可移动 Release，并生成外部 README、
+  tar.gz 和 tar.gz.sha256 三文件交付目录。
+- launcher、bootstrap 和检查器分别负责可移动入口、Release 包路径优先加载和
+  `core/trimeg/plot/m3dc1/all` 分层环境诊断。
+- `tests/test_release_packaging.py` 只保护发布结构和脚本静态契约，不证明 OFT、
+  SMB、TRIMEG 或 M3D-C1 外部消费。
 - `build/` 是 native helper 的构建产物目录，不是正式源码目录，也不应作为 Git 源码提交。
 - 当前仓库树只列出已经存在且属于当前导读范围的文件；不存在或尚未确认存在的文件，不应被当成当前仓库组成。
 - 编译 native helper 时产生的 `build/` 目录属于构建产物，不是正式源码目录，也不应作为 Git 源码提交。
@@ -445,7 +466,59 @@ MPI/ABI 约束、交换契约和生命周期规则请查阅当前技术蓝图。
 
 ---
 
-## 8. 测试与证据导读
+## 8. Release 基础设施导读
+
+仓库内发布源码位于：
+
+```text
+packaging/release/
+├── README.md
+├── build_release.sh
+├── linkmesh-launcher
+├── linkmesh-bootstrap.py
+└── linkmesh-check
+```
+
+各文件职责：
+
+| 文件 | 职责 |
+|---|---|
+| `README.md` | 唯一最终用户 Release README 来源；构建时原样复制到外部交付目录 |
+| `build_release.sh` | 校验输入和依赖、组装内部 Release、生成内部 manifest、tar.gz 和外部 SHA-256 |
+| `linkmesh-launcher` | 按自身真实路径定位 Release、选择 Python、定位包内 helper 并透传参数和退出状态 |
+| `linkmesh-bootstrap.py` | 将 Release 的 `python/site-packages` 放到 `sys.path` 首位并启动 `linkmesh.__main__` |
+| `linkmesh-check` | 提供 `core`、`trimeg`、`plot`、`m3dc1`、`all` 分层环境检查 |
+
+构建器的正式外部输出是：
+
+```text
+LinkMesh-<version>-linux-x86_64-release/
+├── README.md
+├── linkmesh-release-<version>-linux-x86_64.tar.gz
+└── linkmesh-release-<version>-linux-x86_64.tar.gz.sha256
+```
+
+tar.gz 解压后是：
+
+```text
+linkmesh-release-<version>-linux-x86_64/
+├── bin/
+├── manifest/
+└── python/
+```
+
+tar.gz 内不含 README。`manifest/SHA256SUMS` 只校验内部普通文件；外部
+tar.gz.sha256 只校验最终归档。外部 README 不进入内部 manifest，README 内容变化也
+不会单独改变 tar.gz。
+
+`packaging/release/` 中的脚本和 README 是 Git 源码。外部交付目录、解压目录、
+tar.gz、tar.gz.sha256、helper 二进制、CMake 缓存和服务器验证输出都是生成物，不得
+提交到 Git。
+
+本轮只在源码层实施该基础设施，尚未基于本轮 master 生成 Linux Release，也未完成
+内部 manifest、外部 SHA-256、ABI、真实文件生成或普通用户验收。
+
+## 9. 测试与证据导读
 
 `tests/` 是小型内部契约回归集，按稳定契约组织：
 
@@ -477,7 +550,7 @@ M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
 
 ---
 
-## 9. 外部参考源码与只读区域
+## 10. 外部参考源码与只读区域
 
 ### `TOKAMAKER/`
 
@@ -516,7 +589,7 @@ native/linkmesh_scorec_helper/
 
 ---
 
-## 10. 新成员建议阅读顺序
+## 11. 新成员建议阅读顺序
 
 建议按以下顺序了解项目，通常不需要一开始阅读全部实现细节：
 
@@ -533,7 +606,7 @@ native/linkmesh_scorec_helper/
 
 ---
 
-## 11. 开发、验证与发布环境导读
+## 12. 开发、验证与发布环境导读
 
 正式源码在本地 Windows Git Bash 仓库维护；本地负责源码、文档和 Git 审查，不运行
 测试、OFT/Triangle、native 构建或消费端验证。当前服务器源码由 User 从本地直接
@@ -556,7 +629,7 @@ native/linkmesh_scorec_helper/
 不设置个人 `PYTHONPATH` 或 helper 环境变量，也不进入维护者个人主目录。已确认的
 网格可由后续 M3D-C1 作业重复使用，不需要每次时间推进前重新生成。
 
-## 12. 普通用户最短使用路径
+## 13. 普通用户最短使用路径
 
 ### 推荐 Case 布局
 
@@ -618,7 +691,7 @@ python -m linkmesh --config linkmesh.in
 临时生成更细的单区域网格：
 
 ```bash
-python -m linkmesh --config linkmesh.in --plasma-dx 0.05
+python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 ```
 
 这里的 `0.05` 单位为米，是本次运行对配置文件网格尺度的临时覆盖，不会自动修改 `linkmesh.in`。
@@ -645,7 +718,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 13. Case 100/101/200 系列管理建议
+## 14. Case 100/101/200 系列管理建议
 
 组内 Case 编号可以同时表达 M3D-C1 源码版本和输入版本。例如：
 
@@ -670,7 +743,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 14. 生成网格与提交作业
+## 15. 生成网格与提交作业
 
 当前推荐流程是：
 
@@ -704,7 +777,7 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 15. 当前能力边界
+## 16. 当前能力边界
 
 ### 当前可用
 
@@ -738,15 +811,16 @@ python -m linkmesh --config linkmesh.in --plasma-dx 0.05
 
 ---
 
-## 16. 下一步
+## 17. 下一步
 
 v4.1 主线优先完成老师和初期使用者需要的产品化收口：
 
 1. 保持现有 `array_file`、GFile、TRIMEG 和 M3D-C1 可用入口稳定。
 2. 实施已批准的 `array_file + 可选 GFile LCFS PNG reference` 工作流；array file
    继续是唯一实际计算域边界，两条 Reader 只在 Plotter 汇合。
-3. 构建不依赖个人 `PYTHONPATH`、开发构建目录或维护者主目录的普通用户发布候选。
-4. 将发布候选交给 M3D-C1 和 TRIMEG 使用者，分别取得初期使用报告。
+3. 在 Linux 基于已实施的 Release 基础设施生成外部三文件交付目录，并验证内部
+   manifest、外部 SHA-256、可移动入口和运行时依赖。
+4. 将通过验证的发布候选交给 M3D-C1 和 TRIMEG 使用者，分别取得初期使用报告。
 5. 根据真实反馈修正 CLI、诊断、文档、打包和运行时定位。
 6. 在老师确认共享根目录、权限和 module 能力后继续推进版本化共享 release。
 
@@ -759,9 +833,9 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 验证 OFT 26.6、`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，
 不得预设未经验证的相对布局、RPATH 或系统库兼容性。
 
-本轮仅更新技术蓝图和本导读，没有实现 `--plot-lcfs`、修改业务源码、运行测试或完成
-发布候选。新增工作流状态保持
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+Release 基础设施已在源码层实施，但本轮尚未在 Linux 生成正式 tar.gz、验证内部
+manifest 和外部 SHA-256，或完成真实文件生成及普通用户验收。`--plot-lcfs` 工作流
+状态仍保持 **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
 
 遇到问题时：
 
@@ -781,7 +855,7 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 
 ---
 
-## 17. 本文档的边界
+## 18. 本文档的边界
 
 本导读只回答“项目里有什么、如何找到、如何运行、当前做到哪里”。
 

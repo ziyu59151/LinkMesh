@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.2**（初期交付 CLI 收口：正式区分 single-region `mesh_dx` 与 nested-three-region 三区域尺度，删除历史 Triangle 参数，按用户任务重组 CLI help，并收紧 `array_file + plot_lcfs` 为仅叠加 LCFS reference）
+- 文档状态：正式版 **4.3**（Release 基础设施正式迁移：固定外部三文件交付结构、内部可移动归档、双层 SHA-256 职责和唯一用户 README 来源；Linux 构建与服务器验证仍待执行）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；下一阶段执行拆解见 `docs/linkmesh/work_plan.md`；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -125,7 +125,8 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `single_region + array_file` | **IMPLEMENTED / PASSED；EAST 生成侧已验收** |
 | `array_file + 可选 GFile LCFS PNG 参考` | **IMPLEMENTED；自动测试与真实 PNG 回归待本轮实施后记录** |
 | `plot_lcfs` 配置字段与 `--plot-lcfs` CLI | **IMPLEMENTED；仅允许 LCFS reference 进入 array-file PNG** |
-| 普通用户可调用的发布候选 | **PENDING / NOT YET IMPLEMENTED** |
+| Release 构建、launcher、bootstrap 与分层检查基础设施 | **IMPLEMENTED / NOT YET VALIDATED ON LINUX** |
+| 普通用户可调用的正式 Release | **PENDING；本轮尚未生成或完成普通用户验收** |
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | 多区域、多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
@@ -154,8 +155,8 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
 1. 收口老师和初期使用者需要的现有 `array_file` 与 GFile 可用入口。
 2. 实现 `array_file` 实际网格配可选 GFile LCFS PNG 参考工作流。
 3. 保持 TRIMEG 与 M3D-C1 Writer、`Mesh2D`、ModelSpec 和 helper 契约稳定。
-4. 设计并实施普通用户可调用的发布候选。
-5. 将发布候选交给 M3D-C1 和 TRIMEG 使用者。
+4. 在已实施的 Release 构建基础设施上完成 Linux 构建、结构检查和干净环境验证。
+5. 将通过验证的发布候选交给 M3D-C1 和 TRIMEG 使用者。
 6. 收集初期使用报告并按真实证据归档问题。
 
 **P1：发布验证与反馈修正**
@@ -179,8 +180,9 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
 geometric face、动态自适应或磁面对齐。
 
 新增 `array_file + GFile LCFS reference` 工作流当前仅为
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。普通用户发布
-候选同样尚未完成，不得描述为已经打包、发布或通过普通用户验收。
+**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。Release
+基础设施已在源码层实施，但尚未基于本轮 master 在 Linux 重新构建正式归档，也未完成
+结构检查、真实文件生成、外部消费或普通用户验收，不得描述为已经正式发布。
 
 ---
 
@@ -1847,6 +1849,81 @@ LinkMesh，原样传递参数并保留退出状态。不得硬编码 `/home/lxze
 
 不得因为个人开发环境可运行而宣告正式共享部署完成。
 
+### 8.15 正式 Release 构建与交付契约
+
+仓库内唯一 Release README 来源是：
+
+```text
+packaging/release/README.md
+```
+
+该文件只面向最终用户。构建器必须原样复制它，不维护第二份包内 README 或独立
+维护者 README。
+
+构建器在指定输出父目录中一次性创建且不得覆盖：
+
+```text
+LinkMesh-<version>-linux-x86_64-release/
+├── README.md
+├── linkmesh-release-<version>-linux-x86_64.tar.gz
+└── linkmesh-release-<version>-linux-x86_64.tar.gz.sha256
+```
+
+外部交付目录必须且只能包含以上三个普通文件。构建完成后不得把解压后的内部 Release
+目录作为第四个正式交付项保留。
+
+tar.gz 必须包含一个内部根目录：
+
+```text
+linkmesh-release-<version>-linux-x86_64/
+├── bin/
+├── manifest/
+└── python/
+```
+
+内部根目录必须且只能包含以上三个一级目录，不得包含 `README.md`。其中：
+
+- `bin/` 保存 launcher、bootstrap、分层检查器和 `linkmesh-scorec-helper`；
+- `python/site-packages/` 保存 LinkMesh、OpenFUSIONToolkit 26.6 及对应 dist-info；
+- `manifest/` 保存构建来源、Python/native 依赖边界和内部文件摘要；
+- Release 不携带 Python、NumPy、h5py、Matplotlib、MPI、glibc 或 libstdc++；
+- TRIMEG 和 PNG 路径不得因 helper 或 MPI 不可用而被环境检查器阻塞。
+
+摘要职责严格分层：
+
+1. `manifest/SHA256SUMS` 只覆盖 tar.gz 内部根目录下的全部普通文件，排除自身。
+2. 外部 README、tar.gz、tar.gz.sha256 和外部交付目录路径不得进入内部 manifest。
+3. 外部 `<archive>.tar.gz.sha256` 只校验最终 tar.gz，并使用实际归档文件名。
+4. 源码归档 SHA-256、helper SHA-256、内部文件 SHA-256 和最终 tar.gz SHA-256
+   标识不同对象，不得互相替代。
+
+固定生成顺序：
+
+1. 创建临时工作目录和外部交付暂存目录，复制唯一外部 README。
+2. 组装全部内部文件并清除 `__pycache__`、`*.pyc`。
+3. 验证内部根目录仅有 `bin/`、`manifest/`、`python/`。
+4. 在内部内容完全确定后生成 `manifest/SHA256SUMS`。
+5. 从内部根目录创建最终 tar.gz；外部交付目录本身不得进入归档。
+6. tar.gz 完成后生成外部 tar.gz.sha256。
+7. 验证外部暂存目录恰有三个正式文件后，原子移动为正式交付目录。
+8. 任一步失败时清理临时目录，不留下或覆盖正式输出。
+
+README 内容变化不得改变 tar.gz，除非归档内部其他内容也发生变化。禁止发布后人工
+解包、删除 README、修改 manifest、重新压缩或重算摘要来伪装正式构建结果。
+
+发布状态必须分层记录：
+
+- `DESIGNED`：正式结构和职责已定义；
+- `IMPLEMENTED`：构建、launcher、bootstrap、检查器和结构回归源码已实现；
+- `GENERATED`：本轮正式外部三文件交付目录已实际生成；
+- `STRUCTURALLY CHECKED`：内部 manifest、外部 SHA-256、目录和可移动入口已验证；
+- `LOADED`、`INITIALIZED`、`TIME-STEPPED`、`STABILITY-VALIDATED`、
+  `PHYSICALLY VALIDATED`：分别需要目标消费端直接证据。
+
+构建或环境检查成功不得自动升级文件生成、结构检查或外部消费状态。本轮 master
+迁移最多达到 `DESIGNED / IMPLEMENTED`；Linux Release 构建、正式 tar.gz 生成、
+内部 manifest 与外部 SHA-256 验证及外部消费均须后续单独验收。
+
 ---
 
 ## 9. 里程碑、测试与验收
@@ -2040,7 +2117,9 @@ Fake OFT。
 
 ### 9.9 组内发布与部署验收
 
-以下验收当前均为 **PENDING / NOT RUN**，不得写成 PASSED。
+Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
+**IMPLEMENTED / NOT YET VALIDATED ON LINUX**。以下 Linux 构建、正式归档、
+运行时和消费验收当前均为 **PENDING / NOT RUN**，不得写成 PASSED。
 
 **Python 安装**
 
@@ -2207,8 +2286,10 @@ OFT 26.6 调查必须确认：
 
 其他待决事项：
 
-- 实施并验证 `plot_lcfs` 的 16 字段配置、CLI 双 Reader 编排、诊断和确定性回归；
-- 构建普通用户可调用的发布候选并取得初期 M3D-C1/TRIMEG 使用报告；
+- 实施并验证 `plot_lcfs` 的 17 字段配置、CLI 双 Reader 编排、诊断和确定性回归；
+- 在 Linux 基于本轮 master 生成外部三文件 Release，验证内部 manifest、外部
+  tar.gz.sha256、可移动入口和干净环境运行；
+- 将通过结构与运行验证的发布候选交付普通用户并取得初期 M3D-C1/TRIMEG 使用报告；
 - 已交付 M3D-C1 网格的后续加载、初始化、时间推进、稳定性和物理结果；
 - 卢老师对最新 LinkMesh TRIMEG HDF5 的测试反馈；
 - EAST 边界物理构造算法和网格尺度需求；
@@ -2270,10 +2351,12 @@ OFT 单区域静态空间变密度、Triangle refinement、多区域界面拓扑
 多区域/多 face 兼容性调查继续保留为 P2。动态自适应、磁面对齐、M3D-C1 多区域、
 多 face、三维和并行分区均未开放。
 
-本次 v4.1 文档重排只修改根目录 `LinkMesh_Architecture_Plan.md` 和
-`Project_Tree.md`；未修改业务源码、native helper、测试、示例、依赖、`History.md`、
-`CONTEXT.md`、历史蓝图、外部参考源码或 `docs/trimeg/loadfemmesh_h5.m`。未运行
-代码、自动测试、OFT、TRIMEG、M3D-C1、SCOREC/PUMI、native 构建或打包验收，状态为
-**NOT RUN**。静态核对未发现当前蓝图、已提供业务源码与授权 TRIMEG Loader 在关键
-接口上的阻塞冲突；现有源码中 `array_file` 与 `gfile_path` 互斥、array 路径只读取
-boundary file 并向 Plotter 传 `None`，属于本次获批但尚待实施的明确变更点。
+本次 v4.3 Release 迁移只修改正式蓝图、仓库导读、发布基础设施、唯一最终用户
+README、发布专项静态回归和必要 Git 排除规则。未修改业务源码、native helper、
+业务测试、示例、依赖、`History.md`、`CONTEXT.md`、历史蓝图、外部参考源码或
+`docs/trimeg/loadfemmesh_h5.m`。
+
+本轮最多达到 **DESIGNED / IMPLEMENTED**。尚未基于本轮 master 重新生成 Linux
+Release，尚未生成本轮正式 tar.gz，尚未在 Linux 验证内部 manifest、外部
+tar.gz.sha256、OFT 真实运行、SMB 写出或 ABI 相容性。TRIMEG 与 M3D-C1 外部消费状态
+没有因本轮发布基础设施修改而升级，`History.md` 尚未更新。
