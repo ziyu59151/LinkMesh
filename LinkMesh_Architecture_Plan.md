@@ -2326,9 +2326,11 @@ M3D-C1 加载、初始化回归和时间推进仍为 PENDING；其物理构造�
 TRIMEG 完整 11 数据集契约均未改变。
 
 当前 helper 正式接口为 `native/linkmesh_scorec_helper/`、`linkmesh-scorec-helper`
-和 `LINKMESH_SCOREC_HELPER`。Python 正式安装、CMake install、干净发布候选、完整
-二进制审计、共享根目录、包装入口、modulefile、第一个共享 release 和普通用户验收
-仍为 `PENDING`，不得写成已实施。
+和 `LINKMESH_SCOREC_HELPER`。Release 外部三文件构建、launcher、bootstrap、
+分层检查和静态结构回归已在源码层实施；尚未基于本轮 master 在 Linux 生成正式
+tar.gz，也尚未验证内部 manifest、外部 tar.gz.sha256、完整二进制依赖或普通用户
+运行。Python 正式安装、CMake install、共享根目录、包装入口、modulefile、第一个
+共享 release 和普通用户验收仍为 `PENDING`。
 
 v4.2 正式收口 `array_file + 可选 GFile LCFS PNG reference`、CLI help 分组和
 profile 尺度消歧。`EffectiveConfig` 为 17 字段；single-region 用户接口使用
