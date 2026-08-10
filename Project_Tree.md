@@ -2,7 +2,7 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v4.6；OFT 五类合成多区域案例已生成，探针后处理误判已修复但尚未重跑，multi-array 业务实现尚未开始）
+- 文档状态：当前有效（对应技术蓝图 v4.7；OFT 26.6 多区域、编号与 no-plasma 调查已完成，synthetic plasma 隔离规则已确定，multi-array 业务实现尚未开始）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -64,14 +64,17 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | 最新 TRIMEG HDF5 | 已生成并交付卢老师测试，反馈 PENDING |
 | `single_region + first_wall` | 未实现 |
 | `single_region + flux_surface` | 未实现 |
-| `boundary_source=multi_array_file` | DESIGNED / NOT IMPLEMENTED / NOT PROBED |
+| `boundary_source=multi_array_file` | DESIGNED / NOT IMPLEMENTED；OFT 前置调查已完成 |
 | `linkmesh regions inspect/generate` | DESIGNED / NOT IMPLEMENTED |
-| regions map | DESIGNED；inspect 计划输出，格式和 generate 输入职责待确认 |
-| OFT 多 Region与分 Region常数 dx | 官方文档和本地源码已确认 |
+| regions map | DESIGNED；含可选空 `physical_label`，格式和 generate 输入职责待确认 |
+| OFT 多 Region与分 Region常数 dx | 运行探针确认 |
+| OFT Region 编号主逻辑 | setup、fresh rebuild、dx change 已由运行探针确认 |
+| OFT 无 plasma technical role | OFT 26.6 主动拒绝，准确异常已确认 |
+| synthetic plasma compatibility role | DESIGNED；确定性 Adapter 规则已批准 |
 | OFT 自动包含树 | 未提供 |
 | LinkMesh 轻量包含推导 | DESIGNED / NOT IMPLEMENTED |
-| OFT multi-array 最小探针程序 | 误判修复 IMPLEMENTED；修复后重跑 PENDING |
-| OFT 五类合成案例 | GENERATED；完整结构验收 PENDING |
+| OFT multi-array 最小探针程序 | 调查完成，无需继续扩展当前探针 |
+| OFT 五类合成案例 | 全部 PASS；GENERATED / STRUCTURALLY CHECKED |
 | M3D-C1 求解器多区域模拟能力 | User 根据同门实际展示确认 |
 | LinkMesh 新多区域网格的 M3D-C1 使用 | 尚未生成或验证 |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
@@ -99,18 +102,31 @@ CURRENT FEEDBACK: USABLE
 
 multi_array_file / regions inspect/generate / regions map：
 DESIGNED / DOCUMENTATION UPDATED
-NOT IMPLEMENTED / NOT PROBED
+NOT IMPLEMENTED
 
 OFT 多 Region与分 Region常数 dx：
-OFFICIALLY CONFIRMED
+PROBE-CONFIRMED
+FIVE CASES GENERATED / STRUCTURALLY CHECKED
+
+OFT Region 编号主逻辑：
+PROBE-CONFIRMED
+SETUP / FRESH REBUILD / DX CHANGE CONSISTENT
+
+OFT 无 plasma technical role：
+PROBE-CONFIRMED UNSUPPORTED
+VALUEERROR: NO PLASMA REGION SPECIFIED
+
+synthetic plasma compatibility role：
+DESIGNED / USER-APPROVED
+NOT IMPLEMENTED
 
 OFT 任意无序曲线自动包含树：
 NOT PROVIDED
 
 OFT multi-array 最小探针：
-FIVE SYNTHETIC CASES GENERATED
-POST-PROCESSING FIX IMPLEMENTED
-FIXED PROBE RERUN / STRUCTURAL CHECK PENDING
+FIVE SYNTHETIC CASES PASS
+GENERATED / STRUCTURALLY CHECKED
+INVESTIGATION COMPLETED
 
 M3D-C1 本身能够进行多区域模拟：
 USER-CONFIRMED SOLVER CAPABILITY
@@ -168,7 +184,8 @@ LinkMesh/
 │           └── plotter.py
 │
 ├── scripts/
-│   └── probe_oft_multi_array_regions.py
+│   ├── probe_oft_multi_array_regions.py
+│   └── probe_oft_no_plasma.py
 │
 ├── native/
 │   └── linkmesh_scorec_helper/
@@ -220,8 +237,13 @@ LinkMesh/
 - `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
 - `docs/trimeg/` 中的 MATLAB 读取脚本和真实样例是 TRIMEG 文件契约的只读证据。
 - `docs/linkmesh/work_plan.md` 是人类阶段记事本，不是 Aider 技术依据或第二份技术蓝图。
-- `scripts/probe_oft_multi_array_regions.py` 是 OFT 26.6 多区域 setup、编号、seed 和
-  基础拓扑的独立调查工具，不是 `src/linkmesh` 业务模块，也不实现 `regions` CLI。
+- `scripts/probe_oft_multi_array_regions.py` 是 OFT 26.6 多区域生成、基本结构、
+  setup 编号、fresh rebuild、dx change 和输入重排影响的独立调查工具；五类案例已
+  全部 PASS。
+- `scripts/probe_oft_no_plasma.py` 是 root=boundary、内部=vacuum 且无 plasma 的
+  对照调查工具；真实运行确认 setup-only 和完整 build 均被 OFT 主动拒绝。
+- 两个 probe 都不是 `src/linkmesh` 业务模块，也不实现 `regions` CLI；相关调查已经
+  完成，无需继续扩展当前探针。
 - `docs/linkmesh/multi_array_regions_investigation_report.md` 是本轮多轮廓、多 Region、
   包含树、分区域常数 dx、OFT/Triangle 能力和 `regions` CLI 候选契约的专项只读调查；
   它不表示相关业务功能已经实现。
@@ -618,10 +640,21 @@ docs/linkmesh/multi_array_regions_investigation_report.md
 | OFT Adapter 扩展 | 消费候选 Region plan，构造多 Region Domain | 尚未实现；多层/sibling 探针未运行 |
 | Plotter 扩展 | inspection 关系/编号图和 generate 网格图 | 尚未实现；PNG 不是数学证明 |
 
-独立调查工具 `scripts/probe_oft_multi_array_regions.py` 已存在，用于真实 OFT 26.6
-最小探针。五类案例已生成网格；首次 summary FAIL 来自 seed 位置关联和 triangle
-方向后处理误判。修复已实现，修复后重跑与完整结构验收仍为 PENDING。该脚本不是
-上述未来业务模块，也不得由 `src/linkmesh` 导入。
+独立调查工具 `scripts/probe_oft_multi_array_regions.py` 已在真实 OFT 26.6 环境完成
+修正后重跑。两层、四层、单父双 sibling、混合树和重排输入五类案例的 generation、
+mesh structure、numbering 和 overall 全部 PASS，状态为 GENERATED /
+STRUCTURALLY CHECKED。`scripts/probe_oft_no_plasma.py` 进一步确认 OFT 强制至少一个
+plasma technical role；无 plasma 时准确抛出
+`ValueError: No plasma region specified`。
+
+User 已批准 synthetic plasma compatibility role：root 使用 boundary；最大深度
+leaf 使用 plasma，深度并列取最小 curve_id；其他内部 Region 使用 vacuum。该规则
+仅属于 Adapter 兼容性，不表达用户物理语义。regions map 的 `physical_label` 可选、
+默认空且不阻塞建网。
+
+两个脚本都不是未来业务模块，也不得由 `src/linkmesh` 导入。调查阶段已经结束，当前
+下一步是第一批业务实现：多 block Reader、基础检查、轻量包含树、deterministic
+synthetic role plan、`regions inspect`、regions map 和 inspection PNG。
 
 这些是候选职责，不是当前仓库中已存在的新模块。当前 tests 不属于本轮设计依据，也未
 在本轮读取或修改。现有 `Mesh2D`、TRIMEG Writer、M3D-C1 Writer、SMB helper、旧
@@ -922,17 +955,18 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 
 ## 17. 下一步
 
-multi-array 多区域路线首先需要：
+multi-array 多区域路线的 OFT 前置调查已经结束。下一步是：
 
-1. 在正式 OFT 26.6 环境用新的空输出目录重跑已修复的
-   `scripts/probe_oft_multi_array_regions.py`，确认 setup、编号、seed、绝对面积、
-   triangle 方向和共享界面。五类案例已 GENERATED，完整结构状态仍待确认。
-2. 裁决 regions 专用配置、regions map 格式与 generate 输入职责、dx 覆盖规则以及
-   multi-array 空行/注释规则。
-3. 探针通过后实施多轮廓 Reader、基础检查、轻量包含推导、
-   `regions inspect/generate`、regions map 和多 Region Adapter。
+1. 裁决 regions 专用配置、regions map 格式与 generate 输入职责、dx 覆盖规则、
+   multi-array 空行/注释规则和单曲线 multi-array 的引导规则。
+2. 第一批实施多 block Reader、基础检查、轻量 parent/child 推导、唯一 root、
+   deterministic synthetic plasma role plan、`regions inspect`、regions map 和
+   inspection PNG。
+3. 第一批验收后实施 `regions generate`、setup-only 编号核对、`--mesh-dx`、
+   `--region-dx`、正式 N-region `Mesh2D`、mesh PNG、Region triangle count 和基本
+   结构检查。
 4. 首版不引入 Shapely/GEOS 或通用鲁棒计算几何系统。
-5. 生成真实网格后再单独评估 M3D-C1 输出映射和真实使用。
+5. 生成 LinkMesh 正式多区域网格后再单独评估 M3D-C1 输出映射和真实使用。
 
 M3D-C1 本身能够进行多区域模拟，是 User 根据同门实际展示确认的能力；该事实不表示
 LinkMesh 当前已生成或验证新多区域网格。
@@ -961,12 +995,12 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 M3D-C1 时间推进、长期稳定性或物理结果正确性。
 
 `multi_array_file`、`regions inspect/generate`、regions map 和轻量包含推导当前只
-达到 **DESIGNED**：未实现 Reader 或子命令，未生成新的多 Region `Mesh2D`，也未
-证明新网格可被 M3D-C1 正确使用。OFT 五类合成案例已 **GENERATED**；探针后处理
-误判修复已 **IMPLEMENTED**，但修复后重跑和完整结构验收仍为 **PENDING**。OFT
-官方多 Region 和分 Region 常数 dx 能力已经确认；OFT
-自动包含树未提供。M3D-C1 求解器本身的多区域能力不等于 LinkMesh 多区域输出已经
-开放。
+达到 **DESIGNED**：未实现 Reader、synthetic role Adapter 或子命令，未生成
+LinkMesh 生产路径的多 Region `Mesh2D`，也未证明新网格可被 M3D-C1 正确使用。OFT
+五类合成案例已全部 **PASS / GENERATED / STRUCTURALLY CHECKED**；Region 编号主逻辑
+和 no-plasma 行为已由运行探针确认；synthetic plasma compatibility role 已完成设计。
+OFT 自动包含树未提供。M3D-C1 求解器本身的多区域能力不等于 LinkMesh 多区域输出
+已经开放。
 
 遇到问题时：
 

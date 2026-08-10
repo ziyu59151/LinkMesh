@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.6**（OFT 五类多区域合成案例已取得 GENERATED 证据；修复探针 seed 关联和三角形方向误判，修复后重跑及完整结构验收仍为 PENDING）
+- 文档状态：正式版 **4.7**（OFT 26.6 多区域生成、基本结构、Region 编号与 no-plasma 对照调查已完成；synthetic plasma compatibility role 隔离规则已批准；multi-array 业务仍待实现）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/work_plan.md` 只作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -183,14 +183,22 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
    自动包含树。
 2. `boundary_source=multi_array_file` 与
    `linkmesh regions inspect/generate` 已完成设计，尚未实现。
-3. 独立调查脚本已在 OFT 26.6 环境运行。两层、四层、单父双 sibling、混合树和
-   重排输入五类案例及各自 dx variant 均完成 Triangle 网格生成，状态为
-   **GENERATED**。
-4. 首次 summary 的全案例 FAIL 来自探针后处理误判，不是 OFT/Triangle 建网失败。
-   seed 曾按位置关联 `_reg_defs`，方向检查曾错误要求所有 triangle 为正向。
-5. 探针误判修复已 **IMPLEMENTED**；修复后重跑、seed、编号、共享界面和完整结构
-   验收仍为 **PENDING**。直接证据更新后才进入 multi-array 生产实现。
-5. 首版不建设通用鲁棒计算几何系统，不引入 Shapely/GEOS，不承诺精确分类复杂
+3. 修正后的主探针已在 OFT 26.6 环境完成重跑。两层、四层、单父双 sibling、混合树
+   和重排输入五类案例及各自 dx variant 均完成 Triangle 网格生成；五类案例的
+   generation、mesh structure、numbering 和 overall 状态全部为 PASS，证据层级为
+   **GENERATED / STRUCTURALLY CHECKED**。
+4. setup-only 编号与 Triangle attribute 一致；全新 Domain 重建和只改变 dx 时编号
+   一致。同一 technical role 内的输入定义顺序仍可能改变最终 Region ID，因此输入
+   block 重排后必须重新 inspect，并按本次 regions map 使用 `--region-dx`。
+5. no-plasma 对照探针确认 OFT 26.6 `gs_Domain.build_mesh()` 强制至少一个 plasma
+   technical role；`boundary + vacuum` 且无 plasma 的 setup-only 和完整 build
+   均在 OFT 前置检查阶段以 `ValueError: No plasma region specified` 失败。
+6. User 已批准 synthetic plasma compatibility role：root 为 boundary；最大深度的
+   leaf 为 plasma，深度并列时取最小 curve_id；其他内部 Region 为 vacuum。该规则
+   只满足 OFT Adapter 兼容要求，不表达用户物理语义。
+7. OFT N-region、编号主逻辑和 no-plasma 调查均已完成，不继续扩展当前探针；当前可
+   准备进入第一批 multi-array 业务实现。
+8. 首版不建设通用鲁棒计算几何系统，不引入 Shapely/GEOS，不承诺精确分类复杂
    自交、相切、重合或近接触输入。
 6. `nested_three_region` 暂不修改、删除或优化。
 7. 后续再调查 OFT 单区域静态空间变网格密度、Triangle refinement、
@@ -969,8 +977,8 @@ exchange schema 或目标格式。
 
 ### 5.7B `multi_array_file` 与 `regions` 两阶段设计
 
-状态：**DESIGNED / NOT IMPLEMENTED / NOT PROBED**。专项证据与设计见
-`docs/linkmesh/multi_array_regions_investigation_report.md`。
+状态：**DESIGNED / NOT IMPLEMENTED；OFT N-region、编号与 no-plasma 前置调查已完成**。
+专项证据与设计见 `docs/linkmesh/multi_array_regions_investigation_report.md`。
 
 #### 5.7B.1 OFT 能力边界
 
@@ -1070,7 +1078,54 @@ parent-minus-children 的实际 Region。父 Region seed 被 child 覆盖和 Reg
 - setup 编号与最终 Triangle attribute 是否一致；
 - `Mesh2D.region_ids` 与 regions map 是否一致。
 
-#### 5.7B.5 正式 CLI 设计
+#### 5.7B.5 OFT technical role 与用户物理语义隔离
+
+OFT technical role 是 `gs_Domain` API 的技术分类，由 LinkMesh OFT Adapter 在
+Domain 组装时提供。OFT 26.6 支持 plasma、boundary、vacuum、conductor、coil 等
+类别；technical role 参与 Domain 前置检查和 Region 编号，但不表示用户已经确认的
+材料、物理区域或求解器语义。
+
+no-plasma 对照探针已确认：
+
+- 唯一 root 使用 boundary、全部内部 Region 使用 vacuum 且不存在 plasma 时，
+  `setup_only=True` 和完整 `build_mesh()` 均失败；
+- 准确异常为 `ValueError: No plasma region specified`；
+- 异常来自已安装 OFT 26.6 `gs_Domain.build_mesh()` 的前置检查，不是 Triangle
+  建网失败；
+- setup-only 不能绕过要求；
+- 当前不尝试空 `reg_type`、未经支持的 generic 类型、绕过 `gs_Domain` 或由
+  LinkMesh 直接接管 Triangle 输入构造。
+
+首版 multi-array 使用 synthetic plasma compatibility role。它是 Adapter 为满足
+OFT 26.6 强制前置条件而赋给一个既有内部 Region 的 technical role，不新增曲线、
+Region、网格层或物理材料，也不是 M3D-C1 的真实 plasma classification。
+
+确定性规则：
+
+1. 唯一 root Region 使用 `boundary`。
+2. 在全部内部 Region 中选择包含树深度最大的 leaf，使用 `plasma`。
+3. 最大深度 leaf 并列时，选择 `curve_id` 最小者。
+4. 其余内部 Region 使用 `vacuum`。
+
+该规则必须可重复，不依赖 `physical_label`，不根据坐标、面积、颜色或物理名称猜测
+plasma。输入 block 重排可能改变 curve_id 平局裁决和同类 technical role 内的最终
+Region ID，因此重排后必须重新执行 inspect。
+
+multi-array 首版至少需要一条唯一 root 和一个内部 Region。只有一条曲线时应拒绝并
+提示使用既有 `array_file + single_region`，还是允许其他处理，仍为实现前待 User
+确认项，不在本版擅自固定。
+
+现有 single-region Adapter 已使用 `domain.define_region("plasma", ..., "plasma")`
+满足同类 OFT 建网要求。该 technical role 只存在于 OFT Domain 构造和编号阶段；
+当前数据链只把 `pts/lc/reg` 与有序外边界转换为 `Mesh2D`，未发现 technical role
+被传播为 Writer 或外部格式中的用户物理语义。用户也不需要声明 plasma/vacuum。
+
+regions map 的 `physical_label` 是独立的可选用户字段，默认空字符串。留空不得阻塞
+inspect 或 generate，且当前不得参与包含树、technical role、Region ID 或 dx 决策，
+不得自动驱动 Writer、M3D-C1 classification 或求解器物理语义。任何下游连接必须先
+升级蓝图。
+
+#### 5.7B.6 正式 CLI 设计
 
 正式二级子命令：
 
@@ -1104,20 +1159,30 @@ linkmesh regions generate -h
 regions 配置的最终 section、schema、发现规则和 `--config` 参数位置仍待确认，必须与
 旧配置隔离。
 
-#### 5.7B.6 regions map 和 dx
+#### 5.7B.7 regions map 和 dx
 
-inspect 必须输出用户可读的 regions map，用于：
+inspect 必须输出用户可读的 regions map。正式用户字段方向为：
 
-- 展示 OFT 最终 Region ID；
-- 展示对应 curve_id；
-- 展示 parent/children；
-- 展示 inspection 颜色候选；
-- 让用户按最终 Region ID 设置 dx；
-- 帮助用户确认轻量推导的包含关系。
+- `region_id`：本次 inspect 取得的 OFT 最终 Region attribute；
+- `curve_id`：输入 block 编号；
+- `parent_region_id`；
+- `child_region_ids`；
+- `color`；
+- `physical_label`：可选，默认空字符串。
+
+map 用于展示 curve、包含树和最终 Region ID，支持 inspection 颜色和用户按最终
+Region ID 设置 dx。`physical_label` 留空不得阻塞 inspect 或 generate；当前不改变
+OFT technical role、Region ID 或 dx。
+
+为便于追溯，候选 diagnostics/internal 部分可以记录 OFT Region name、OFT
+technical role、`technical_role_source="adapter_compatibility"` 和
+`physical_semantics=false`。这些 diagnostics 是否向普通用户显示尚未裁决；
+synthetic plasma 不得成为用户必填、可编辑的物理字段。
 
 map 不是第二套 Region 编号系统。其正式文件名、是否采用 TOML、schema version、
-颜色和 `input_sha256` 是否为正式字段、generate 是否强制读取 map，以及用户确认如何
-表达，均待 User 裁决。
+`color` 是否持久化、`input_sha256` 是否首版必需、generate 是否强制读取 map、
+`physical_label` 的字符限制和唯一性，以及 diagnostics/internal 字段的可见性，均待
+User 裁决。
 
 regions generate 的尺度设计：
 
@@ -1130,7 +1195,7 @@ regions generate 的尺度设计：
 完整覆盖，是当前推荐但尚未最终裁决。无论采用哪种规则，重复 ID、未知 ID、缺失且
 无默认值以及非有限非正 dx 必须失败，不得使用位置列表猜测 Region 顺序。
 
-#### 5.7B.7 当前边界
+#### 5.7B.8 当前边界
 
 - `nested_three_region` 暂不修改、删除或优化。
 - 当前不修改 `Mesh2D` 字段、TRIMEG schema、M3D-C1 model/SMB、classification 或
@@ -1311,8 +1376,9 @@ OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多�
 | 输入层 IV | counted R-Z Boundary Reader 与 `single_region + array_file` | **IMPLEMENTED / PASSED** |
 | 输入层 V | 真实 `flux_surface` | **实现候选 / NOT IMPLEMENTED / 待 OFT 26.6 只读侦察** |
 | 多区域调查 I | OFT 官方能力、`multi_array_file`、轻量包含、Region ID/dx 与 CLI/map 契约 | **DESIGNED / DOCUMENTATION COMPLETED** |
-| 多区域调查 II | OFT setup、两层、四层、sibling、混合树、编号、dx 和共享界面探针 | **五类案例 GENERATED；后处理修复后重跑与结构验收 PENDING** |
-| 多区域实现 | Reader、轻量包含、`regions inspect/generate`、regions map、N-region OFT Adapter 与 PNG | **NOT IMPLEMENTED** |
+| 多区域调查 II | OFT setup、两层、四层、sibling、混合树、编号、dx 和 no-plasma 对照探针 | **COMPLETED；五类案例 GENERATED / STRUCTURALLY CHECKED** |
+| 多区域实现 I | Reader、基础检查、轻量包含、synthetic role plan、`regions inspect`、regions map 与 inspection PNG | **READY / NOT IMPLEMENTED** |
+| 多区域实现 II | `regions generate`、Region dx、N-region OFT Adapter、Mesh2D 与 mesh PNG | **NOT IMPLEMENTED；等待实现 I 验收** |
 | 初期交付 I | `array_file + 可选 GFile LCFS PNG reference` | **IMPLEMENTED** |
 | 初期交付 II | 初版 Release | **DELIVERED；已发送同门和老师，当前反馈可正常使用** |
 | M5 第一条 | M3D-C1 TXT+SMB+PNG CLI | **PASSED；时间推进 PENDING** |
@@ -2233,8 +2299,9 @@ Fake OFT。
 
 ### 9.7A multi-array 多区域调查和未来验收
 
-当前状态为 **DESIGNED / READ-ONLY INVESTIGATION COMPLETED / NOT IMPLEMENTED /
-NOT PROBED**。
+当前状态为：OFT 26.6 N-region、编号主逻辑和 no-plasma 行为调查
+**COMPLETED**；五类合成案例 **GENERATED / STRUCTURALLY CHECKED**；synthetic
+plasma compatibility role **DESIGNED**；multi-array 业务 **NOT IMPLEMENTED**。
 
 官方文档与源码已确认：
 
@@ -2261,25 +2328,36 @@ NOT PROBED**。
 - `reordered_input`：457 points、866 cells、4 regions；dx variant 为
   621 points、1183 cells、4 regions。
 
-这些是 **GENERATED** 证据。原 summary 将全部案例标为 FAIL，已定位到 seed 按
-`zip(spec.curves, _reg_defs)` 错误关联，以及把统一顺时针 triangle 判为失败的
-后处理误判；不能解释为 Triangle 建网失败。探针修复已实现，修复后重跑仍为
-**PENDING**。下一轮至少重新确认：
+修正后的探针已重跑。五类案例的 `generation_status`、
+`mesh_structure_status`、`numbering_status` 和 `overall_status` 全部为 PASS，
+因此证据层级更新为 **GENERATED / STRUCTURALLY CHECKED**。已确认：
 
-1. 两层和四层以上严格嵌套；
-2. 单父双 sibling；
-3. sibling 与多层混合；
-4. 明显不同 Region dx；
-5. `setup_only` 取得最终编号；
-6. inspect/generate 分别重建、改变 dx 和 block 重排后的编号；
-7. 最终 Triangle attribute 和每 Region triangle 数；
-8. 共享界面节点/边、裂缝、重复点、非流形边和退化 triangle。
+1. OFT 26.6 可生成两层和四层严格嵌套网格；
+2. 可生成单父双 sibling 和 sibling 加深层嵌套的混合树；
+3. 不同 Region 常数 dx 的 variant 全部完成生成；
+4. 输入 block 重排后仍可生成对应多区域网格；
+5. setup-only 可取得最终 Region ID，且与完整 Triangle attribute 一致；
+6. 相同输入使用全新 Domain 重建时编号一致；
+7. 只改变 Region dx 时编号一致；
+8. Triangle attribute 具有离散整数 Region 标签语义；
+9. 探针规定的数组、索引、单元、Region 覆盖、重复 triangle、edge incidence 和
+   基本结构检查通过。
 
-案例生成不等于结构验收通过。修复后结果返回并以直接证据更新蓝图和 History 前，不得
-写成 LinkMesh multi-array 拓扑已完整验证，也不得进入完整生产实现。首版不建设通用鲁棒
-计算几何系统；复杂异常几何依赖输入前提和人工检查，不承诺精确错误分类。M3D-C1
-本身支持多区域模拟是 User 确认的求解器能力事实，但 LinkMesh 的多区域输出链仍未
-开放，新多区域网格仍须在生成后另行真实验证。
+输入重排只作观察，不要求 Region ID 不变。`mixed_tree` 与 `reordered_input` 中
+`left_core` 保持 ID 1、root 保持 ID 2，而 left 从 3 变为 4、right 从 4 变为 3。
+因此 curve_id 不是正式 Region ID；同一 technical role 内的定义或输入顺序可能影响
+最终编号。重排输入后必须重新 inspect，并按本次 regions map 使用 `--region-dx`。
+
+no-plasma 对照探针使用 root=boundary、内部=vacuum，且没有 plasma。两层和四层案例
+的 setup-only 与完整 build 均由 OFT 主动抛出
+`ValueError: No plasma region specified`。这确认至少一个 plasma technical role 是
+OFT 26.6 `gs_Domain.build_mesh()` 的强制前置条件，失败发生在 Triangle 之前。
+
+调查阶段至此结束，不继续扩展当前 OFT 探针。上述结果不证明异常 polygon、自交、
+相切、重合或任意近退化输入受支持，也不表示 LinkMesh multi-array 业务、M3D-C1
+多区域输出或真实求解已经实现。首版仍依赖已定义的输入前提、轻量检查和人工 PNG；
+复杂异常几何不承诺精确分类。新网格的 M3D-C1 加载、初始化、时间推进和物理验证仍为
+PENDING。
 
 ### 9.7 初期交付候选工作流验收
 
@@ -2543,15 +2621,19 @@ Aider 执行依据或第二份技术契约。
 
 其他待决事项：
 
+- 只有一条曲线的 `multi_array_file` 是否明确拒绝并提示使用既有
+  `array_file + single_region`；
 - regions 专用配置 schema/发现规则和 `--config` 位置；
 - regions map 的文件名、TOML/schema、颜色与 SHA-256 字段、是否为 generate 强制
   输入，以及用户确认如何表达；
 - region-dx 完整覆盖或全局默认加局部覆盖规则；
 - multi-array 是否允许空行和注释；
-- 在新的空输出目录重新运行已修复的
-  `scripts/probe_oft_multi_array_regions.py`，确认 setup、Region ID、seed、绝对
-  面积、方向诊断、不同 dx 和共享界面；五类案例已 GENERATED，但结构结果更新前不得
-  进入完整 multi-array 生产实现或宣告拓扑已完整支持；
+- 第一批业务实现：multi-array Reader、基础数组检查、轻量 parent/child 推导、唯一
+  root、deterministic synthetic plasma role plan、`regions inspect`、regions map
+  和 inspection PNG；
+- 第一批验收后实施第二批：`regions generate`、setup-only 编号核对、
+  `--mesh-dx`、`--region-dx`、正式 N-region `Mesh2D`、mesh PNG、Region triangle
+  count 和基本结构检查；
 - 在 Linux 基于本轮 master 生成外部三文件 Release，验证内部 manifest、外部
   tar.gz.sha256、可移动入口和干净环境运行；
 - 将通过结构与运行验证的发布候选交付普通用户并取得初期 M3D-C1/TRIMEG 使用报告；
