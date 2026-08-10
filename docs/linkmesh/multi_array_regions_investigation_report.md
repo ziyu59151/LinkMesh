@@ -2,14 +2,15 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项技术调查
-- 文档状态：官方文档与本地源码调查完成；总体状态 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**
+- 文档状态：官方文档与本地源码调查完成；独立 OFT 探针程序 **IMPLEMENTED**，真实运行结果 **NOT RUN**；multi-array 业务总体状态 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**
 - 调查日期：2026-08-10
 - 最高依据：User 当前决定、根目录 `LinkMesh_Architecture_Plan.md`、OFT 26.6
   `meshing.py`、OFT 携带的 `triangle.h`、当前 LinkMesh 业务源码
-- 事实边界：本文只形成多轮廓输入、几何验证、包含树、Region 映射、分区域常数
-  网格尺度和 `regions` 两阶段 CLI 的候选实施契约。本轮未修改业务源码、测试、
-  依赖、Writer、native helper 或求解器接口，未运行 OFT 探针，也未生成新的
-  N-region `Mesh2D`
+- 事实边界：本文形成多轮廓输入、基础检查、轻量包含推导、Region 映射、分区域常数
+  网格尺度和 `regions` 两阶段 CLI 的实施契约；独立调查脚本
+  `scripts/probe_oft_multi_array_regions.py` 已实现。本轮未修改业务源码、测试、
+  依赖、Writer、native helper 或求解器接口，尚未运行探针，也未生成新的 N-region
+  `Mesh2D`
 
 ---
 
@@ -19,10 +20,10 @@
 
 ```text
 multi_array_file
-  → 多轮廓 Reader
-  → 单曲线及曲线间几何验证
-  → 唯一根包含树
-  → 稳定 curve_id / LinkMesh region_id
+  → 多轮廓 Reader 与基础检查
+  → 轻量包含推导
+  → 唯一根 parent/children
+  → curve_id / OFT 最终 Region attribute
   → OFT Domain
   → OFT/Triangle 多区域二维网格
   → 分区域常数 dx
@@ -80,7 +81,8 @@ multi_array_file
 14. 首版不把任何曲线解释为空洞。
 15. 一个父曲线可以包含多个互不相交的直接子曲线。
 16. 全部曲线共同构成一棵唯一根包含树。
-17. 几何合法性必须由代码检查，PNG 只供人工复核。
+17. 代码承担基础输入检查、轻量包含推导、唯一 root、OFT 组装和结果检查；PNG 是
+    必要人工复核，但不是数学证明。
 18. 暂不修改、删除或优化 `nested_three_region`。
 19. 当前只调查多区域 `Mesh2D` 和 OFT 网格生成，不修改任何 Writer 或 helper。
 
@@ -1504,9 +1506,18 @@ regions map 中的 final OFT Region ID
 
 ---
 
-## 18. OFT 最小探针设计
+## 18. OFT 最小探针
 
-本轮未运行以下探针。所有项目状态均为 **PLANNED / NOT RUN**。
+独立调查程序已实现：
+
+```text
+scripts/probe_oft_multi_array_regions.py
+```
+
+程序状态为 **IMPLEMENTED**，真实运行结果仍为 **NOT RUN**。它不被
+`src/linkmesh` 导入，不改变正式 CLI，不写 HDF5、TXT 或 SMB，也不构成
+`multi_array_file` 生产实现。以下案例和检查必须在正式 OFT 26.6 环境实际运行后，
+才能形成新的工程事实。
 
 ### 18.1 几何和拓扑案例
 
@@ -1567,8 +1578,8 @@ connectivity。
 
 ### 18.4 失败案例判定
 
-非法几何应在 LinkMesh 几何层、OFT 调用前失败。探针仍可单独直接调用 OFT，以记录
-OFT 自身行为，但该结果只用于风险评估：
+生产实现只承诺基础输入检查和轻量包含推导，不承诺对复杂非法几何作完整分类。探针
+直接调用 OFT 记录其行为，但该结果只用于风险评估：
 
 - OFT warning 不算接受；
 - Triangle 成功不算 LinkMesh 合法；
@@ -1588,15 +1599,14 @@ OFT 自身行为，但该结果只用于风险评估：
 - 计算或返回源摘要所需字节；
 - 不构造包含树，不调用 OFT。
 
-### 几何验证与包含树
+### 基础检查与轻量包含推导
 
-- 单 polygon 与 polygon-pair predicates；
-- 唯一根树；
-- Region difference geometry；
-- seed；
-- stable IDs；
-- region map；
-- 不调用 Triangle。
+- shape、有限性、最低点数、精确重复点和明显退化面积；
+- OFT Region 内点与 point-in-polygon 基础能力的候选包含矩阵；
+- 唯一根 parent/children；
+- seed 风险诊断；
+- curve_id、最终 OFT Region ID 和 regions map；
+- 不建设通用 polygon predicates、boolean engine 或第二剖分器。
 
 是否建立新模块及文件名需编码前由 User 批准。不得把候选文件写成当前仓库已有文件。
 
@@ -1704,13 +1714,16 @@ LinkMesh multi-array 多区域生成链仍未实现；
 
 ## 22. 建议实施批次
 
-### 批次 1：OFT 最小探针
+### 批次 1：运行已实现的 OFT 最小探针
 
-1. 两层、四层、sibling 和混合拓扑。
-2. `setup_only` 与最终编号。
-3. inspect/generate 重建、改变 dx 和 block 重排后的编号。
-4. Region attribute、三角形计数和共享界面。
-5. 裂缝、重复点、非流形边和退化单元。
+1. 在正式 openfusiontoolkit==26.6 环境运行
+   `scripts/probe_oft_multi_array_regions.py --output-dir <dir>`。
+2. 收集两层、四层、sibling、混合拓扑和重排输入的逐案例 JSON。
+3. 核对 `setup_only`、最终编号、重复重建、改变 dx 和 block 重排。
+4. 核对 Region attribute、三角形计数、seed 状态和共享界面。
+5. 核对裂缝、重复 triangle、非流形边和退化单元。
+6. 保存 summary JSON 和可用时生成的 topology/mesh PNG。
+7. 结果返回后再更新 `History.md` 和技术状态；不得在运行前预写 PASS。
 
 ### 批次 2：剩余 User 裁决
 
@@ -1729,7 +1742,8 @@ LinkMesh multi-array 多区域生成链仍未实现；
 6. inspection PNG。
 7. 不引入 Shapely/GEOS 或通用 polygon boolean。
 
-探针通过前不得宣告 LinkMesh multi-array 拓扑已支持。
+探针程序已实现不等于探针通过。真实结果返回并完成证据归档前，不得宣告 LinkMesh
+multi-array 拓扑已支持，也不得进入完整生产实现。
 
 ### 批次 4：generate 业务链
 
@@ -1784,14 +1798,15 @@ LinkMesh 严格 Reader 与基础检查
 
 最终状态：
 
-- 本轮达到 **DESIGNED + READ-ONLY INVESTIGATION**；
+- 本轮达到 **DESIGNED + READ-ONLY INVESTIGATION**，独立 OFT 探针程序已经
+  **IMPLEMENTED**；
 - 未实现 `multi_array_file`；
 - 未实现 `regions` 子命令；
 - 未生成新的 N-region `Mesh2D`；
 - OFT 官方多 Region 和分 Region 常数 dx 能力已经确认；
 - OFT 不提供任意无序曲线自动包含树；
 - `regions inspect/generate`、regions map 和轻量包含推导均为 **DESIGNED**；
-- 未运行任意多轮廓 OFT 最小探针；
+- OFT 最小探针真实结果仍为 **NOT RUN**；
 - 未验证 sibling、四层嵌套、混合拓扑或编号稳定性；
 - 未修改 `nested_three_region`；
 - 未修改 `Mesh2D`、Writer、helper、格式、测试或依赖；

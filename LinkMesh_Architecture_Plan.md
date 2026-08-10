@@ -4,7 +4,7 @@
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
 - 文档状态：正式版 **4.5**（确认 OFT 官方多 Region/分 Region 常数 dx 能力，正式采用 `regions inspect/generate`、OFT 最终 attribute Region ID、首版轻量包含推导与 regions map；业务实现和 OFT 最小探针均未开始）
-- 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；下一阶段执行拆解见 `docs/linkmesh/work_plan.md`；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
+- 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/work_plan.md` 只作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
 
@@ -134,7 +134,7 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | OFT 多 Region与分 Region 常数 dx | **官方文档与本地源码确认** |
 | OFT 任意无序曲线自动包含树 | **未提供** |
 | LinkMesh 轻量包含推导 | **DESIGNED / NOT IMPLEMENTED** |
-| LinkMesh multi-array OFT 最小探针 | **PLANNED / NOT RUN** |
+| LinkMesh multi-array OFT 最小探针程序 | **IMPLEMENTED；真实运行结果 NOT RUN** |
 | M3D-C1 求解器多区域模拟能力 | **User 根据同门实际展示确认** |
 | LinkMesh 新多区域网格的 M3D-C1 兼容性 | **PENDING；尚未生成或验证** |
 | 多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
@@ -182,9 +182,11 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
    自动包含树。
 2. `boundary_source=multi_array_file` 与
    `linkmesh regions inspect/generate` 已完成设计，尚未实现。
-3. 下一轮先运行 OFT 26.6 两层、四层、sibling、混合拓扑、编号和不同 dx 最小探针。
-4. 探针通过后再实施基础输入检查、轻量包含推导、regions map、inspection PNG 和
-   N-region `Mesh2D` 生成。
+3. 独立调查脚本 `scripts/probe_oft_multi_array_regions.py` 已实现；下一步是在正式
+   OFT 26.6 环境运行两层、四层、sibling、混合拓扑、编号和不同 dx 最小探针。
+4. 探针真实结果仍为 **NOT RUN**。关键检查通过并按直接证据更新蓝图和 History 后，
+   才进入基础输入检查、轻量包含推导、regions map、inspection PNG 和 N-region
+   `Mesh2D` 生产实现。
 5. 首版不建设通用鲁棒计算几何系统，不引入 Shapely/GEOS，不承诺精确分类复杂
    自交、相切、重合或近接触输入。
 6. `nested_three_region` 暂不修改、删除或优化。
@@ -196,10 +198,10 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
 明确并先更新蓝图前，不开放空间变密度、局部 refinement、M3D-C1 多区域、多
 geometric face、动态自适应或磁面对齐。
 
-新增 `array_file + GFile LCFS reference` 工作流当前仅为
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。Release
-基础设施已在源码层实施，但尚未基于本轮 master 在 Linux 重新构建正式归档，也未完成
-结构检查、真实文件生成、外部消费或普通用户验收，不得描述为已经正式发布。
+`array_file + GFile LCFS reference` 工作流已经实现。初版 Release 已发送给同门和
+老师，当前反馈为可以正常使用；该交付事实不得降级为 PENDING，也不得外推为
+M3D-C1 时间推进、长期稳定性或物理结果已经验证。后续 Release 基础设施版本的 Linux
+归档重建、结构检查和共享部署仍按各自层级单独验收。
 
 ---
 
@@ -235,14 +237,14 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/readers/gfile_reader.py` | 独立薄 Adapter：调用 OFT `GEQDSKEquilibrium`，读取 LCFS、limiter、磁轴和基本平衡参数并输出 `GFileData` | 手写 GFile 解析；读取 array file；调用 `boundary_reader`；决定网格边界来源；调用 Mesher、Plotter 或 Writer |
 | `src/linkmesh/readers/boundary_reader.py` | 独立 Boundary Reader：实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化。未来 multi-array Reader 必须作为独立候选职责处理，不得放宽旧单 block 契约 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；调用 `gfile_reader`；返回 `GFileData`；组合参考几何；调用 Plotter；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
-| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary。未来 multi-array 路径只接收已经完成严格几何检查、包含树和显式 ID/dx 解析的 Region plan | 配置解析；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；根据 LCFS 改变 Domain；自行猜测包含树、Region ID、物理名称或 dx 顺序 |
+| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary。未来 multi-array 路径只接收已经完成基础检查、轻量包含推导和显式 ID/dx 解析的 Region plan | 配置解析；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；根据 LCFS 改变 Domain；自行猜测包含树、Region ID、物理名称或 dx 顺序 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
 | `src/linkmesh/writers/smb_writer.py` | 验证输入；生成 classification 和交换文件；调用 helper；确认 rank-0 SMB | 创建 APF/MDS entity；读写 SMB 字节；硬编码 PUMI 路径 |
 | `native/linkmesh_scorec_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
 | `native/linkmesh_scorec_helper/CMakeLists.txt` | 构建 `linkmesh-scorec-helper` target | 通用 native/plugin 框架；Python 扩展；运行时编译；硬编码安装前缀 |
-| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；`plot_mesh()` 以 `Mesh2D` 及 `Mesh2D.outer_boundary` 作为实际网格和实际计算域边界来源，并可接收可选 `GFileData` 叠加平衡参考；在候选工作流中必须将 actual mesh boundary 与 LCFS reference 视觉和图例区分。未来 regions inspection 绘图候选负责显示全部曲线、实际 Region 差集着色、稳定 ID 与包含树，generate 绘图负责最终网格和 Region 映射 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS；把 LCFS、limiter 或其他参考曲线标成实际 mesh boundary；用 PNG 替代代码几何检查或消费端验收；用颜色猜测物理材料 |
+| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；`plot_mesh()` 以 `Mesh2D` 及 `Mesh2D.outer_boundary` 作为实际网格和实际计算域边界来源，并可接收可选 `GFileData` 叠加平衡参考；必须将 actual mesh boundary 与 LCFS reference 视觉和图例区分。未来 regions inspection 绘图候选负责显示全部曲线、候选 parent/children、最终 Region ID 与人工复核颜色，generate 绘图负责最终网格和 Region 映射 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS；把 LCFS、limiter 或其他参考曲线标成实际 mesh boundary；把 PNG 表述为数学证明或消费端验收；用颜色猜测物理材料 |
 
 ---
 
@@ -1306,10 +1308,10 @@ OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多�
 | 输入层 IV | counted R-Z Boundary Reader 与 `single_region + array_file` | **IMPLEMENTED / PASSED** |
 | 输入层 V | 真实 `flux_surface` | **实现候选 / NOT IMPLEMENTED / 待 OFT 26.6 只读侦察** |
 | 多区域调查 I | OFT 官方能力、`multi_array_file`、轻量包含、Region ID/dx 与 CLI/map 契约 | **DESIGNED / DOCUMENTATION COMPLETED** |
-| 多区域调查 II | OFT setup、两层、四层、sibling、混合树、编号、dx 和共享界面探针 | **PLANNED / NOT RUN** |
+| 多区域调查 II | OFT setup、两层、四层、sibling、混合树、编号、dx 和共享界面探针 | **探针程序 IMPLEMENTED / 真实运行 NOT RUN** |
 | 多区域实现 | Reader、轻量包含、`regions inspect/generate`、regions map、N-region OFT Adapter 与 PNG | **NOT IMPLEMENTED** |
-| 初期交付 I | `array_file + 可选 GFile LCFS PNG reference` | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED** |
-| 初期交付 II | 普通用户可调用的发布候选 | **PENDING / NOT YET IMPLEMENTED** |
+| 初期交付 I | `array_file + 可选 GFile LCFS PNG reference` | **IMPLEMENTED** |
+| 初期交付 II | 初版 Release | **DELIVERED；已发送同门和老师，当前反馈可正常使用** |
 | M5 第一条 | M3D-C1 TXT+SMB+PNG CLI | **PASSED；时间推进 PENDING** |
 
 输入层 IV 的 Reader、几何验证、配置放行、CLI 编排、single-region OFT Domain、
@@ -2243,7 +2245,8 @@ NOT PROBED**。
 - `Region.check_in_poly()` 和 `get_in_point()` 只提供首版轻量组合所需的基础能力；
 - 官方工作流使用 topology plot 和最终 mesh plot 人工检查。
 
-下一轮至少运行：
+独立探针程序 `scripts/probe_oft_multi_array_regions.py` 已实现，但真实结果仍为
+**NOT RUN**。下一轮至少运行：
 
 1. 两层和四层以上严格嵌套；
 2. 单父双 sibling；
@@ -2254,10 +2257,11 @@ NOT PROBED**。
 7. 最终 Triangle attribute 和每 Region triangle 数；
 8. 共享界面节点/边、裂缝、重复点、非流形边和退化 triangle。
 
-任何探针未运行前不得写成 LinkMesh multi-array 拓扑已验证。首版不建设通用鲁棒
+探针脚本实现不等于探针通过。真实结果返回并以直接证据更新蓝图和 History 前，不得
+写成 LinkMesh multi-array 拓扑已验证，也不得进入完整生产实现。首版不建设通用鲁棒
 计算几何系统；复杂异常几何依赖输入前提和人工检查，不承诺精确错误分类。M3D-C1
-本身支持多区域模拟是 User 确认的求解器能力事实，但 LinkMesh 新多区域网格仍须在
-生成后另行真实验证。
+本身支持多区域模拟是 User 确认的求解器能力事实，但 LinkMesh 的多区域输出链仍未
+开放，新多区域网格仍须在生成后另行真实验证。
 
 ### 9.7 初期交付候选工作流验收
 
@@ -2516,7 +2520,8 @@ OFT 26.6 调查必须确认：
 
 调查只能形成直接源码证据、最小运行探针和候选架构。调查完成并先更新蓝图前，不得
 开放空间变密度、M3D-C1 多区域或多 face，也不得修改当前 Writer 和 helper 契约。
-详细执行顺序和报告交付物见 `docs/linkmesh/work_plan.md`。
+具体技术裁决以本文为准；`docs/linkmesh/work_plan.md` 仅是人类阶段记事本，不是
+Aider 执行依据或第二份技术契约。
 
 其他待决事项：
 
@@ -2525,9 +2530,10 @@ OFT 26.6 调查必须确认：
   输入，以及用户确认如何表达；
 - region-dx 完整覆盖或全局默认加局部覆盖规则；
 - multi-array 是否允许空行和注释；
-- 运行 OFT 26.6 setup、两层、四层、sibling、混合树、Region ID、不同 dx、seed 和
-  共享界面最小探针；探针前不得实现或宣告 LinkMesh multi-array 拓扑已支持；
-- 实施并验证 `plot_lcfs` 的 17 字段配置、CLI 双 Reader 编排、诊断和确定性回归；
+- 在正式 OFT 26.6 环境运行已实现的
+  `scripts/probe_oft_multi_array_regions.py`，取得 setup、两层、四层、sibling、
+  混合树、Region ID、不同 dx、seed 和共享界面的直接证据；真实结果更新前不得进入
+  完整 multi-array 生产实现或宣告拓扑已支持；
 - 在 Linux 基于本轮 master 生成外部三文件 Release，验证内部 manifest、外部
   tar.gz.sha256、可移动入口和干净环境运行；
 - 将通过结构与运行验证的发布候选交付普通用户并取得初期 M3D-C1/TRIMEG 使用报告；
@@ -2584,9 +2590,10 @@ reference，不绘制参考 GFile 的 limiter、First wall 或 Magnetic axis。
 SMB、classification 或 helper exchange。当前授权 TRIMEG Loader 和正式 11 数据集
 契约中未发现独立 LCFS reference 输入位置，第一版参考曲线只进入 PNG。
 
-普通用户发布候选仍为 `PENDING / NOT YET IMPLEMENTED`。文档必须区分一个统一用户
-入口命令、一个可移动发布目录和物理意义上的单文件可执行程序；在打包及 ABI 探针完成
-前不得宣称真正单文件已经实现。候选运行时仍需专门处理 OFT 26.6、
+初版 Release 已经交付同门和老师，当前反馈可正常使用。后续新版本可移动发布归档和
+正式共享部署仍须分层验收。文档必须区分一个统一用户入口命令、一个可移动发布目录和
+物理意义上的单文件可执行程序；在打包及 ABI 探针完成前不得宣称真正单文件已经实现。
+候选运行时仍需专门处理 OFT 26.6、
 `linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，不得提前写死
 未经验证的相对目录、RPATH、临时解压方案或系统库兼容性。
 
@@ -2614,7 +2621,9 @@ v4.5 补充 OFT 官方 `gs_Domain`、`Region` 与 ITER 多区域示例证据，�
 生成或尚未交付。缺少更高等级直接证据的时间推进、稳定性和物理结果继续按各自状态
 记录，不由 Release 反馈外推。
 
-multi-array 本轮状态为 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**。OFT 官方
-多 Region 和分 Region常数 dx 能力已确认；OFT 自动包含树未提供；LinkMesh 轻量
-包含推导、regions inspect/generate 和 regions map 尚未实现；未生成新多区域网格，
-也未验证其 M3D-C1 实际兼容性。
+multi-array 业务状态为 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**。独立 OFT
+最小探针程序已 **IMPLEMENTED**，但真实运行结果仍为 **NOT RUN**。OFT 官方多
+Region 和分 Region常数 dx 能力已确认；OFT 自动包含树未提供；LinkMesh 轻量包含
+推导、regions inspect/generate 和 regions map 尚未实现；未生成新多区域网格，也未
+验证其 M3D-C1 实际兼容性。M3D-C1 求解器本身的多区域能力与 LinkMesh 多区域输出链
+的未开放状态必须分别记录。

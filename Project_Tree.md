@@ -2,7 +2,7 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v4.5；OFT 官方多 Region/分 Region dx 能力与 `regions inspect/generate` 已完成设计，LinkMesh 业务实现和 OFT 最小探针尚未开始）
+- 文档状态：当前有效（对应技术蓝图 v4.5；OFT 官方多 Region/分 Region dx 能力与 `regions inspect/generate` 已完成设计，独立 OFT 探针程序已实现但尚未运行，LinkMesh multi-array 业务实现尚未开始）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -70,6 +70,7 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | OFT 多 Region与分 Region常数 dx | 官方文档和本地源码已确认 |
 | OFT 自动包含树 | 未提供 |
 | LinkMesh 轻量包含推导 | DESIGNED / NOT IMPLEMENTED |
+| OFT multi-array 最小探针程序 | IMPLEMENTED；真实运行结果 NOT RUN |
 | M3D-C1 求解器多区域模拟能力 | User 根据同门实际展示确认 |
 | LinkMesh 新多区域网格的 M3D-C1 使用 | 尚未生成或验证 |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
@@ -104,6 +105,9 @@ OFFICIALLY CONFIRMED
 
 OFT 任意无序曲线自动包含树：
 NOT PROVIDED
+
+OFT multi-array 最小探针程序：
+IMPLEMENTED / RESULTS NOT RUN
 
 M3D-C1 本身能够进行多区域模拟：
 USER-CONFIRMED SOLVER CAPABILITY
@@ -160,6 +164,9 @@ LinkMesh/
 │           ├── __init__.py
 │           └── plotter.py
 │
+├── scripts/
+│   └── probe_oft_multi_array_regions.py
+│
 ├── native/
 │   └── linkmesh_scorec_helper/
 │       ├── CMakeLists.txt
@@ -210,6 +217,8 @@ LinkMesh/
 - `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
 - `docs/trimeg/` 中的 MATLAB 读取脚本和真实样例是 TRIMEG 文件契约的只读证据。
 - `docs/linkmesh/work_plan.md` 是人类阶段记事本，不是 Aider 技术依据或第二份技术蓝图。
+- `scripts/probe_oft_multi_array_regions.py` 是 OFT 26.6 多区域 setup、编号、seed 和
+  基础拓扑的独立调查工具，不是 `src/linkmesh` 业务模块，也不实现 `regions` CLI。
 - `docs/linkmesh/multi_array_regions_investigation_report.md` 是本轮多轮廓、多 Region、
   包含树、分区域常数 dx、OFT/Triangle 能力和 `regions` CLI 候选契约的专项只读调查；
   它不表示相关业务功能已经实现。
@@ -283,7 +292,7 @@ OFT 官方多 Region 和分 Region常数 dx 能力已经确认；OFT 不会从�
 建立包含树。首版不建设通用鲁棒计算几何系统，inspection PNG 不是数学证明。
 候选多轮廓 Reader、轻量包含逻辑和 regions parser 均不是当前已存在业务文件。
 
-已批准但尚未实现的 LCFS 参考绘图工作流包含两条独立支路：
+已经实现的 LCFS 参考绘图工作流包含两条独立支路：
 
 ```text
 实际网格支路：
@@ -295,8 +304,8 @@ GFile → GFile Reader → GFileData/LCFS ────────────�
 
 array file 是唯一实际计算域边界。GFile LCFS 只在 Plotter 中作为参考曲线，两条
 Reader 不互相调用。参考 `GFileData` 不进入 Mesher、`Mesh2D`、TRIMEG Writer、
-M3D-C1 Writer 或 native helper，因此不会改变网格或求解器输出。该能力当前仅为
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+M3D-C1 Writer 或 native helper，因此不会改变网格或求解器输出。该能力当前为
+**IMPLEMENTED**。
 
 TRIMEG 路径：
 
@@ -907,8 +916,9 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 
 multi-array 多区域路线首先需要：
 
-1. 运行 OFT 26.6 setup、两层、四层、sibling、混合树、编号、不同 dx、seed 和共享
-   界面最小探针。
+1. 在正式 OFT 26.6 环境运行已实现的
+   `scripts/probe_oft_multi_array_regions.py`，取得 setup、两层、四层、sibling、
+   混合树、编号、不同 dx、seed 和共享界面的直接证据。
 2. 裁决 regions 专用配置、regions map 格式与 generate 输入职责、dx 覆盖规则以及
    multi-array 空行/注释规则。
 3. 探针通过后实施多轮廓 Reader、基础检查、轻量包含推导、
@@ -943,9 +953,11 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 M3D-C1 时间推进、长期稳定性或物理结果正确性。
 
 `multi_array_file`、`regions inspect/generate`、regions map 和轻量包含推导当前只
-达到 **DESIGNED**：未实现 Reader 或子命令，未运行 OFT 最小探针，未生成新的多
-Region `Mesh2D`，也未证明新网格可被 M3D-C1 正确使用。OFT 官方多 Region和分
-Region常数 dx 能力已经确认；OFT 自动包含树未提供。
+达到 **DESIGNED**：未实现 Reader 或子命令，未生成新的多 Region `Mesh2D`，也未
+证明新网格可被 M3D-C1 正确使用。独立 OFT 最小探针程序已 **IMPLEMENTED**，但真实
+结果仍为 **NOT RUN**。OFT 官方多 Region 和分 Region 常数 dx 能力已经确认；OFT
+自动包含树未提供。M3D-C1 求解器本身的多区域能力不等于 LinkMesh 多区域输出已经
+开放。
 
 遇到问题时：
 
