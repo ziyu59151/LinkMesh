@@ -191,8 +191,8 @@ LinkMesh/
 │
 ├── docs/
 │   ├── linkmesh/
-│   │   ├── work_plan.md
-│   │   ├── plan.md
+│   │   ├── work_plan_1.md
+│   │   ├── work_plan_2.md
 │   │   ├── multi_array_regions_investigation_report.md
 │   │   ├── LinkMesh_Architecture_Plan_v3.7.md
 │   │   └── LinkMesh_Architecture_Plan_v1.13.md
