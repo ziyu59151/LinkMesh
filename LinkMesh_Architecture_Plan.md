@@ -128,16 +128,19 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | Release 构建、launcher、bootstrap 与分层检查基础设施 | **IMPLEMENTED** |
 | 初版 Release | **DELIVERED；已发送同门和老师，当前反馈可正常使用** |
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
-| `boundary_source=multi_array_file` | **DESIGNED / NOT IMPLEMENTED / NOT PROBED** |
+| `boundary_source=multi_array_file` | **DESIGNED / NOT IMPLEMENTED；OFT 前置调查已完成** |
 | `linkmesh regions inspect/generate` 两阶段工作流 | **DESIGNED / NOT IMPLEMENTED** |
-| regions map | **DESIGNED；inspect 计划输出，格式和 generate 输入职责待确认** |
-| OFT 多 Region与分 Region 常数 dx | **官方文档与本地源码确认** |
+| regions map | **DESIGNED；含可选空 `physical_label`；格式和 generate 输入职责仍待确认** |
+| OFT 多 Region与分 Region 常数 dx | **运行探针确认；五类案例 GENERATED / STRUCTURALLY CHECKED** |
+| OFT Region 编号主逻辑 | **运行探针确认；setup、fresh rebuild、dx change 一致** |
+| OFT 无 plasma technical role 路径 | **运行探针确认不受支持；OFT 前置检查主动拒绝** |
 | OFT 任意无序曲线自动包含树 | **未提供** |
 | LinkMesh 轻量包含推导 | **DESIGNED / NOT IMPLEMENTED** |
-| LinkMesh multi-array OFT 最小探针程序 | **误判修复 IMPLEMENTED；修复后重跑 PENDING** |
-| OFT 五类合成多区域案例 | **GENERATED；原 summary FAIL 为后处理误判，完整结构检查 PENDING** |
+| synthetic plasma compatibility role | **DESIGNED；确定性 Adapter 隔离规则已批准，尚未实现** |
+| LinkMesh multi-array OFT 最小探针程序 | **调查完成；无需继续扩展当前探针** |
+| OFT 五类合成多区域案例 | **全部 PASS；GENERATED / STRUCTURALLY CHECKED** |
 | M3D-C1 求解器多区域模拟能力 | **User 根据同门实际展示确认** |
-| LinkMesh 新多区域网格的 M3D-C1 兼容性 | **PENDING；尚未生成或验证** |
+| LinkMesh 新多区域网格的 M3D-C1 兼容性 | **PENDING；生产网格尚未生成或验证** |
 | 多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
 ### 1.6 v4.1 当前主线与优先级
