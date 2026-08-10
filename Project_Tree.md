@@ -615,6 +615,10 @@ docs/linkmesh/multi_array_regions_investigation_report.md
 | OFT Adapter 扩展 | 消费候选 Region plan，构造多 Region Domain | 尚未实现；多层/sibling 探针未运行 |
 | Plotter 扩展 | inspection 关系/编号图和 generate 网格图 | 尚未实现；PNG 不是数学证明 |
 
+独立调查工具 `scripts/probe_oft_multi_array_regions.py` 已存在，用于真实 OFT 26.6
+最小探针；其结果仍为 NOT RUN。该脚本不是上述未来业务模块，也不得由
+`src/linkmesh` 导入。
+
 这些是候选职责，不是当前仓库中已存在的新模块。当前 tests 不属于本轮设计依据，也未
 在本轮读取或修改。现有 `Mesh2D`、TRIMEG Writer、M3D-C1 Writer、SMB helper、旧
 CLI 和 `nested_three_region` 本轮均未修改。
