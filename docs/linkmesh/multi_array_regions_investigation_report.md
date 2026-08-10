@@ -2,7 +2,7 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项技术调查
-- 文档状态：只读源码侦察完成；总体状态 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**
+- 文档状态：官方文档与本地源码调查完成；总体状态 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**
 - 调查日期：2026-08-10
 - 最高依据：User 当前决定、根目录 `LinkMesh_Architecture_Plan.md`、OFT 26.6
   `meshing.py`、OFT 携带的 `triangle.h`、当前 LinkMesh 业务源码
@@ -84,15 +84,26 @@ multi_array_file
 18. 暂不修改、删除或优化 `nested_three_region`。
 19. 当前只调查多区域 `Mesh2D` 和 OFT 网格生成，不修改任何 Writer 或 helper。
 
+User 后续已经确认：
+
+- 两阶段正式使用二级子命令：
+  `linkmesh regions inspect` 与 `linkmesh regions generate`；
+- 不建立第二套面向用户的 LinkMesh Region 编号；
+- OFT 完成内部编号后的最终 Triangle Region attribute 是正式 Region ID；
+- `curve_id` 只追踪 `multi_array_file` 的输入 block 顺序，不是 Region ID；
+- inspect 阶段输出用户可读的 regions map；
+- 首版只实施基础输入检查、轻量包含推导和人工看图，不建设通用鲁棒计算几何系统；
+- Shapely/GEOS 不作为首版必需依赖。
+
 尚未由 User 最终确认：
 
-- 两阶段使用嵌套子命令、互斥 flag 还是 `--mode`；
-- region map 是否为 generate 阶段强制输入；
-- `--region-dx` 必须完整覆盖还是允许由全局 `--mesh-dx` 提供回退；
+- regions map 的正式文件名、序列化格式和 schema；
+- regions map 是否为 generate 阶段强制输入；
+- `input_sha256` 与颜色是否为 regions map 首版正式字段；
+- `--region-dx` 必须完整覆盖还是允许由全局 `--mesh-dx` 提供局部覆盖；
 - regions 配置文件的最终 section、文件名和自动发现规则；
-- 是否引入 Shapely/GEOS；
-- 数值容差的具体公式和常数；
-- OFT 技术角色与 LinkMesh Region 的最终映射方式。
+- 首版轻量包含推导使用 OFT `Region` 方法时的具体构造顺序；
+- `setup_only=True` 能否稳定取得与最终 Triangle attribute 一致的 Region ID。
 
 ---
 
@@ -116,16 +127,35 @@ User 根据同门展示确认：M3D-C1 本身能够实际开展多区域模拟�
 
 ## 4. OFT N-region API 和调用链
 
-### 4.1 源码证据范围
+### 4.1 证据范围
 
-直接源码：
+OFT 26.6 官方文档证据：
+
+- [ITER meshing example](https://openfusiontoolkit.github.io/OpenFUSIONToolkit/docs/latest/doc_tMaker_ITER_ex1.html)：
+  使用 `gs_Domain` 定义多个 plasma、vacuum、boundary、conductor 和 coil Region，
+  为不同 Region 提供不同常数目标尺度，显式调用 `add_polygon()`、
+  `add_annulus()` 和 `add_rectangle()` 描述区域关系，使用 `plot_topology()` 人工
+  检查曲线是否交叉，再由 `build_mesh()` 生成带逐三角形 Region ID 的网格。
+- [gs_Domain API](https://openfusiontoolkit.github.io/OpenFUSIONToolkit/docs/latest/classOpenFUSIONToolkit_1_1TokaMaker_1_1meshing_1_1gs__Domain.html)：
+  公布 `define_region()`、`add_polygon()`、`add_annulus()`、`add_enclosed()`、
+  `add_rectangle()`、`plot_topology()` 和带 `setup_only` 参数的 `build_mesh()`。
+- [Region API](https://openfusiontoolkit.github.io/OpenFUSIONToolkit/docs/latest/classOpenFUSIONToolkit_1_1TokaMaker_1_1meshing_1_1Region.html)：
+  公布闭合边界 Region、`check_in_poly()`、`get_in_point()`、
+  `get_resampled_points()`、`get_segments()` 和 `plot_segments()`。
+
+官方文档确认 OFT 具备多 Region、分 Region 常数 dx 和由调用者显式提供区域关系的
+正式工作流。ITER 示例是复杂聚变装置多区域能力的直接证据，但不能外推为 LinkMesh
+候选的任意无序曲线、所有 sibling、四层以上嵌套和混合拓扑已经验证。
+
+本地源码证据：
 
 ```text
 TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/TokaMaker/meshing.py
 TOKAMAKER/OpenFUSIONToolkit/src/ext_libs/triangle.h
 ```
 
-OFT Python 调用链：
+本地源码用于确认 Region、segment、seed、编号、Triangle `regionlist` 和
+`triangleattributelist` 的实际数据流。OFT Python 调用链：
 
 ```text
 gs_Domain.define_region()
@@ -195,15 +225,16 @@ coil
 
 对 LinkMesh 的影响：
 
-- LinkMesh 稳定 `region_id` 不能被假定等于 OFT 最终 attribute。
-- 必须保存显式映射：
-  `curve_id → LinkMesh region_id → OFT region name/role → final OFT attribute`。
-- 映射必须在 `build_mesh()` 后从最终 `region_info` 读取并验证。
-- 分区域 dx 必须在构造 Domain 前按 LinkMesh `region_id` 解析，再绑定到明确 OFT
-  region name；不能根据最终 `triangle_attributes` 的出现顺序回填 dx。
-- OFT 只有物理角色型 `reg_type`，没有中性的任意 Region 类型。如何把不带物理名称的
-  LinkMesh Region 映射为 OFT 的 plasma/boundary/vacuum 技术角色，仍是必须通过
-  最小探针裁决的设计项。
+- OFT 在 `build_mesh()` 中完成内部编号后，最终 Region attribute 直接作为正式
+  Region ID；不再建立第二套面向用户的 LinkMesh Region 编号。
+- `curve_id` 只标识输入 block。regions map 负责说明
+  `curve_id → OFT region name → final Region attribute/Region ID`。
+- 分区域 dx 由用户按 regions map 中的最终 Region ID 指定，不能根据
+  `triangle_attributes` 的数组位置、首次出现顺序、面积或颜色猜测。
+- inspect 与 generate 均需重建 OFT Domain。两次重建后的编号一致性、改变 dx 后的
+  编号稳定性和 block 重排影响尚未运行验证，必须列入最小探针。
+- OFT 只有技术/物理角色型 `reg_type`，没有中性的任意 Region 类型。如何把无物理
+  名称的输入曲线映射为 OFT technical role，仍是探针和后续设计项。
 
 ### 4.3 `add_polygon`
 
@@ -239,11 +270,15 @@ add_polygon(
 
 准确结论：
 
-- `parent_name` 的源码可证语义是共享边界曲线离散尺度协调：边界使用父子两侧较小 dx。
-- 不能把 `parent_name` 解释为 OFT 已验证的 polygon containment。
-- 不能把它解释为显式布尔差集或 hole 声明。
-- 多层嵌套可通过多条受约束 contour 和多个 region seed 候选表达，但任意层级行为
-  尚未运行验证。
+- 官方 API 把 `parent_name` 描述为 polygon 外部 Region 的名称；ITER 示例由调用者
+  显式传入该关系。
+- 本地源码确认 `parent_name` 被用于查找外侧 Region，并以两侧较小 dx 协调共享
+  边界的 `dx_curve`。
+- `parent_name` 是调用者提供的关系，不是 OFT 根据坐标自动推导包含树的输出。
+- `parent_name` 不执行严格 polygon containment 验证，也不构造显式布尔差集或
+  Triangle hole。
+- 多层嵌套可通过多条约束 contour、调用者提供的关系和 Region seed 表达，但
+  LinkMesh 候选的任意层级、sibling 和混合行为尚未运行验证。
 
 ### 4.4 `add_annulus`
 
@@ -433,17 +468,29 @@ pqaAzQ
 - `out_struct.trianglelist`；
 - `out_struct.triangleattributelist`。
 
-### 4.9 OFT 是否为 N-region 通用实现
+### 4.9 OFT N-region 能力结论
 
-源码确认：
+官方文档确认：
+
+- `gs_Domain` 可建立包含多个 Region 的聚变装置网格；
+- 每个 Region 可通过 `define_region(name, dx, reg_type, ...)` 使用不同常数 dx；
+- 调用者通过 `add_polygon()`、`add_annulus()`、`add_rectangle()` 和
+  `parent_name` 显式提供已知区域关系；
+- 官方 ITER 工作流在建网格前使用 `plot_topology()` 人工检查曲线位置和交叉风险，
+  建网格后按 Region 绘图检查结果。
+
+本地源码确认：
 
 - `gs_Domain.regions`、`Mesh` 遍历和 `_reg_defs` 都使用动态 list；
 - `run_triangle` 的 `numberofregions` 来自实际数组长度；
 - 核心数据容器没有固定三 Region 数组长度；
-- `build_mesh()` 的 region ID 重排遍历全部 `region_info`；
+- `build_mesh()` 的 Region ID 重排遍历全部 `region_info`；
 - 因而底层组织不是固定三区域数组实现。
 
-但源码不能证明：
+OFT 不提供“输入任意一组无序闭合曲线后自动建立完整包含树”的高级接口。调用者必须
+先确定曲线和 Region 的关系，再组合 OFT API。
+
+官方文档和源码仍不能证明：
 
 - 任意包含树都能得到正确 seed；
 - 四层以上严格嵌套能够正确分区；
@@ -455,40 +502,34 @@ pqaAzQ
 因此正式结论是：
 
 ```text
-OFT 26.6 的 Region/PSLG/regionlist 数据结构具有动态 N 条目能力；
-任意 N 区域拓扑能力仍为待最小探针确认，不能由已有三区域成功案例外推。
+OFT 26.6 的多 Region 与分 Region 常数 dx 能力已经由官方文档确认；
+OFT 不自动从无序曲线生成包含树；
+LinkMesh multi_array_file 的具体拓扑映射、编号稳定性和共享界面仍待最小探针。
 ```
 
 ---
 
 ## 5. OFT 几何检查能力
 
-### 5.1 能力矩阵
+### 5.1 能力矩阵与首版使用边界
 
-| 几何能力 | OFT 26.6 源码结论 |
+| 几何能力 | OFT 26.6 证据与首版处理 |
 |---|---|
-| shape `(N,2)` 严格检查 | 未见完整主动检查；后续切片操作会依赖该 shape |
-| 坐标有限性 | 未见统一主动拒绝 |
-| 单 polygon 自交 | 未见 |
-| 不同 polygon 边界相交 | 未见 |
-| 相切检测 | 未见 |
-| 重合边检测 | 未见独立合法性拒绝；Mesh 会尝试合并重合 segment |
-| 部分重叠检测 | 未作为非法拒绝；Mesh 有部分 segment 合并/拆分逻辑 |
-| polygon orientation | 未见正式验证或规范化 |
-| signed/absolute polygon area | 未见 Region 级统一检查 |
-| parent/child 自动推断 | 未见 |
-| 包含树构建 | 未见 |
-| polygon contains polygon | 未见 |
-| polygon disjoint | 未见 |
-| point-in-polygon | 有 `Region.check_in_poly()`，用途局限于 seed 方向选择 |
-| Region seed 自动选择 | 有 `Region.get_in_point()` |
-| hole seed 自动选择 | 未见；wrapper 未填充 holelist |
-| 相邻重复点 | warning，不是严格拒绝 |
-| 零长度边 | 可能以 repeated warning/后续数值问题体现，未统一拒绝 |
-| 小边 | warning |
-| 尖角/sliver | warning |
+| shape `(N,2)` | OFT API 以 `[:,2]` 闭合边界为输入；LinkMesh 首版执行基础 shape 检查 |
+| 坐标有限性 | OFT 未见统一主动拒绝；LinkMesh 首版检查有限值 |
+| 单 polygon 自交 | OFT 未见完整主动分类；首版把简单曲线作为输入前提 |
+| 不同 polygon 相交/相切/重合 | OFT 官方示例依赖 topology plot 人工检查；首版不建设鲁棒分类器 |
+| parent/child 自动推断 | OFT 未提供自动包含树；LinkMesh 首版进行轻量推导 |
+| point-in-polygon | `Region.check_in_poly()` 提供基础 polygon 内点判断 |
+| Region seed 候选 | `Region.get_in_point()` 提供 Triangle 内部 seed 候选 |
+| boundary resampling | `Region.get_resampled_points()` 存在，但不是 LinkMesh outer boundary 的权威来源 |
+| polygon/segment 表达 | `Region` 保存闭合边界和 segments，`get_segments()` 可读取曲线分段 |
+| hole seed | wrapper 未填充 holelist；首版不支持无人占据的 hole |
+| 相邻重复点 | OFT warning，不是严格拒绝；LinkMesh 首版拒绝精确相邻重复 |
+| 小边和 sliver | OFT warning；用户通过 topology/mesh PNG 复核 |
 | 共享点/segment | Mesh 按 `merge_thresh` 和节点序列合并 |
 | Triangle 失败传播 | `oft_triangulate` 非零时抛 `ValueError("Meshing failed!")` |
+| Region 覆盖 | LinkMesh 必须验证每个最终 Region ID 至少对应一个三角形 |
 
 ### 5.2 `Region.check_in_poly`
 
@@ -538,15 +579,18 @@ OFT 26.6 的 Region/PSLG/regionlist 数据结构具有动态 N 条目能力；
 
 ### 5.4 `add_polygon(parent_name=...)`
 
-源码只用 parent 的 dx 调整 child contour 的 `dx_curve`。未见以下行为：
+官方 API 将 `parent_name` 定义为 polygon 外部 Region 的名称，ITER 示例由调用者
+显式提供该关系。本地源码使用该名称查找外侧 Region，并调整共享边界
+`dx_curve`。未见以下行为：
 
+- 从任意无序曲线坐标自动推导 parent；
 - 验证 child 严格位于 parent；
-- 自动将 child 从 parent 做几何差；
-- 保存 parent/child 引用；
-- 自动给父 Region 选择避开 child 的 seed；
-- 自动构建 hole 或 containment tree。
+- 自动构建完整 containment tree；
+- 自动给父 Region 选择避开所有 children 的 seed；
+- 自动构建 Triangle hole。
 
-因此包含树和严格曲线关系必须由 LinkMesh 几何层负责。
+因此 LinkMesh 必须先用轻量流程推导候选 parent/children，再把关系显式交给 OFT。
+这项轻量推导基于简单、明显包含或明显分离的输入前提，不是完整几何证明。
 
 ### 5.5 主动拒绝、warning、合并和最终失败的区分
 
@@ -745,9 +789,9 @@ TOKAMAKER/OpenFUSIONToolkit/src/ext_libs/triangle.c
 OFT 当前 Region 规模和 P0 文件通常有限，自行实现扫描线没有现实收益。真正困难不是
 渐近复杂度，而是浮点退化、相切、共线重合和稳定布尔差集。
 
-### 7.2 GEOS/Shapely 候选
+### 7.2 GEOS/Shapely 的后续候选地位
 
-Shapely 基于 GEOS，提供成熟 polygon predicates 和布尔运算候选：
+Shapely 基于 GEOS，可提供成熟 polygon predicates 和布尔运算：
 
 - `is_valid`；
 - `contains` / `within`；
@@ -789,36 +833,41 @@ Shapely 基于 GEOS，提供成熟 polygon predicates 和布尔运算候选：
 当前 `requirements.txt` 未包含 Shapely。NumPy、h5py、Matplotlib、OFT 和 pytest
 不能替代 GEOS polygon predicates。
 
-建议：
+最新裁决：
 
 ```text
-首版优先采用成熟 GEOS/Shapely 做多 polygon 拓扑验证、布尔 difference、
-representative point 和 inspection geometry；是否新增依赖必须由 User 后续裁决。
+Shapely/GEOS 不作为首版必需依赖。
+首版不实施通用 DE-9IM、polygon boolean 或鲁棒相切/重合分类。
 ```
 
-本轮不修改依赖，也不把 Shapely 写成已批准依赖。
+若真实输入证明轻量方案不足，可在后续蓝图迭代中重新评估 Shapely。本轮和首版均不
+修改依赖，不静默使用 `buffer(0)`、`make_valid` 或其他几何修复。
 
-### 7.3 适合 LinkMesh 内保留的算法
+### 7.3 首版轻量实现边界
 
-即使采用成熟库，以下轻量逻辑仍适合由 LinkMesh 实现：
+首版适合由 LinkMesh 实现：
 
 - counted block 的严格词法解析；
-- stable `curve_id` 和 `region_id` 分配；
-- SHA-256；
-- containment graph 到唯一根树的确定性转换；
-- 最小包含者作为直接父节点；
-- ID、parent、children 和 OFT attribute 映射验证；
+- 稳定 `curve_id` 分配；
+- shape、有限性、最低点数、精确重复点和明显退化面积检查；
+- 使用 OFT Region 内点和 point-in-polygon 基础能力建立候选包含矩阵；
+- 唯一 root、直接 parent 和 children 的确定性推导；
+- OFT 最终 attribute/Region ID 与 curve、parent、children 的对应核对；
 - dx 映射解析和完整性校验；
-- region map 序列化；
-- OFT 输出拓扑检查。
+- regions map 序列化；
+- inspection PNG、mesh PNG 和每 Region 三角形计数；
+- OFT 输出的基本拓扑检查。
 
-不建议自行实现：
+首版不实现：
 
 - 通用 polygon boolean engine；
-- Bentley-Ottmann；
+- Bentley-Ottmann 或通用扫描线；
+- 完整自交、相切、交叉和共线重合分类；
+- 通用 DE-9IM 验证；
+- 复杂浮点容差体系；
 - 自动几何修复；
 - 容差吸附、投影或最近邻修补；
-- 通用计算几何框架。
+- 通用计算几何框架或区域 DSL。
 
 ---
 
@@ -857,7 +906,7 @@ R_N Z_N
 12. 旧 `array_file` 的单 block 且全文件恰好 N 行契约不变；不得用新 Reader 替换旧
     Reader 后悄悄放宽旧格式。
 
-### 8.2 空行和注释建议
+### 8.2 空行和注释待确认
 
 当前 `boundary_reader.py` 风格是严格 counted text：
 
@@ -866,40 +915,24 @@ R_N Z_N
 - 不支持额外数据；
 - 只接受空白分隔的两个字段。
 
-建议 multi-array v1 同样：
+沿用旧 Reader 的严格风格、不允许空行和注释，是当前保守候选；User 尚未最终裁决
+multi-array 是否允许 block 间空行或注释。实现前必须确认，不得借新格式改变旧
+`array_file` Reader 的严格契约。
 
-```text
-不允许空行，不允许注释，不允许表头，不允许额外列。
-```
+### 8.3 curve_id 与正式 Region ID
 
-理由：
+正式规则：
 
-- 保持两个 Reader 的认知一致；
-- 行号错误清晰；
-- block 边界无歧义；
-- 不需要建设文本 DSL；
-- 配置、说明和物理注释可放在独立配置或 region map 中。
+- `curve_id` 按输入 block 顺序从 1 开始，只追踪输入曲线；
+- `curve_id` 不是 Region ID，也不要求等于 Region ID；
+- OFT 完成内部编号后的最终 Triangle Region attribute 是正式 Region ID；
+- regions map 同时展示 `curve_id`、包含关系和最终 Region ID；
+- inspection PNG、`--region-dx`、`Mesh2D.region_ids` 和后续验证统一使用该最终
+  Region ID；
+- Region ID 是离散区域标签，不是数组位置，不执行节点索引式 `+1`。
 
-该建议不改变旧 Reader。
-
-### 8.3 ID 分配
-
-建议：
-
-- `curve_id`：按输入 block 顺序从 1 开始，稳定且永久保留；
-- `region_id`：首版默认等于 `curve_id`；
-- 输入重排会改变两个 ID，因此 inspection 产物中的 SHA-256 可防止误用旧映射；
-- 几何树排序不得改变 ID；
-- 图例和 map 同时显示 `curve_id` 与 `region_id`，即使首版相等也不删除两个概念。
-
-采用 `region_id=curve_id` 的理由：
-
-- 每条曲线恰好定义一个 Region；
-- 用户容易从文件 block 定位 Region；
-- 不依赖面积、树深度、物理语义或 OFT ID；
-- 将来若 ID 规则变化，独立字段仍允许迁移。
-
-这是候选建议，不表示 OFT attribute 可直接等于该 ID。
+输入 block 重排会改变 `curve_id`，也可能影响 OFT 最终编号；具体影响尚待最小探针，
+不得预先承诺稳定。
 
 ---
 
@@ -919,68 +952,56 @@ R_N Z_N
 7. 所有非根曲线都有唯一直接父节点。
 8. 所有曲线形成一棵覆盖全部节点的无环树。
 
-### 9.2 禁止
+### 9.2 输入前提与非目标
 
-- 单曲线自交；
-- 曲线间交叉；
-- 相切；
-- 点接触；
-- 边接触；
-- 边界重合；
-- 共线重叠；
-- 部分面积重叠但互不包含；
-- 多个互不包含的根；
-- 多个独立计算域；
-- hole 语义；
-- 多轮廓表示一个 Region；
-- 开放曲线；
-- 显式重复闭合末点；
-- 零面积或近退化曲线；
-- 自动修复、吸附、排序、平滑、重采样或缩放输入；
-- 由颜色或物理名称推断 Region。
+首版要求用户提供：
 
-近退化和近接触的精确数值判定仍待几何内核选择和真实输入尺度调查后确定，不能在本轮
-无证据固定常数。
+- 简单闭合、不自交的曲线；
+- 不同曲线之间无交叉、相切或重合；
+- 曲线关系是明显严格包含或明显完全分离；
+- 恰好一个最外层根；
+- 不存在无人占据、完全不剖分的 hole；
+- 不存在多个独立计算域。
+
+首版基础检查会拒绝明确的解析错误、非有限坐标、精确重复点、精确零长度闭合边和明显
+退化面积，并验证候选树只有一个 root。首版不保证对自交、相切、共线重合、近接触或
+复杂部分重叠给出完整、鲁棒或精确分类。
+
+用户必须检查 inspection PNG 和最终 mesh PNG。人工看图不是数学证明，Triangle
+成功也不表示所有异常几何均合法。LinkMesh 不自动修复、吸附、排序、平滑、重采样、
+缩放或布尔修改输入。
 
 ---
 
-## 10. 包含树算法
+## 10. 首版轻量包含推导
 
-候选确定性算法：
+OFT 没有自动包含树 API。首版候选流程组合 OFT Region 的基础能力：
 
-1. 严格解析全部 blocks，保留输入顺序并计算原始文件 SHA-256。
+1. 严格解析全部 counted blocks并保留输入顺序。
 2. 为每条曲线分配稳定 `curve_id`。
-3. 验证 shape、有限性、点数、重复点、闭合边、面积和单 polygon 简单性。
-4. 对每对 polygon 验证边界不相交、不相切、不重合。
-5. 对每对 polygon 分类为：
-   - A 严格包含 B；
-   - B 严格包含 A；
-   - 完全分离；
-   - 非法/歧义。
-6. 对每条曲线收集全部严格包含者。
-7. 没有包含者的曲线必须恰好一条，作为 root。
-8. 对每条非 root 曲线，从全部包含者中选择实际 polygon 面积最小者作为直接 parent。
-9. 验证 parent 链无环并最终到达唯一 root。
-10. 按 `curve_id` 升序保存 children，保证确定性。
-11. 每条曲线生成一个同号 `region_id`。
-12. Region 实际 geometry 定义为自身 polygon 减直接 children polygon 并集。
-13. 验证每个 Region geometry 非空、有效，并确认其连通分量数量。
-14. 为每个 Region 选择严格位于 Region 实际 geometry 内部的 seed。
-15. 验证 seed 不位于任何直接或间接 child 内，也不落在任何边界上。
-16. 生成 region map 和 inspection PNG。
+3. 执行 shape、有限性、最低点数、精确相邻重复、精确零长度闭合边和明显退化面积
+   检查。
+4. 为每条曲线构造 OFT `Region` 候选，并获得一个位于该单一 polygon 内的代表点。
+5. 使用其他曲线的 `Region.check_in_poly()` 判断代表点位于哪些曲线内部。
+6. 建立候选包含矩阵。
+7. 对每条非根曲线，从包含它的曲线中选择直接 parent。
+8. 验证只有一个 root，parent 链无环且覆盖全部曲线。
+9. 建立 parent/children 关系。
+10. 组装 OFT Domain，取得候选最终 Region attribute。
+11. 输出 regions map 和 inspection PNG。
+12. 用户人工确认曲线几何、包含关系、颜色和 Region ID。
+13. generate 阶段重新构造 OFT Domain，并核对最终编号和每 Region 三角形计数。
 
-步骤 3–5、12–15 不应交给 OFT 隐式完成。OFT 当前提供的 `check_in_poly` 和
-`get_in_point` 不足以证明这些契约。
+该流程是基于简单、非交叉、明显包含或明显分离输入前提的轻量组合：
 
-直接父节点选择使用“全部包含者中面积最小者”的前提是：
+- 不是 OFT 自动包含树；
+- 不是完整 polygon containment 数学证明；
+- 对交叉、相切、重合、近接触或复杂部分重叠可能产生错误判断；
+- 必须配合 inspection PNG、最终 mesh PNG 和 OFT/Triangle 结果检查。
 
-- 所有 polygon 已证明简单；
-- 曲线边界两两不接触；
-- 每对关系已证明严格包含或完全分离；
-- 面积非退化。
-
-这些前提成立时，最小包含者是唯一直接父节点。仍应显式验证唯一性，不依赖浮点面积
-近似打破歧义。
+`Region.get_in_point()` 只能为单一 polygon 提供内部 seed 候选，不能证明 seed 位于
+“父 polygon 减去 children”的实际 Region。父 Region seed 被 child 覆盖、实际
+Region 不连通等风险继续保留，必须通过最小探针确认。
 
 ---
 
@@ -1070,59 +1091,54 @@ OFT 不直接接收 polygon boolean difference。候选映射依赖：
 
 ## 12. curve_id、LinkMesh region_id 与 OFT attribute
 
-### 12.1 推荐映射对象
+### 12.1 正式编号规则
 
-后续实现应有一个小型、明确、不可歧义的内部记录，至少表达：
+User 已裁决不建立第二套面向用户的 LinkMesh Region 编号：
+
+1. `curve_id = block_index + 1`，只追踪输入 block。
+2. OFT `build_mesh()` 完成内部编号后的最终 Region attribute 是正式 Region ID。
+3. Triangle `regionlist` 中 attribute 以数值字段传递；业务语义是离散 Region 标签。
+4. Triangle 将 attribute 传播到 triangle，OFT 从 `triangleattributelist` 读回。
+5. LinkMesh 验证 attribute 具有整数语义，并保存到 `Mesh2D.region_ids`。
+6. inspection PNG、regions map、`--region-dx` 和后续验证均使用该正式 Region ID。
+7. Region ID 不是数组位置，不根据出现顺序解释，也不执行节点索引式 `+1`。
+
+### 12.2 运行时对应关系
+
+程序仍需维护内部运行时对应，但它不是第二套 Region ID：
 
 ```text
 curve_id
-LinkMesh region_id
-parent_region_id
-children_region_ids
-input_block_index
-OFT region name
+parent/children curve relationship
+deterministic OFT region name
 OFT technical role/type
-pre-build OFT id
-post-build OFT attribute
-mesh_dx
+pre-build OFT internal id
+post-build final OFT attribute / formal Region ID
+resolved mesh dx
 ```
 
-这不是修改 `Mesh2D` 的要求。它可属于 regions 几何计划或 region map，最终
-`Mesh2D.region_ids` 是否保持 OFT attribute 仍遵循现有 Mesh2D 契约。
+regions map 向用户展示 `curve_id`、parent/children 和最终 Region ID。程序内部记录
+OFT name 和 technical role，用于重新构造 Domain 和核对最终 attribute。
 
-### 12.2 建议规则
+### 12.3 编号稳定性待验证
 
-1. `curve_id = block_index + 1`。
-2. 首版 `LinkMesh region_id = curve_id`。
-3. OFT region name 使用确定性机器名，例如基于 LinkMesh Region ID 生成，不从物理
-   名称猜测。
-4. dx 先按 LinkMesh Region ID 校验，再绑定到该 OFT name。
-5. `build_mesh()` 后读取最终 `domain.region_info[name]["id"]`。
-6. 构造显式双向映射：
-   - LinkMesh region_id → final OFT attribute；
-   - final OFT attribute → LinkMesh region_id。
-7. 验证映射一一对应且每个 Region 至少有一个 triangle。
-8. 不按 `triangle_attributes` 首次出现顺序、排序后的 attribute、面积或颜色分配 dx。
+本地源码确认 `build_mesh()` 在调用 Triangle 前按 technical role 顺序
+`boundary → vacuum → conductor → coil` 遍历 `region_info`，在保留 plasma 首位语义
+的同时重新分配 ID，并同步更新 `region_info`、`Region._id` 和 `_extra_reg_defs`。
+随后这些 ID 进入 Triangle `regionlist`，最终从 `triangleattributelist` 读回。
 
-### 12.3 当前阻塞
+以下行为尚未运行验证：
 
-现有 `mesh_from_oft_domain()` 明确原样保存 OFT `reg`，不重编号。这一契约本轮不得
-修改。因此后续实现必须先裁决：
+- `setup_only=True` 是否可在不剖分时取得最终 Region ID；
+- setup 前后 `region_info` 和 `Region._id` 的准确变化；
+- 同一 Domain 重复调用的行为；
+- inspect 与 generate 分别重建 Domain 后编号是否一致；
+- 相同拓扑改变 dx 后编号是否一致；
+- 输入 block 重排后 curve_id 和最终 Region ID 如何变化；
+- 最终 Triangle attribute 是否与 setup 阶段编号一致；
+- `Mesh2D.region_ids` 是否与 regions map 完全一致。
 
-- multi-array 的用户稳定 Region ID 是否只存在于 region map；
-- 还是需要为该新路径增加显式 attribute 映射后再构造 `Mesh2D`；
-- 若重映射 `Mesh2D.region_ids`，会改变现有“原样保存 OFT reg”契约，必须先更新蓝图
-  并评估 Writer/Plotter 影响。
-
-本报告建议第一版保守地：
-
-```text
-Mesh2D.region_ids 继续保存最终 OFT attribute；
-region map 显式记录 LinkMesh region_id ↔ OFT attribute；
-用户 dx 始终以 LinkMesh region_id 表达。
-```
-
-这样不修改现有 `Mesh2D` 字段和核心契约。是否最终采用需等待 OFT ID 探针。
+在这些探针完成前，不承诺跨重建、跨 dx 或 block 重排的编号稳定性。
 
 ---
 
@@ -1191,26 +1207,37 @@ linkmesh regions --mode generate ...
 - mode 更像配置值，不如动作子命令可读；
 - 后续扩展仍会使单 parser 膨胀。
 
-### 13.4 推荐
+### 13.4 正式 CLI 设计方向
 
-推荐方案 B：
+User 已批准方案 B：
 
 ```text
 linkmesh regions inspect ...
 linkmesh regions generate ...
 ```
 
-理由：
+正式帮助层级：
 
-- 两阶段是不同用户动作，不是一个布尔模式；
-- 能最直接满足“不得隐式猜测阶段”；
-- help、required-fields 和输出职责最清楚；
-- 与旧无子命令入口兼容：只有首 token 为 `regions` 时进入新 parser；
-- 后续仍可保持小型实现，不要求插件或命令框架。
+```text
+linkmesh -h
+linkmesh regions -h
+linkmesh regions inspect -h
+linkmesh regions generate -h
+```
 
-该推荐尚未由 User 最终批准，不能写成已实现或最终 CLI。`--config` 位置建议为
-`linkmesh regions --config FILE inspect ...`，但 argparse 对全局参数位置的最终
-用户体验应在编码前用最小 parser 原型确认。
+作用域规则：
+
+- 旧无子命令入口及其帮助和行为保持不变；
+- inspect 和 generate 拥有独立 required fields；
+- regions 参数必须位于对应二级子命令作用域，不与旧入口参数任意混写；
+- 不同 argparse 子解析器可以定义同名参数；
+- 旧入口 `--mesh-dx` 作用于 single-region；
+- regions generate `--mesh-dx` 表示全部 Region 的默认尺度；
+- inspect `--plot` 表示输入曲线、包含关系和 Region ID 图；
+- generate `--plot` 表示最终多区域三角网格图；
+- 阶段不得根据 dx 或输出参数是否存在隐式推断。
+
+`--config` 的最终参数位置、regions 专用配置 schema 和发现规则仍待实现前确认。
 
 ---
 
@@ -1317,49 +1344,36 @@ attribute 属于派生 region map，不应要求用户手工重复输入。
 
 ## 15. region map
 
-### 15.1 是否需要
+### 15.1 正式职责
 
-建议 inspection 阶段输出机器可读、版本化 region map，generate 阶段将其作为强制
-输入。
+User 已决定 inspect 阶段输出用户可读的 regions map。它不是第二套 Region 编号翻译
+系统，职责是：
 
-理由：
+- 展示 OFT 最终 Region ID；
+- 展示对应 `curve_id`；
+- 展示 parent Region 和 child Regions；
+- 展示 inspection PNG 中的颜色候选；
+- 让用户按最终 Region ID 设置目标 dx；
+- 帮助用户确认轻量推导的包含关系。
 
-- 稳定连接人工复核与生成阶段；
-- 固定 curve/Region ID；
-- 保存输入 SHA-256；
-- 避免用户在检查后修改或重排 blocks；
-- 为 dx 映射提供明确 ID；
-- 保存包含树和 OFT attribute 对照；
-- 便于复现和诊断。
+generate 是否必须读取该 map，仍需 User 最终裁决。
 
-是否强制仍需 User 最终裁决。
+### 15.2 候选内容
 
-### 15.2 最小字段建议
+regions map 可采用 TOML，但正式文件名、格式和 schema 尚未确认。候选内容：
 
 ```text
 schema_version
-source_path（诊断用途，不作为身份）
-source_sha256
-curve_count
+input_sha256
+region_id（OFT 最终 attribute）
 curve_id
-input_block_index
-region_id
-parent_id 或 null
-children_ids
-polygon signed/absolute area
-tree depth
-inspection geometry status
+parent_region_id
+child_region_ids
+inspection color
 ```
 
-generate 后可扩展记录：
-
-```text
-resolved mesh_dx
-OFT region name
-OFT technical role
-final OFT attribute
-triangle count
-```
+程序内存对象可额外保存 OFT region name、technical role 和 resolved dx，但这些
+运行时对应不构成第二套用户 Region ID。
 
 不应保存：
 
@@ -1373,21 +1387,21 @@ triangle count
 是否在 map 中完整复制输入坐标需后续裁决。即使复制，也必须以源文件 SHA-256 为身份
 校验依据。
 
-### 15.3 两阶段一致性
+### 15.3 尚待裁决
 
-generate 建议：
+当前尚未最终确认：
 
-1. 重新读取原始 multi-array 文件。
-2. 重新计算 SHA-256。
-3. 与 map 中摘要逐字节比较，不一致立即失败。
-4. 重复执行全部词法和几何检查。
-5. 重新构造包含树。
-6. 与 map 的 curve/parent/children/region ID 比较。
-7. 验证 dx 覆盖。
-8. 才调用 OFT。
+- regions map 的正式文件名；
+- 是否固定采用 TOML；
+- schema version；
+- color 是否为正式字段；
+- `input_sha256` 是否首版必需；
+- generate 是否必须把 regions map 作为输入；
+- generate 是否只重新推导并核对相同编号；
+- 用户主动执行 generate 是否隐式表达人工确认。
 
-人工确认建议不使用交互式 yes/no 状态写入文件。用户主动执行 generate 并提供已检查
-的 region map，即视为进入第二阶段；这比不可审计的终端确认更适合批处理环境。
+无论 map 是否强制，generate 都必须重新组装 OFT Domain、生成 Triangle 网格，并核对
+最终 Region ID、每 Region 三角形数量和 mesh PNG。编号一致性由下一轮探针先验证。
 
 ---
 
@@ -1444,9 +1458,9 @@ mesh PNG 职责：
 help 可读性裁决。无论语法实现如何，解析结果必须是显式
 `dict[LinkMesh region_id, float]`。
 
-### 17.2 推荐解析规则
+### 17.2 当前推荐解析规则
 
-建议支持：
+以下仍是推荐方案，局部覆盖规则尚未由 User 最终裁决：
 
 1. 只提供 `--mesh-dx`：
    - 所有 Region 使用该统一值。
@@ -1476,12 +1490,12 @@ help 可读性裁决。无论语法实现如何，解析结果必须是显式
 每个 resolved dx 必须按以下显式链绑定：
 
 ```text
-LinkMesh region_id
-  → deterministic OFT region name
+regions map 中的 final OFT Region ID
+  → 对应 deterministic OFT region name
   → define_region(name, dx, technical_role)
   → Region._dx_vol
   → regionlist maximum_area = dx^2/2
-  → final OFT attribute
+  → final OFT attribute / formal Region ID
 ```
 
 共享界面的 `dx_curve` 取两侧较小 dx 是当前 `add_polygon(parent_name=...)` 和
@@ -1511,18 +1525,20 @@ LinkMesh region_id
 13. 两个独立根。
 14. 相同几何但输入 block 顺序重排。
 
-### 18.2 dx 和 ID
+### 18.2 dx、setup_only 和 Region ID
 
 1. 所有 Region 使用相同 dx。
 2. 相邻 Region 使用明显不同 dx。
 3. 四层 Region 使用单调变化 dx。
-4. 指定 LinkMesh Region ID 后记录：
-   - OFT region name；
-   - define 后 ID；
-   - build 后最终 attribute；
-   - triangle attribute 计数。
-5. 重排输入 blocks 后确认稳定规则只按 block ID 改变，不按 OFT 输出顺序猜测。
-6. 确认每个共享 interface 的采样尺度是否采用相邻两侧较小 dx。
+4. `setup_only=True` 是否能在不剖分时取得最终编号。
+5. setup 前后 `region_info` 和 `Region._id` 的变化。
+6. 同一 Domain 重复调用的行为。
+7. inspect 与 generate 分别重建 Domain 后编号是否一致。
+8. 相同拓扑改变 dx 后编号是否一致。
+9. 输入 block 重排后 curve_id 和最终 Region ID 如何变化。
+10. 最终 Triangle attribute 是否与 setup 阶段编号一致。
+11. `Mesh2D.region_ids` 是否与 regions map 一致。
+12. 每个共享 interface 的采样尺度是否采用相邻两侧较小 dx。
 
 ### 18.3 输出检查
 
@@ -1622,11 +1638,10 @@ OFT 自身行为，但该结果只用于风险评估：
 5. segment merge 依赖 `merge_thresh`，近接触曲线可能被意外合并。
 6. sibling 和深层嵌套没有运行证据。
 7. 当前 OFT wrapper 不传 holes，但首版也不需要 holes。
-8. 自行实现多 polygon 鲁棒 predicates 和 boolean difference 风险较高。
-9. Shapely 可降低几何风险，但会新增依赖和发布负担。
-10. inspection 与 generate 若无强制 map/SHA-256 连接，可能对不同输入执行。
-11. `Mesh2D.region_ids` 当前原样保存 OFT attributes，与用户稳定 Region ID 是两个
-    不同概念。
+8. 首版轻量 point-in-polygon 包含判断可能误判交叉、相切、重合或近接触输入。
+9. inspection PNG 是必要人工复核步骤，但不是数学证明。
+10. inspect 与 generate 分别重建 Domain 后的编号稳定性尚未验证。
+11. `Mesh2D.region_ids` 将直接保存 OFT 最终 attributes；curve_id 不是第二套 Region ID。
 12. 当前 single-face M3D-C1 输出链不能由求解器本身支持多区域的事实自动升级。
 
 ### 20.2 停止条件
@@ -1689,27 +1704,32 @@ LinkMesh multi-array 多区域生成链仍未实现；
 
 ## 22. 建议实施批次
 
-### 批次 1：几何层决策
+### 批次 1：OFT 最小探针
 
-1. User 裁决是否引入 Shapely。
-2. 最终确认 `regions inspect/generate` 模式。
-3. 最终确认 regions 配置发现和 schema。
-4. 最终确认 region map 是否强制。
-5. 最终确认 dx 完整覆盖/局部覆盖规则。
-6. 确认数值精度策略的原则，不静默修复。
+1. 两层、四层、sibling 和混合拓扑。
+2. `setup_only` 与最终编号。
+3. inspect/generate 重建、改变 dx 和 block 重排后的编号。
+4. Region attribute、三角形计数和共享界面。
+5. 裂缝、重复点、非流形边和退化单元。
 
-### 批次 2：纯输入和几何
+### 批次 2：剩余 User 裁决
+
+1. regions 专用配置发现和 schema。
+2. regions map 的格式、字段和 generate 输入职责。
+3. dx 完整覆盖或全局默认加局部覆盖规则。
+4. multi-array 空行和注释规则。
+
+### 批次 3：纯输入、轻量包含和 inspection
 
 1. 多 block Reader。
-2. 单 polygon 验证。
-3. polygon-pair predicates。
-4. 唯一根包含树。
-5. Region difference 和 seed。
-6. region map。
-7. inspection PNG。
-8. 此批次不调用 OFT。
+2. 基础曲线检查。
+3. OFT Region 内点与 point-in-polygon 的轻量包含推导。
+4. 唯一根 parent/children 树。
+5. regions map。
+6. inspection PNG。
+7. 不引入 Shapely/GEOS 或通用 polygon boolean。
 
-### 批次 3：OFT 最小探针
+### 批次 4：generate 业务链
 
 1. synthetic tree cases。
 2. technical role 和 ID 映射。
@@ -1758,17 +1778,18 @@ OFT 26.6 源码确认：
 - OFT 没有提供 LinkMesh 首版所需的完整自交、曲线间关系、唯一根和包含树验证；
 - OFT 自动 seed 只检查自身 polygon，不能证明位于 parent-minus-children Region。
 
-因此推荐架构是：
+因此首版架构是：
 
 ```text
-LinkMesh 严格 Reader
-  → 成熟计算几何 predicates/boolean difference
-  → 唯一根包含树和显式 Region plan
-  → stable LinkMesh IDs 和 region map
-  → 显式 dx 映射
+LinkMesh 严格 Reader 与基础检查
+  → OFT Region 内点/point-in-polygon 的轻量包含推导
+  → 唯一根 parent/children plan
+  → OFT 最终 attribute 作为正式 Region ID
+  → regions map + inspection PNG + 用户人工确认
+  → 显式 Region ID/dx 映射
   → OFT PSLG/seed/attribute
   → Triangle
-  → Mesh2D 和拓扑验证
+  → Mesh2D + mesh PNG + Region 三角形计数
 ```
 
 最终状态：
@@ -1777,8 +1798,11 @@ LinkMesh 严格 Reader
 - 未实现 `multi_array_file`；
 - 未实现 `regions` 子命令；
 - 未生成新的 N-region `Mesh2D`；
-- 未运行任意多轮廓 OFT 探针；
-- 未验证 sibling、四层嵌套或任意 N 拓扑；
+- OFT 官方多 Region 和分 Region 常数 dx 能力已经确认；
+- OFT 不提供任意无序曲线自动包含树；
+- `regions inspect/generate`、regions map 和轻量包含推导均为 **DESIGNED**；
+- 未运行任意多轮廓 OFT 最小探针；
+- 未验证 sibling、四层嵌套、混合拓扑或编号稳定性；
 - 未修改 `nested_three_region`；
 - 未修改 `Mesh2D`、Writer、helper、格式、测试或依赖；
 - 已知 M3D-C1 本身能够进行多区域模拟；

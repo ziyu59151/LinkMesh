@@ -2,7 +2,7 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v4.4；`multi_array_file` 与 `regions` 多区域工作流已完成前置只读调查和设计，尚未实现或运行 OFT 多轮廓探针）
+- 文档状态：当前有效（对应技术蓝图 v4.5；OFT 官方多 Region/分 Region dx 能力与 `regions inspect/generate` 已完成设计，LinkMesh 业务实现和 OFT 最小探针尚未开始）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -56,17 +56,20 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | M3D-C1 物理结果正确性 | PENDING |
 | counted R-Z Boundary Reader | 已实现 |
 | `single_region + array_file` | 已实现；EAST 生成侧 PASSED |
-| `array_file + 可选 GFile LCFS PNG 参考` | DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED |
-| `--plot-lcfs` 与 `[output].plot_lcfs` | 已批准设计，尚未实现 |
-| Release 构建、launcher、bootstrap 与分层检查基础设施 | IMPLEMENTED / Linux 验证待执行 |
-| 普通用户可调用的正式 Release | PENDING；尚未基于本轮 master 生成和验收 |
+| `array_file + 可选 GFile LCFS PNG 参考` | IMPLEMENTED |
+| `--plot-lcfs` 与 `[output].plot_lcfs` | IMPLEMENTED |
+| Release 构建、launcher、bootstrap 与分层检查基础设施 | IMPLEMENTED |
+| 初版 Release | 已发送同门和老师，当前反馈可正常使用 |
 | EAST M3D-C1 后续运行 | 已交付，加载、初始化、时间推进结果 PENDING |
 | 最新 TRIMEG HDF5 | 已生成并交付卢老师测试，反馈 PENDING |
 | `single_region + first_wall` | 未实现 |
 | `single_region + flux_surface` | 未实现 |
 | `boundary_source=multi_array_file` | DESIGNED / NOT IMPLEMENTED / NOT PROBED |
-| `linkmesh regions` 两阶段工作流 | DESIGNED；具体阶段参数待 User 最终确认 |
-| 多轮廓唯一根包含树、Region ID 与分区域常数 dx | 前置源码调查完成；业务实现和 OFT 探针待执行 |
+| `linkmesh regions inspect/generate` | DESIGNED / NOT IMPLEMENTED |
+| regions map | DESIGNED；inspect 计划输出，格式和 generate 输入职责待确认 |
+| OFT 多 Region与分 Region常数 dx | 官方文档和本地源码已确认 |
+| OFT 自动包含树 | 未提供 |
+| LinkMesh 轻量包含推导 | DESIGNED / NOT IMPLEMENTED |
 | M3D-C1 求解器多区域模拟能力 | User 根据同门实际展示确认 |
 | LinkMesh 新多区域网格的 M3D-C1 使用 | 尚未生成或验证 |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
@@ -86,17 +89,21 @@ M3D-C1 初始化：PASSED
 M3D-C1 时间推进、稳定性和物理正确性：PENDING
 
 array_file + 可选 GFile LCFS PNG 参考：
-DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED
+IMPLEMENTED
 
-Release 基础设施源码：
-IMPLEMENTED / NOT YET VALIDATED ON LINUX
+初版 Release：
+DELIVERED TO COLLEAGUES AND TEACHERS
+CURRENT FEEDBACK: USABLE
 
-普通用户正式 Release：
-PENDING / NOT YET GENERATED OR VALIDATED
-
-multi_array_file / regions：
-DESIGNED / READ-ONLY INVESTIGATION COMPLETED
+multi_array_file / regions inspect/generate / regions map：
+DESIGNED / DOCUMENTATION UPDATED
 NOT IMPLEMENTED / NOT PROBED
+
+OFT 多 Region与分 Region常数 dx：
+OFFICIALLY CONFIRMED
+
+OFT 任意无序曲线自动包含树：
+NOT PROVIDED
 
 M3D-C1 本身能够进行多区域模拟：
 USER-CONFIRMED SOLVER CAPABILITY
@@ -202,7 +209,7 @@ LinkMesh/
   `LINKMESH_SCOREC_HELPER`。
 - `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
 - `docs/trimeg/` 中的 MATLAB 读取脚本和真实样例是 TRIMEG 文件契约的只读证据。
-- `docs/linkmesh/work_plan.md` 承载既有下一阶段执行拆解，但不是第二份技术蓝图。
+- `docs/linkmesh/work_plan.md` 是人类阶段记事本，不是 Aider 技术依据或第二份技术蓝图。
 - `docs/linkmesh/multi_array_regions_investigation_report.md` 是本轮多轮廓、多 Region、
   包含树、分区域常数 dx、OFT/Triangle 能力和 `regions` CLI 候选契约的专项只读调查；
   它不表示相关业务功能已经实现。
@@ -252,22 +259,29 @@ User 当前明确决定
 
 ## 5. 核心数据流
 
-已批准但尚未实现的 multi-array 候选数据流是：
+已批准但尚未实现的 multi-array 数据流是：
 
 ```text
 重复 counted R-Z blocks
-  → 未来多轮廓 Reader
-  → 未来严格几何验证与唯一根包含树
-  → 稳定 curve_id / Region ID / 显式 dx 映射
-  → OFT/Triangle N-region 探针与后续 Adapter
-  → Mesh2D
-  → 网格 PNG
+  → 未来多轮廓 Reader 和基础检查
+  → 未来基于 OFT Region 基础能力的轻量包含推导
+  → OFT 最终 attribute Region ID
+  → regions map + inspection PNG + 人工确认
+  → 显式 Region ID/dx
+  → OFT/Triangle
+  → Mesh2D + mesh PNG
 ```
 
-未来 `linkmesh regions` 明确分为 inspection 与 generate 两阶段；具体使用嵌套
-子命令、互斥 flag 或 `--mode` 尚未最终确认。inspection PNG 只能人工复核代码已验证
-的曲线、Region 差集和包含树；generate PNG 用于复核最终网格和 Region 映射。候选
-多轮廓 Reader、几何层和 regions parser 均不是当前已存在业务文件。
+正式 CLI 设计为：
+
+```text
+linkmesh regions inspect ...
+linkmesh regions generate ...
+```
+
+OFT 官方多 Region 和分 Region常数 dx 能力已经确认；OFT 不会从任意无序曲线自动
+建立包含树。首版不建设通用鲁棒计算几何系统，inspection PNG 不是数学证明。
+候选多轮廓 Reader、轻量包含逻辑和 regions parser 均不是当前已存在业务文件。
 
 已批准但尚未实现的 LCFS 参考绘图工作流包含两条独立支路：
 
@@ -577,22 +591,24 @@ docs/linkmesh/multi_array_regions_investigation_report.md
 - 成熟计算几何算法与 Shapely/GEOS 候选；
 - 重复 counted block 格式；
 - 唯一根包含树和 Region 差集定义；
-- stable curve/Region ID、OFT attribute 和 dx 映射；
-- `regions` inspection/generate 三种 CLI 表达方案；
-- region map、inspection PNG、OFT 最小探针和停止条件。
+- curve_id、OFT 最终 Region attribute/Region ID 和 dx；
+- 正式 `regions inspect/generate` 二级子命令；
+- regions map、inspection PNG、轻量包含推导、OFT 最小探针和停止条件。
 
 当前候选职责边界：
 
 | 候选职责 | 未来作用 | 当前状态 |
 |---|---|---|
 | 多轮廓 Reader | 严格读取重复 counted blocks并保留顺序 | 尚未实现；不得放宽旧 Boundary Reader |
-| 几何验证层 | 自交、曲线间关系、唯一根包含树、Region 差集和 seed | 尚未实现；具体文件未确定 |
-| regions config/CLI | 两阶段、配置覆盖、Region ID/dx 解析 | 尚未实现；具体模式待 User 确认 |
-| OFT Adapter 扩展 | 消费已验证 Region plan，构造 N-region Domain | 尚未实现；多层/sibling 探针未运行 |
-| Plotter 扩展 | inspection Region 着色和 generate 网格复核 | 尚未实现；PNG 不替代代码检查 |
+| 轻量包含推导 | 基础检查、候选 parent/children 和唯一 root | 尚未实现；不是通用鲁棒几何验证器 |
+| regions config/CLI | inspect/generate、配置覆盖和 Region ID/dx 解析 | 尚未实现；二级子命令已确定 |
+| regions map | 展示 curve、parent/children、最终 Region ID 和颜色 | inspect 计划输出；格式待确认 |
+| OFT Adapter 扩展 | 消费候选 Region plan，构造多 Region Domain | 尚未实现；多层/sibling 探针未运行 |
+| Plotter 扩展 | inspection 关系/编号图和 generate 网格图 | 尚未实现；PNG 不是数学证明 |
 
-这些是候选职责，不是当前仓库中已存在的新模块。现有 `Mesh2D`、TRIMEG Writer、
-M3D-C1 Writer、SMB helper、旧 CLI 和 `nested_three_region` 本轮均未修改。
+这些是候选职责，不是当前仓库中已存在的新模块。当前 tests 不属于本轮设计依据，也未
+在本轮读取或修改。现有 `Mesh2D`、TRIMEG Writer、M3D-C1 Writer、SMB helper、旧
+CLI 和 `nested_three_region` 本轮均未修改。
 
 ## 9. 测试与证据导读
 
@@ -891,12 +907,13 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 
 multi-array 多区域路线首先需要：
 
-1. User 裁决 `regions` 两阶段最终 CLI 表达。
-2. 裁决专用配置 schema/发现规则、region map 是否强制、dx 覆盖规则和是否引入
-   Shapely/GEOS。
-3. 实现前先运行 OFT 26.6 两层、四层、sibling、混合树、ID、不同 dx、seed 和共享
+1. 运行 OFT 26.6 setup、两层、四层、sibling、混合树、编号、不同 dx、seed 和共享
    界面最小探针。
-4. 探针通过后再实施多轮廓 Reader、几何层、`regions` 和 N-region Adapter。
+2. 裁决 regions 专用配置、regions map 格式与 generate 输入职责、dx 覆盖规则以及
+   multi-array 空行/注释规则。
+3. 探针通过后实施多轮廓 Reader、基础检查、轻量包含推导、
+   `regions inspect/generate`、regions map 和多 Region Adapter。
+4. 首版不引入 Shapely/GEOS 或通用鲁棒计算几何系统。
 5. 生成真实网格后再单独评估 M3D-C1 输出映射和真实使用。
 
 M3D-C1 本身能够进行多区域模拟，是 User 根据同门实际展示确认的能力；该事实不表示
@@ -922,14 +939,13 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 验证 OFT 26.6、`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，
 不得预设未经验证的相对布局、RPATH 或系统库兼容性。
 
-Release 基础设施已在源码层实施，但本轮尚未在 Linux 生成正式 tar.gz、验证内部
-manifest 和外部 SHA-256，或完成真实文件生成及普通用户验收。`--plot-lcfs` 工作流
-状态仍保持 **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+初版 Release 已经发送给同门和老师，当前反馈为可以正常使用。该状态不自动证明
+M3D-C1 时间推进、长期稳定性或物理结果正确性。
 
-`multi_array_file` 和 `regions` 当前只达到
-**DESIGNED / READ-ONLY INVESTIGATION COMPLETED**：未实现 Reader 或子命令，未运行
-任意多轮廓 OFT 探针，未生成新的 N-region `Mesh2D`，也未证明新网格可被 M3D-C1
-正确使用。
+`multi_array_file`、`regions inspect/generate`、regions map 和轻量包含推导当前只
+达到 **DESIGNED**：未实现 Reader 或子命令，未运行 OFT 最小探针，未生成新的多
+Region `Mesh2D`，也未证明新网格可被 M3D-C1 正确使用。OFT 官方多 Region和分
+Region常数 dx 能力已经确认；OFT 自动包含树未提供。
 
 遇到问题时：
 
