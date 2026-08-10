@@ -1729,17 +1729,7 @@ LinkMesh multi-array 多区域生成链仍未实现；
 6. inspection PNG。
 7. 不引入 Shapely/GEOS 或通用 polygon boolean。
 
-### 批次 4：generate 业务链
-
-1. synthetic tree cases。
-2. technical role 和 ID 映射。
-3. seed。
-4. sibling 和深层嵌套。
-5. shared interface。
-6. dx 差异。
-7. 拓扑与 triangle 质量检查。
-
-探针通过前不得宣告任意 N-region 支持。
+探针通过前不得宣告 LinkMesh multi-array 拓扑已支持。
 
 ### 批次 4：generate 业务链
 
