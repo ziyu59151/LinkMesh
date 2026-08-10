@@ -2,15 +2,15 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项技术调查
-- 文档状态：官方文档与本地源码调查完成；独立 OFT 探针程序 **IMPLEMENTED**，真实运行结果 **NOT RUN**；multi-array 业务总体状态 **DESIGNED / NOT IMPLEMENTED / NOT PROBED**
+- 文档状态：OFT 五类合成案例 **GENERATED**；探针后处理误判修复 **IMPLEMENTED**；修复后重跑与完整结构验收 **PENDING**；multi-array 业务 **DESIGNED / NOT IMPLEMENTED**
 - 调查日期：2026-08-10
 - 最高依据：User 当前决定、根目录 `LinkMesh_Architecture_Plan.md`、OFT 26.6
   `meshing.py`、OFT 携带的 `triangle.h`、当前 LinkMesh 业务源码
 - 事实边界：本文形成多轮廓输入、基础检查、轻量包含推导、Region 映射、分区域常数
   网格尺度和 `regions` 两阶段 CLI 的实施契约；独立调查脚本
-  `scripts/probe_oft_multi_array_regions.py` 已实现。本轮未修改业务源码、测试、
-  依赖、Writer、native helper 或求解器接口，尚未运行探针，也未生成新的 N-region
-  `Mesh2D`
+  `scripts/probe_oft_multi_array_regions.py` 已运行并完成五类 OFT 网格生成；原
+  summary FAIL 来自后处理误判。修复已实现但尚未重跑。本轮未修改业务源码、测试、
+  依赖、Writer、native helper 或求解器接口，也未实现生产 N-region `Mesh2D`
 
 ---
 
@@ -1514,17 +1514,35 @@ regions map 中的 final OFT Region ID
 scripts/probe_oft_multi_array_regions.py
 ```
 
-程序状态为 **IMPLEMENTED**，真实运行结果仍为 **NOT RUN**。它不被
-`src/linkmesh` 导入，不改变正式 CLI，不写 HDF5、TXT 或 SMB，也不构成
-`multi_array_file` 生产实现。以下案例和检查必须在正式 OFT 26.6 环境实际运行后，
-才能形成新的工程事实。
+程序已在正式 OFT 26.6 服务器运行，五类案例及 dx variants 均完成网格生成，状态为
+**GENERATED**。首次 summary 全部 FAIL 由两项后处理误判造成：
 
-### 18.1 几何和拓扑案例
+1. `_seed_diagnostics()` 使用输入曲线顺序与 OFT `_reg_defs` 位置顺序关联 seed，
+   与探针正在调查的 technical-role 重排相冲突；
+2. `_mesh_checks()` 要求 signed double area 全部为正，把统一顺时针 triangle
+   错误判为失败。
 
-1. 两层严格嵌套。
-2. 四层严格嵌套。
-3. 一个父 Region 包含两个 sibling。
-4. 多 sibling 与更深层嵌套组合。
+修复后改为按最终 Region attribute 显式匹配 seed，并将绝对面积退化与 orientation
+诊断分离。修复状态为 **IMPLEMENTED**，尚未重新运行。该程序不被 `src/linkmesh`
+导入，不改变正式 CLI，不写 HDF5、TXT 或 SMB，也不构成生产实现。
+
+### 18.1 已取得的生成证据
+
+- `two_level_nested`：353 points、664 cells、2 regions；dx variant 为
+  449 points、841 cells、2 regions。
+- `four_level_nested`：539 points、1035 cells、4 regions；dx variant 为
+  640 points、1221 cells、4 regions。
+- `one_parent_two_siblings`：420 points、792 cells、3 regions；dx variant 为
+  603 points、1141 cells、3 regions。
+- `mixed_tree`：457 points、866 cells、4 regions；dx variant 为
+  627 points、1188 cells、4 regions。
+- `reordered_input`：457 points、866 cells、4 regions；dx variant 为
+  621 points、1183 cells、4 regions。
+
+以上只证明 OFT/Triangle 实际返回了相应 Region 数的网格。原 summary FAIL 不能
+解释为建网失败，也不能反向升级为结构检查通过。
+
+### 18.1A 尚未纳入当前脚本或仍待后续的几何案例
 5. 凹 root + sibling children。
 6. 会使父 Region 分裂为多个连通分量的构造，用于确认单 seed 边界。
 7. 自交单曲线。
@@ -1714,9 +1732,9 @@ LinkMesh multi-array 多区域生成链仍未实现；
 
 ## 22. 建议实施批次
 
-### 批次 1：运行已实现的 OFT 最小探针
+### 批次 1：重跑已修复的 OFT 最小探针
 
-1. 在正式 openfusiontoolkit==26.6 环境运行
+1. 在正式 openfusiontoolkit==26.6 环境使用新的空目录运行
    `scripts/probe_oft_multi_array_regions.py --output-dir <dir>`。
 2. 收集两层、四层、sibling、混合拓扑和重排输入的逐案例 JSON。
 3. 核对 `setup_only`、最终编号、重复重建、改变 dx 和 block 重排。
@@ -1742,8 +1760,8 @@ LinkMesh multi-array 多区域生成链仍未实现；
 6. inspection PNG。
 7. 不引入 Shapely/GEOS 或通用 polygon boolean。
 
-探针程序已实现不等于探针通过。真实结果返回并完成证据归档前，不得宣告 LinkMesh
-multi-array 拓扑已支持，也不得进入完整生产实现。
+五类案例已 GENERATED，但原后处理结果存在误判。修复后结果返回并完成证据归档前，
+不得宣告 LinkMesh multi-array 拓扑已完整验证，也不得进入完整生产实现。
 
 ### 批次 4：generate 业务链
 
@@ -1798,16 +1816,17 @@ LinkMesh 严格 Reader 与基础检查
 
 最终状态：
 
-- 本轮达到 **DESIGNED + READ-ONLY INVESTIGATION**，独立 OFT 探针程序已经
-  **IMPLEMENTED**；
+- OFT 五类合成案例和 dx variants 已 **GENERATED**；
+- 探针 seed 关联、绝对面积和分层状态误判修复已 **IMPLEMENTED**；
 - 未实现 `multi_array_file`；
 - 未实现 `regions` 子命令；
 - 未生成新的 N-region `Mesh2D`；
 - OFT 官方多 Region 和分 Region 常数 dx 能力已经确认；
 - OFT 不提供任意无序曲线自动包含树；
 - `regions inspect/generate`、regions map 和轻量包含推导均为 **DESIGNED**；
-- OFT 最小探针真实结果仍为 **NOT RUN**；
-- 未验证 sibling、四层嵌套、混合拓扑或编号稳定性；
+- 修复后的探针尚未重跑，完整结构验收仍为 **PENDING**；
+- sibling、四层嵌套和混合拓扑已生成网格，但 seed、共享界面、退化单元和编号稳定性
+  尚未由修复后结果确认；
 - 未修改 `nested_three_region`；
 - 未修改 `Mesh2D`、Writer、helper、格式、测试或依赖；
 - 已知 M3D-C1 本身能够进行多区域模拟；

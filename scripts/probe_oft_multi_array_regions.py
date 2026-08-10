@@ -24,7 +24,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -322,70 +322,165 @@ def _input_plan(built: BuiltDomain) -> list[dict[str, Any]]:
     ]
 
 
+def _integer_attribute(value: Any, field_name: str) -> int:
+    """Return one finite integer-semantic OFT Region attribute."""
+
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric != round(numeric):
+        raise ValueError(
+            f"{field_name} must have finite integer semantics, got {value!r}"
+        )
+    return int(numeric)
+
+
 def _seed_diagnostics(
     built: BuiltDomain,
     spec: CaseSpec,
 ) -> dict[str, Any]:
-    """Record OFT region seeds and conservative child-exclusion diagnostics."""
+    """Match OFT seeds by final Region ID and inspect child exclusion."""
 
     mesh = getattr(built.domain, "mesh", None)
-    reg_defs = getattr(mesh, "_reg_defs", None)
-    if reg_defs is None:
+    reg_defs_raw = getattr(mesh, "_reg_defs", None)
+    if reg_defs_raw is None:
         return {
             "status": STATUS_UNCONFIRMED,
             "reason": "domain.mesh._reg_defs is unavailable",
+            "reg_defs_structure": None,
+            "regions": [],
+        }
+
+    try:
+        reg_defs = list(reg_defs_raw)
+        final_id_by_key = _final_id_by_key(built)
+        expected_ids = set(final_id_by_key.values())
+        reg_def_by_id: dict[int, tuple[int, Any]] = {}
+
+        for index, reg_def in enumerate(reg_defs):
+            if not hasattr(reg_def, "__len__") or len(reg_def) < 4:
+                return {
+                    "status": STATUS_UNCONFIRMED,
+                    "reason": (
+                        "domain.mesh._reg_defs contains an entry shorter than "
+                        "the OFT [seed_R, seed_Z, attribute, maximum_area] layout"
+                    ),
+                    "reg_defs_structure": _json_value(reg_defs),
+                    "regions": [],
+                }
+            region_id = _integer_attribute(
+                reg_def[2],
+                f"domain.mesh._reg_defs[{index}][2]",
+            )
+            if region_id in reg_def_by_id:
+                return {
+                    "status": STATUS_FAIL,
+                    "reason": f"duplicate Region attribute in _reg_defs: {region_id}",
+                    "reg_defs_structure": _json_value(reg_defs),
+                    "regions": [],
+                }
+            reg_def_by_id[region_id] = (index, reg_def)
+
+        observed_ids = set(reg_def_by_id)
+        if observed_ids != expected_ids:
+            return {
+                "status": STATUS_FAIL,
+                "reason": "Region ID set differs between _reg_defs and region_info",
+                "expected_region_ids": sorted(expected_ids),
+                "observed_region_ids": sorted(observed_ids),
+                "reg_defs_structure": _json_value(reg_defs),
+                "regions": [],
+            }
+    except (TypeError, ValueError, OverflowError) as exc:
+        return {
+            "status": STATUS_UNCONFIRMED,
+            "reason": f"cannot interpret domain.mesh._reg_defs: {exc}",
+            "reg_defs_structure": _json_value(reg_defs_raw),
             "regions": [],
         }
 
     descendants = _descendants_by_key(spec)
     rows: list[dict[str, Any]] = []
     found_failure = False
+    found_unconfirmed = False
 
-    for curve, reg_def in zip(spec.curves, reg_defs):
+    for curve in spec.curves:
+        final_region_id = final_id_by_key[curve.key]
+        matched = reg_def_by_id.get(final_region_id)
+        if matched is None:
+            return {
+                "status": STATUS_FAIL,
+                "reason": (
+                    f"curve {curve.key!r} has no _reg_defs entry for final "
+                    f"Region ID {final_region_id}"
+                ),
+                "regions": rows,
+            }
+
+        reg_def_index, reg_def = matched
         seed = np.asarray(reg_def[:2], dtype=np.float64)
+        if seed.shape != (2,) or not np.all(np.isfinite(seed)):
+            return {
+                "status": STATUS_FAIL,
+                "reason": (
+                    f"curve {curve.key!r} has an invalid seed at "
+                    f"_reg_defs index {reg_def_index}"
+                ),
+                "regions": rows,
+            }
+
         own_region = built.region_object_by_key[curve.key]
         own_contains = bool(own_region.check_in_poly(seed))
-        child_hits: list[str] = []
-        child_checks: dict[str, bool] = {}
+        descendant_hits: list[str] = []
+        descendant_checks: dict[str, bool] = {}
 
-        for child_key in sorted(descendants[curve.key]):
-            child_region = built.region_object_by_key[child_key]
-            contains = bool(child_region.check_in_poly(seed))
-            child_checks[child_key] = contains
+        for descendant_key in sorted(descendants[curve.key]):
+            descendant_region = built.region_object_by_key[descendant_key]
+            contains = bool(descendant_region.check_in_poly(seed))
+            descendant_checks[descendant_key] = contains
             if contains:
-                child_hits.append(child_key)
+                descendant_hits.append(descendant_key)
 
-        if not own_contains or child_hits:
-            exclusion_status = STATUS_FAIL
+        if not own_contains or descendant_hits:
+            target_status = STATUS_FAIL
             found_failure = True
         elif descendants[curve.key]:
-            # Point-in-polygon checks can reject obvious child overlap, but they
-            # are not a polygon-boolean proof of parent-minus-children.
-            exclusion_status = STATUS_UNCONFIRMED
+            # These point tests reject an obvious child hit but do not prove the
+            # complete parent-minus-children polygon boolean relationship.
+            target_status = STATUS_UNCONFIRMED
+            found_unconfirmed = True
         else:
-            exclusion_status = STATUS_PASS
+            target_status = STATUS_PASS
 
         rows.append(
             {
                 "curve_key": curve.key,
                 "curve_id": built.curve_id_by_key[curve.key],
-                "final_region_id": int(reg_def[2]),
+                "region_name": built.region_name_by_key[curve.key],
+                "final_region_id": final_region_id,
+                "matched_reg_def_index": reg_def_index,
                 "seed_rz": seed.tolist(),
                 "maximum_area": float(reg_def[3]),
                 "inside_own_polygon": own_contains,
-                "descendant_polygon_checks": child_checks,
-                "descendant_hits": child_hits,
-                "target_region_status": exclusion_status,
+                "descendant_polygon_checks": descendant_checks,
+                "descendant_hits": descendant_hits,
+                "target_region_status": target_status,
             }
         )
 
+    if found_failure:
+        status = STATUS_FAIL
+        reason = "At least one seed failed its own/descendant polygon check"
+    elif found_unconfirmed:
+        status = STATUS_UNCONFIRMED
+        reason = "Point tests pass, but no polygon-boolean proof is available"
+    else:
+        status = STATUS_PASS
+        reason = "Every leaf seed is inside its own polygon"
+
     return {
-        "status": STATUS_FAIL if found_failure else STATUS_UNCONFIRMED,
-        "reason": (
-            "At least one seed failed its own/descendant polygon check"
-            if found_failure
-            else "OFT point-in-polygon checks do not prove polygon boolean difference"
-        ),
+        "status": status,
+        "reason": reason,
+        "expected_region_ids": sorted(expected_ids),
+        "observed_region_ids": sorted(observed_ids),
         "regions": rows,
     }
 
@@ -508,6 +603,7 @@ def _mesh_checks(
     )
 
     signed_double_area = _signed_double_areas(nodes, triangles)
+    absolute_double_area = np.abs(signed_double_area)
     area_scale = max(
         1.0,
         float(np.ptp(nodes[:, 0])),
@@ -515,18 +611,42 @@ def _mesh_checks(
         float(np.max(np.abs(nodes))),
     )
     area_tolerance = 1.0e-12 * area_scale * area_scale
-    checks["positive_triangle_orientation"] = (
-        STATUS_PASS
-        if np.all(signed_double_area > area_tolerance)
-        else STATUS_FAIL
+    near_zero = absolute_double_area <= area_tolerance
+    positive_count = int(np.count_nonzero(signed_double_area > area_tolerance))
+    negative_count = int(np.count_nonzero(signed_double_area < -area_tolerance))
+    near_zero_count = int(np.count_nonzero(near_zero))
+
+    checks["nondegenerate_triangle_area"] = (
+        STATUS_PASS if near_zero_count == 0 else STATUS_FAIL
     )
-    details["signed_double_area"] = {
-        "minimum": float(signed_double_area.min()),
-        "maximum": float(signed_double_area.max()),
+    details["absolute_double_area"] = {
+        "minimum": float(absolute_double_area.min()),
+        "maximum": float(absolute_double_area.max()),
         "tolerance": area_tolerance,
-        "nonpositive_or_degenerate_count": int(
-            np.count_nonzero(signed_double_area <= area_tolerance)
-        ),
+        "near_zero_count": near_zero_count,
+    }
+
+    if near_zero_count > 0:
+        orientation_status = STATUS_FAIL
+        orientation = "degenerate"
+    elif positive_count == triangles.shape[0]:
+        orientation_status = STATUS_PASS
+        orientation = "counter_clockwise"
+    elif negative_count == triangles.shape[0]:
+        orientation_status = STATUS_PASS
+        orientation = "clockwise"
+    else:
+        # Mesh2D requires nondegenerate triangles but does not impose one
+        # connectivity orientation on every triangle.
+        orientation_status = STATUS_UNCONFIRMED
+        orientation = "mixed"
+
+    details["triangle_orientation"] = {
+        "status": orientation_status,
+        "orientation": orientation,
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "near_zero_count": near_zero_count,
     }
 
     canonical_triangles = np.sort(triangles.astype(np.int64), axis=1)
@@ -604,6 +724,7 @@ def _plot_case(
     built: BuiltDomain,
     spec: CaseSpec,
     output_dir: Path,
+    variant_label: str,
     nodes: np.ndarray,
     triangles: np.ndarray,
     attributes: np.ndarray,
@@ -634,8 +755,8 @@ def _plot_case(
                 va="center",
                 fontsize=8,
             )
-        axis.set_title(f"{spec.name}: OFT topology")
-        topology_path = output_dir / f"{spec.name}_topology.png"
+        axis.set_title(f"{spec.name} [{variant_label}]: OFT topology")
+        topology_path = output_dir / f"{spec.name}_{variant_label}_topology.png"
         figure.savefig(topology_path, dpi=160)
         plt.close(figure)
         written["topology_png"] = str(topology_path)
@@ -666,8 +787,11 @@ def _plot_case(
             f"ID {region_id}: {region_counts[region_id]} tris"
             for region_id in unique_ids
         )
-        axis.set_title(f"{spec.name}\n{counts_text}", fontsize=10)
-        mesh_path = output_dir / f"{spec.name}_mesh.png"
+        axis.set_title(
+            f"{spec.name} [{variant_label}]\n{counts_text}",
+            fontsize=10,
+        )
+        mesh_path = output_dir / f"{spec.name}_{variant_label}_mesh.png"
         figure.savefig(mesh_path, dpi=180)
         plt.close(figure)
         written["mesh_png"] = str(mesh_path)
@@ -685,10 +809,16 @@ def _run_full_build(
     gs_domain_class: Any,
     spec: CaseSpec,
     output_dir: Path,
+    variant_label: str,
 ) -> dict[str, Any]:
     built = _build_domain(gs_domain_class, spec)
     result: dict[str, Any] = {
+        "variant": variant_label,
         "status": STATUS_FAIL,
+        "generation_status": STATUS_FAIL,
+        "mesh_structure_status": STATUS_UNCONFIRMED,
+        "seed_status": STATUS_UNCONFIRMED,
+        "plot_status": STATUS_UNCONFIRMED,
         "input_plan": _input_plan(built),
         "before": {
             "region_info": _region_info_snapshot(built.domain),
@@ -718,14 +848,35 @@ def _run_full_build(
         )
         seed_diagnostics = _seed_diagnostics(built, spec)
 
+        if mesh_checks["status"] == STATUS_FAIL:
+            overall_status = STATUS_FAIL
+        elif seed_diagnostics["status"] == STATUS_FAIL:
+            overall_status = STATUS_FAIL
+        elif (
+            seed_diagnostics["status"] == STATUS_UNCONFIRMED
+            or mesh_checks["details"]["triangle_orientation"]["status"]
+            == STATUS_UNCONFIRMED
+        ):
+            overall_status = STATUS_UNCONFIRMED
+        else:
+            overall_status = STATUS_PASS
+
+        plot_result = _plot_case(
+            built,
+            spec,
+            output_dir,
+            variant_label,
+            nodes.astype(np.float64, copy=False),
+            triangles.astype(np.int64, copy=False),
+            attributes,
+        )
         result.update(
             {
-                "status": (
-                    STATUS_PASS
-                    if mesh_checks["status"] == STATUS_PASS
-                    and seed_diagnostics["status"] != STATUS_FAIL
-                    else STATUS_FAIL
-                ),
+                "status": overall_status,
+                "generation_status": STATUS_PASS,
+                "mesh_structure_status": mesh_checks["status"],
+                "seed_status": seed_diagnostics["status"],
+                "plot_status": plot_result["status"],
                 "arrays": {
                     "nodes_shape": list(nodes.shape),
                     "nodes_dtype": str(nodes.dtype),
@@ -744,14 +895,7 @@ def _run_full_build(
                 },
                 "mesh_checks": mesh_checks,
                 "seed_diagnostics": seed_diagnostics,
-                "plots": _plot_case(
-                    built,
-                    spec,
-                    output_dir,
-                    nodes.astype(np.float64, copy=False),
-                    triangles.astype(np.int64, copy=False),
-                    attributes,
-                ),
+                "plots": plot_result,
             }
         )
     except Exception as exc:
@@ -814,10 +958,25 @@ def _run_case(
 
     try:
         setup_result = _run_setup_only(gs_domain_class, spec)
-        full_result = _run_full_build(gs_domain_class, spec, output_dir)
-        repeat_result = _run_full_build(gs_domain_class, spec, output_dir)
+        full_result = _run_full_build(
+            gs_domain_class,
+            spec,
+            output_dir,
+            "full",
+        )
+        repeat_result = _run_full_build(
+            gs_domain_class,
+            spec,
+            output_dir,
+            "repeat",
+        )
         dx_spec = _dx_variant(spec)
-        dx_result = _run_full_build(gs_domain_class, dx_spec, output_dir)
+        dx_result = _run_full_build(
+            gs_domain_class,
+            dx_spec,
+            output_dir,
+            "dx_variant",
+        )
 
         setup_mapping = None
         try:
@@ -849,22 +1008,77 @@ def _run_case(
             ),
         }
 
-        critical_statuses = [
-            setup_result.get("status"),
-            full_result.get("status"),
-            repeat_result.get("status"),
-            dx_result.get("status"),
+        generation_statuses = [
+            full_result.get("generation_status"),
+            repeat_result.get("generation_status"),
+            dx_result.get("generation_status"),
+        ]
+        structure_statuses = [
+            full_result.get("mesh_structure_status"),
+            repeat_result.get("mesh_structure_status"),
+            dx_result.get("mesh_structure_status"),
+        ]
+        seed_statuses = [
+            full_result.get("seed_status"),
+            repeat_result.get("seed_status"),
+            dx_result.get("seed_status"),
+        ]
+        numbering_statuses = [
             comparisons["setup_vs_triangle"]["status"],
             comparisons["fresh_rebuild"]["status"],
             comparisons["dx_change"]["status"],
         ]
+
+        generation_status = (
+            STATUS_FAIL
+            if STATUS_FAIL in generation_statuses
+            else STATUS_PASS
+        )
+        mesh_structure_status = (
+            STATUS_FAIL
+            if STATUS_FAIL in structure_statuses
+            else STATUS_PASS
+        )
+        seed_status = (
+            STATUS_FAIL
+            if STATUS_FAIL in seed_statuses
+            else (
+                STATUS_UNCONFIRMED
+                if STATUS_UNCONFIRMED in seed_statuses
+                else STATUS_PASS
+            )
+        )
+        numbering_status = (
+            STATUS_FAIL
+            if STATUS_FAIL in numbering_statuses
+            else (
+                STATUS_UNCONFIRMED
+                if STATUS_UNCONFIRMED in numbering_statuses
+                else STATUS_PASS
+            )
+        )
+
+        required_statuses = (
+            generation_status,
+            mesh_structure_status,
+            seed_status,
+            numbering_status,
+        )
+        if STATUS_FAIL in required_statuses:
+            overall_status = STATUS_FAIL
+        elif STATUS_UNCONFIRMED in required_statuses:
+            overall_status = STATUS_UNCONFIRMED
+        else:
+            overall_status = STATUS_PASS
+
         case_result.update(
             {
-                "status": (
-                    STATUS_FAIL
-                    if STATUS_FAIL in critical_statuses
-                    else STATUS_PASS
-                ),
+                "status": overall_status,
+                "generation_status": generation_status,
+                "mesh_structure_status": mesh_structure_status,
+                "seed_status": seed_status,
+                "numbering_status": numbering_status,
+                "overall_status": overall_status,
                 "setup_only": setup_result,
                 "full_build": full_result,
                 "repeat_build": repeat_result,
@@ -941,7 +1155,22 @@ def _oft_version() -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     output_dir = args.output_dir.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_dir.exists():
+        if not output_dir.is_dir():
+            print(
+                f"ERROR: output path is not a directory: {output_dir}",
+                file=sys.stderr,
+            )
+            return 2
+        if any(output_dir.iterdir()):
+            print(
+                "ERROR: output directory already exists and is not empty: "
+                f"{output_dir}. Use a new empty directory.",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        output_dir.mkdir(parents=True)
 
     summary: dict[str, Any] = {
         "probe": "oft_multi_array_regions",
@@ -970,20 +1199,87 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_json(output_dir / f"{name}.json", result)
 
         reorder = _reorder_comparison(case_results)
-        critical_failures = [
+        generation_failures = [
             name
             for name, result in case_results.items()
-            if result.get("status") == STATUS_FAIL
+            if result.get("generation_status") == STATUS_FAIL
         ]
+        structural_failures = [
+            name
+            for name, result in case_results.items()
+            if result.get("mesh_structure_status") == STATUS_FAIL
+        ]
+        seed_failures = [
+            name
+            for name, result in case_results.items()
+            if result.get("seed_status") == STATUS_FAIL
+        ]
+        numbering_failures = [
+            name
+            for name, result in case_results.items()
+            if result.get("numbering_status") == STATUS_FAIL
+        ]
+        unconfirmed_cases = [
+            name
+            for name, result in case_results.items()
+            if result.get("overall_status") == STATUS_UNCONFIRMED
+        ]
+        fully_passed_cases = [
+            name
+            for name, result in case_results.items()
+            if result.get("overall_status") == STATUS_PASS
+        ]
+        critical_failures = sorted(
+            set(
+                generation_failures
+                + structural_failures
+                + seed_failures
+                + numbering_failures
+            )
+        )
+        summary_status = (
+            STATUS_FAIL
+            if critical_failures
+            else (
+                STATUS_UNCONFIRMED
+                if unconfirmed_cases
+                else STATUS_PASS
+            )
+        )
         summary.update(
             {
-                "status": (
-                    STATUS_PASS if not critical_failures else STATUS_FAIL
-                ),
+                "status": summary_status,
                 "cases": {
-                    name: result.get("status", STATUS_UNCONFIRMED)
+                    name: {
+                        "generation_status": result.get(
+                            "generation_status",
+                            STATUS_UNCONFIRMED,
+                        ),
+                        "mesh_structure_status": result.get(
+                            "mesh_structure_status",
+                            STATUS_UNCONFIRMED,
+                        ),
+                        "seed_status": result.get(
+                            "seed_status",
+                            STATUS_UNCONFIRMED,
+                        ),
+                        "numbering_status": result.get(
+                            "numbering_status",
+                            STATUS_UNCONFIRMED,
+                        ),
+                        "overall_status": result.get(
+                            "overall_status",
+                            STATUS_UNCONFIRMED,
+                        ),
+                    }
                     for name, result in case_results.items()
                 },
+                "generation_failures": generation_failures,
+                "structural_failures": structural_failures,
+                "seed_failures": seed_failures,
+                "numbering_failures": numbering_failures,
+                "unconfirmed_cases": unconfirmed_cases,
+                "fully_passed_cases": fully_passed_cases,
                 "critical_failures": critical_failures,
                 "reordered_input_comparison": reorder,
                 "interpretation": {
@@ -1000,7 +1296,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _write_json(output_dir / "summary.json", summary)
     print(json.dumps(_json_value(summary), indent=2, sort_keys=True))
-    return 0 if summary.get("status") == STATUS_PASS else 1
+    return 1 if summary.get("status") == STATUS_FAIL else 0
 
 
 if __name__ == "__main__":
