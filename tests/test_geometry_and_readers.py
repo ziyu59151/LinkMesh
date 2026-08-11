@@ -18,6 +18,8 @@ from linkmesh.regions import (
     RegionMapEntry,
     RegionsError,
     build_region_plan,
+    resolve_region_dx,
+    validate_plan_against_map,
     validate_region_map,
 )
 from linkmesh.readers.gfile_reader import read_gfile
