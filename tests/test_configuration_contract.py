@@ -193,15 +193,6 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
     assert dict(config.region_dx) == {1: 0.03, 2: 0.04, 3: 0.02}
 
 
-@pytest.mark.parametrize(
-    "tokens, message",
-    [
-        (["1=0.03", "1=0.04"], "重复"),
-        (["0=0.03"], "正整数"),
-        (["1=nan"], "有限正数"),
-        (["bad"], "ID=DX"),
-    ],
-)
 def test_regions_generate_target_defaults_and_hdf5_contract(tmp_path):
     base = {
         "multi_array_file": "multi.rz",
@@ -320,6 +311,15 @@ def test_regions_generate_rejects_hdf5_path_collisions(
         )
 
 
+@pytest.mark.parametrize(
+    "tokens, message",
+    [
+        (["1=0.03", "1=0.04"], "重复"),
+        (["0=0.03"], "正整数"),
+        (["1=nan"], "有限正数"),
+        (["bad"], "ID=DX"),
+    ],
+)
 def test_regions_generate_rejects_invalid_cli_region_dx(
     tmp_path,
     tokens,
