@@ -2,7 +2,7 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项技术调查
-- 文档状态：OFT 26.6 五类合成案例 **GENERATED / STRUCTURALLY CHECKED / PASS**；Region 编号主逻辑与 no-plasma 行为调查 **COMPLETED**；synthetic plasma compatibility role **DESIGNED**；multi-array 业务 **DESIGNED / NOT IMPLEMENTED**
+- 文档状态：OFT 26.6 五类合成案例 **GENERATED / STRUCTURALLY CHECKED / PASS**；Region 编号主逻辑与 no-plasma 行为调查 **COMPLETED**；synthetic plasma compatibility role **DESIGNED / USER-APPROVED**；multi-array 产品接口已完成最终裁决，业务 **DESIGNED / NOT IMPLEMENTED**
 - 调查日期：2026-08-10
 - 最高依据：User 当前决定、根目录 `LinkMesh_Architecture_Plan.md`、OFT 26.6
   `meshing.py`、OFT 携带的 `triangle.h`、当前 LinkMesh 业务源码
@@ -108,17 +108,28 @@ User 后续还确认：
 - synthetic plasma 只是 OFT Adapter compatibility role，不新增曲线、Region、
   网格层或物理材料。
 
-尚未由 User 最终确认：
+User 最新产品裁决：
 
-- regions map 的正式文件名、序列化格式和 schema；
-- regions map 是否为 generate 阶段强制输入；
-- `input_sha256` 与颜色是否为 regions map 首版正式字段；
-- `physical_label` 的字符限制和唯一性；
-- diagnostics/internal 字段是否向普通用户显示；
-- `--region-dx` 必须完整覆盖还是允许由全局 `--mesh-dx` 提供局部覆盖；
-- regions 配置文件的最终 section、文件名和自动发现规则；
-- multi-array 只有一条曲线时是否明确拒绝并提示使用现有 single-region 路径；
-- 首版轻量包含推导使用 OFT `Region` 方法时的具体构造顺序。
+- multi-array 文件首尾、block 之间和 block 点数据之间均允许空行；Reader 忽略空行；
+- 首版不支持任何注释语法；
+- `multi_array_file` 至少包含两个 block，单 block 由 inspect 拒绝并引导到既有
+  `array_file + single_region`；
+- regions map 正式采用 TOML，是 inspect 必须输出、generate 必须读取的正式产物；
+- generate 必须同时读取原始 multi-array 文件和 regions map；
+- 首版 map 不保存 `input_sha256`，inspect/generate 不计算或校验内容摘要；
+- generate 重新推导并核对可直接重建的 curve、Region、parent/children、
+  synthetic role 和最终编号结构；
+- `physical_label` 是普通 TOML 字符串，默认空，不要求唯一，不参与建网；
+- dx 正式采用全局 `mesh_dx` 加按最终 Region ID 的局部覆盖；无全局默认时必须完整
+  覆盖；
+- regions 使用与旧固定 17 字段配置隔离的独立解析模型，保持默认 < TOML < CLI；
+- 当前文档足以进入第一批 inspect 业务源码实现。
+
+仍需在实现细节层确定但不构成公开接口阻塞：
+
+- diagnostics/internal 字段是否写入首版 map；
+- 独立 regions 配置对象的具体 Python 类型和源码文件落点；
+- 首版轻量包含推导调用 OFT `Region` 方法的最小构造细节。
 
 ---
 
@@ -906,34 +917,35 @@ R_N Z_N
 
 每个 block 表示一条隐式闭合曲线。
 
-候选规则：
+正式规则：
 
-1. block 第一行只包含一个十进制整数 `N`，`N>=3`。
-2. 随后恰好读取 N 行。
-3. 坐标行恰好包含两个空白分隔有限浮点数。
-4. 第一列 R，第二列 Z，单位 m。
-5. 末点不得重复首点。
-6. N 行结束后，下一非 EOF 内容必须是下一个 block 的 N。
-7. EOF 结束整个文件。
-8. 至少一个 block。
-9. 输入 block 顺序原样保留。
-10. 不从面积、方向、坐标、顺序或文件名推断物理名称。
-11. 每条曲线表示区域界面，不自动表示 plasma、vacuum、wall 或 conductor。
-12. 旧 `array_file` 的单 block 且全文件恰好 N 行契约不变；不得用新 Reader 替换旧
+1. 文件开头和结尾允许零个或多个空行。
+2. counted block 之间允许零个或多个空行；无空行连续书写同样合法。
+3. block 点数据之间允许空行；Reader 忽略空行，但必须最终读取恰好 N 个有效点。
+4. 空行不结束 block，不改变 `curve_id`、Region 身份或包含关系。
+5. 每个 block 的首个有效行只包含十进制整数 `N`，且 `N>=3`。
+6. 随后读取恰好 N 个有效数据行；每行严格包含两个空白分隔有限浮点数。
+7. 第一列 R，第二列 Z，单位 m。
+8. EOF 前当前 block 不足 N 个有效点时失败。
+9. 非法计数、非浮点数据、超过或少于两列的非空数据行必须失败。
+10. 首版不支持 `#`、`;`、`//` 或其他注释；非空行必须是计数或 R-Z 数据。
+11. 末点不得重复首点，曲线隐式闭合。
+12. 输入 block 顺序原样保留并生成从 1 开始的 `curve_id`。
+13. 文件必须至少包含两个 block；单 block 时 inspect 拒绝，并提示使用既有
+    `array_file + single_region`。
+14. 不从面积、方向、坐标、顺序或文件名推断物理名称。
+15. 每条曲线表示区域界面，不自动表示 plasma、vacuum、wall 或 conductor。
+16. 旧 `array_file` 的单 block 且全文件恰好 N 行契约不变；不得用新 Reader 替换旧
     Reader 后悄悄放宽旧格式。
 
-### 8.2 空行和注释待确认
+### 8.2 空行与注释裁决
 
-当前 `boundary_reader.py` 风格是严格 counted text：
+multi-array 的空行容忍是新 Reader 的正式文本布局规则，不改变旧
+`boundary_reader.py` 的严格单 block 契约。空行被忽略，但不允许通过空行掩盖截断
+block、非法字段或额外非空内容。
 
-- 不允许空数据行；
-- 不支持注释；
-- 不支持额外数据；
-- 只接受空白分隔的两个字段。
-
-沿用旧 Reader 的严格风格、不允许空行和注释，是当前保守候选；User 尚未最终裁决
-multi-array 是否允许 block 间空行或注释。实现前必须确认，不得借新格式改变旧
-`array_file` Reader 的严格契约。
+首版明确不支持注释。未来若需要注释，必须先升级蓝图并定义词法规则，不得把任意
+前缀行静默忽略。
 
 ### 8.3 curve_id 与正式 Region ID
 
@@ -947,8 +959,8 @@ multi-array 是否允许 block 间空行或注释。实现前必须确认，不�
   Region ID；
 - Region ID 是离散区域标签，不是数组位置，不执行节点索引式 `+1`。
 
-输入 block 重排会改变 `curve_id`，也可能影响 OFT 最终编号；具体影响尚待最小探针，
-不得预先承诺稳定。
+输入 block 重排会改变 `curve_id`，并已由运行探针确认可能改变同一 technical role
+内的部分 OFT 最终编号。重排后必须重新 inspect，不得承诺 Region ID 跨重排稳定。
 
 ---
 
@@ -1280,75 +1292,56 @@ linkmesh [现有参数]
 新命令：
 
 ```text
-linkmesh regions ...
+linkmesh regions inspect
+linkmesh regions generate
 ```
 
-应使用独立的 command-scoped 配置对象和严格 section 集，避免：
+正式使用独立的 command-scoped 配置对象和严格 section 集，避免：
 
-- regions 字段进入旧 `EffectiveConfig`；
-- 旧自动发现配置被 regions 错误加载；
-- regions 配置被旧 parser 当作未知键；
-- 两条命令共享不适用默认值。
+- regions 动态字段进入旧 `EffectiveConfig`；
+- regions 配置与旧入口发生字段串扰；
+- 两条命令共享不适用的 required fields 或默认值；
+- 旧无子命令行为被改变。
 
-本轮不修改既有 `EffectiveConfig` 字段。
+本轮不修改既有 `EffectiveConfig` 字段。具体 Python 类型和文件落点属于后续实现细节。
 
-### 14.2 schema version 建议
+### 14.2 regions TOML v1
 
-候选建议：
+regions 配置使用独立解析模型，顶层 `schema_version=1` 只标识 regions 配置 schema，
+不得向当前旧入口 schema 静默加入动态 Region 字段。
 
-- regions 配置仍可使用顶层 `schema_version=1`，但它是独立的 regions 配置 schema，
-  不是向当前旧 schema 静默加入任意区域语言；
-- 配置中增加明确命令族标识或使用专用 section，防止把两个 schema 混淆；
-- 若 User 要求同一 `linkmesh.in` 同时表达旧命令和 regions，则应升级并重新设计完整
-  schema，不能在当前 schema v1 中静默塞入新键。
-
-更保守的首版建议：
-
-```text
-regions 只在显式 --config 时加载专用配置；
-不自动发现旧工作目录 linkmesh.in。
-```
-
-这样最能避免配置串扰，但自动发现规则尚未由 User 确认。
-
-### 14.3 候选字段
-
-候选配置信息：
-
-```text
-multi_array_file path
-inspection PNG path
-region map path
-mesh PNG path
-global mesh_dx
-region_id → dx mapping
-```
-
-候选 TOML 表达：
+首版正式结构：
 
 ```toml
 schema_version = 1
 
 [regions]
-input = "regions.rz"
-region_map = "regions.map.json"
+mode = "inspect"
+multi_array_file = "boundaries.txt"
+regions_map = "regions.toml"
+plot = "regions.png"
 
-[inspection]
-plot = "regions-inspection.png"
-
-[mesh]
+[regions.mesh]
 mesh_dx = 0.08
 
-[mesh.region_dx]
-"2" = 0.05
-"3" = 0.03
-
-[output]
-plot = "regions-mesh.png"
+[regions.mesh.region_dx]
+1 = 0.03
+2 = 0.05
 ```
 
-这是调查建议，不是最终 schema。`curve_id`、parent、children、SHA-256 和 OFT
-attribute 属于派生 region map，不应要求用户手工重复输入。
+规则：
+
+- `mode` 只允许 `inspect` 或 `generate`，并与实际二级子命令一致；
+- inspect 和 generate 分别执行自身 required-field 检查；
+- `multi_array_file` 和 `regions_map` 是两阶段核心路径；
+- inspect 的 `plot` 是 inspection PNG；
+- generate 的 `plot` 是最终 mesh PNG；
+- `region_dx` 是最终 Region ID 到 dx 的显式映射，不是位置列表；
+- `physical_label` 属于 regions map，不属于 dx 配置；
+- regions 支持 `--config`，同时保留完整长 CLI；
+- 用户不得被强制只使用配置文件；
+- 优先级固定为内建默认值 < TOML < 显式 CLI；
+- 旧配置发现和 schema 行为保持不变，regions 实现不得造成字段串扰。
 
 ### 14.4 路径和优先级
 
@@ -1370,75 +1363,67 @@ attribute 属于派生 region map，不应要求用户手工重复输入。
 
 ### 15.1 正式职责
 
-User 已决定 inspect 阶段输出用户可读的 regions map。它不是第二套 Region 编号翻译
-系统，职责是：
+inspect 必须输出用户可读的 TOML regions map。它不是第二套 Region 编号翻译系统，
+而是 inspect 与 generate 之间的正式 Region 身份和用户元数据载体，职责是：
 
-- 展示 OFT 最终 Region ID；
-- 展示对应 `curve_id`；
-- 展示 parent Region 和 child Regions；
-- 展示 inspection PNG 中的颜色候选；
-- 让用户按最终 Region ID 设置目标 dx；
-- 帮助用户确认轻量推导的包含关系。
+- 展示 OFT 最终 Region ID 和对应 `curve_id`；
+- 展示 parent/children；
+- 保存 inspection PNG 对应颜色；
+- 保存可选 `physical_label`；
+- 让用户按最终 Region ID 设置 dx；
+- 让 generate 核对本次重建结构与 inspect 结果一致。
 
-generate 是否必须读取该 map，仍需 User 最终裁决。
+generate 必须同时读取 regions map 和原始 multi-array 文件，不能只根据 dx 数字猜测
+Region 身份。
 
-### 15.2 候选内容
+### 15.2 最小 TOML schema
 
-regions map 的正式用户字段方向为：
+```toml
+schema_version = 1
 
-```text
-region_id（OFT 最终 attribute）
-curve_id
-parent_region_id
-child_region_ids
-color
-physical_label（可选，默认空字符串）
+[[regions]]
+region_id = 1
+curve_id = 3
+parent_region_id = 2
+child_region_ids = []
+color = "#D55E00"
+physical_label = ""
 ```
 
-`physical_label` 由用户自由填写且允许为空。留空不得阻塞 inspect 或 generate；
-当前不参与包含树推导、OFT technical role、Region ID 或 dx 决策，也不得自动驱动
-Writer、M3D-C1 classification 或求解器物理语义。任何下游连接必须先升级蓝图。
+正式字段：
 
-为便于追溯，可在候选 diagnostics/internal 部分记录：
+- `schema_version=1`；
+- `region_id`；
+- `curve_id`；
+- `parent_region_id`，唯一 root 使用 `0`；
+- `child_region_ids`，按正式 Region ID 升序写出；
+- `color`，确定生成的显示元数据；
+- `physical_label`，普通 TOML 字符串，默认空。
 
-```text
-OFT Region name
-OFT technical role
-technical_role_source = "adapter_compatibility"
-physical_semantics = false
-```
+`physical_label` 不要求非空或唯一，不赋予枚举语义。用户可在 inspect 后编辑；
+generate 读取并保留，但不得据此改变 technical role、synthetic plasma、Region ID、
+dx、Writer、classification 或求解器行为。没有依据增加任意长度限制。
 
-synthetic plasma 不得成为用户必填或可编辑的物理字段。程序内存对象可额外保存
-OFT name、technical role 和 resolved dx，但这些运行时对应不构成第二套用户
-Region ID。
+`color` 不表示材料或物理类型，不参与 OFT、dx 或 Writer；用户修改 color 不改变网格。
+可选 diagnostics/internal 可以记录 OFT name 和 technical role，但不得成为用户必填
+字段，也不得把 synthetic plasma 写成 `physical_label`。
 
-不应保存：
+map 不保存 NumPy 对象、OFT/PUMI 句柄、SMB 字节、Matplotlib artist、自动修复坐标或
+物理名称猜测。
 
-- NumPy 二进制对象；
-- OFT/PUMI 句柄；
-- SMB 字节；
-- Matplotlib artist；
-- 物理名称猜测；
-- 自动修复后的替代坐标。
+### 15.3 不采用 SHA-256
 
-是否在 map 中完整复制输入坐标需后续裁决。即使复制，也必须以源文件 SHA-256 为身份
-校验依据。
+首版明确不保存 `input_sha256`，inspect 不生成摘要，generate 不计算或校验摘要。
+空行变化不得造成文件身份失败。用户负责保证 inspect 与 generate 使用同一份、未被
+实质修改或重排的输入。
 
-### 15.3 尚待裁决
+generate 重新读取输入并核对 curve 数量、curve_id/region_id 集合和对应关系、
+parent/children、synthetic role 重算结果及最终编号；map 中重复或未知 ID 必须失败。
+冲突时提示重新执行 inspect。
 
-当前尚未最终确认：
-
-- regions map 的正式文件名；
-- 是否固定采用 TOML；
-- schema version；
-- color 是否为正式字段；
-- `input_sha256` 是否首版必需；
-- generate 是否必须把 regions map 作为输入；
-- generate 是否只重新推导并核对相同编号；
-- 用户主动执行 generate 是否隐式表达人工确认。
-
-无论 map 是否强制，generate 都必须重新组装 OFT Domain、生成 Triangle 网格，并核对
-最终 Region ID、每 Region 三角形数量和 mesh PNG。编号一致性由下一轮探针先验证。
+该直接核对不承诺发现只改变空行、等价数值文本、未改变结构和编号的坐标微调，或保持
+相同曲线数量和包含关系的任意输入变化。map 的必要性来自 Region 身份和两阶段一致性，
+不是内容摘要。
 
 ---
 
@@ -1495,32 +1480,26 @@ mesh PNG 职责：
 help 可读性裁决。无论语法实现如何，解析结果必须是显式
 `dict[LinkMesh region_id, float]`。
 
-### 17.2 当前推荐解析规则
-
-以下仍是推荐方案，局部覆盖规则尚未由 User 最终裁决：
+### 17.2 正式解析规则
 
 1. 只提供 `--mesh-dx`：
    - 所有 Region 使用该统一值。
 2. 同时提供 `--mesh-dx` 和部分 `--region-dx`：
-   - `mesh_dx` 是明确基础值；
-   - `region_dx` 对列出的 Region 做显式覆盖。
-3. 不提供 `--mesh-dx` 但提供 `--region-dx`：
-   - 必须完整覆盖 region map 中全部 Region。
-4. 两者都不提供：
-   - 使用 regions 自身明确默认 `mesh_dx`，前提是 User 批准该默认值。
-5. 重复 Region ID：
-   - 立即失败，不采用 last-wins。
-6. 未知 Region ID：
-   - 立即失败。
-7. 缺失 Region ID 且无全局回退：
-   - 立即失败。
-8. dx 必须为有限正数，bool、NaN、Inf、零和负数失败。
-9. 单位统一为 m。
-10. 解析和覆盖在调用 OFT 前完成。
-11. 输出 resolved mapping 到日志和 region map 补充记录。
+   - `mesh_dx` 是全局基础值；
+   - `region_dx` 覆盖列出的 Region。
+3. 不提供 `--mesh-dx`：
+   - `--region-dx` 必须完整覆盖 regions map 中全部 Region ID。
+4. 重复 Region ID立即失败，不采用 last-wins。
+5. 未知 Region ID立即失败。
+6. 缺失 Region ID 且无全局值立即失败。
+7. dx 必须为有限正数；bool、NaN、Inf、零和负数失败。
+8. 单位统一为 m。
+9. 解析和覆盖在调用 OFT 前完成。
+10. 不允许位置数组按输入或输出顺序隐式映射。
+11. 用户必须依据 regions map 中本次 inspect 的最终 Region ID 设置局部尺度。
+12. 配置文件使用显式 Region ID 到浮点 dx 的 TOML 映射。
 
-该规则兼顾统一尺度和局部覆盖，同时不依赖位置顺序。完整覆盖还是局部覆盖仍需 User
-最终确认。
+该规则同时支持统一尺度和局部覆盖，并保持 Region ID 映射显式、确定。
 
 ### 17.3 OFT 绑定
 
@@ -1840,42 +1819,36 @@ LinkMesh multi-array 多区域生成链仍未实现；
 5. synthetic plasma compatibility role 隔离规则已由 User 批准。
 6. OFT N-region、编号主逻辑和 no-plasma 调查均已完成，不需要继续扩展当前探针。
 
-### 批次 1：剩余 User 裁决与 inspect 业务实现
+### 批次 1：inspect 业务链
 
-1. regions 专用配置发现和 schema。
-2. regions map 的格式、字段和 generate 输入职责。
-3. dx 完整覆盖或全局默认加局部覆盖规则。
-4. multi-array 空行和注释规则。
+1. 多 block Reader与正式空行处理。
+2. 至少两个 block 检查和单 block 引导错误。
+3. 基础数组、有限性、重复点和退化检查。
+4. `curve_id`。
+5. OFT Region 内点与 point-in-polygon 的轻量包含推导。
+6. 唯一根 parent/children 树。
+7. deterministic synthetic plasma role plan。
+8. OFT setup-only 最终 Region ID。
+9. `regions inspect` 二级 CLI。
+10. TOML regions map，`physical_label` 默认空。
+11. inspection PNG。
+12. 不引入 Shapely/GEOS 或通用 polygon boolean。
 
-1. regions 专用配置发现和 schema。
-2. regions map 的格式、字段和 generate 输入职责。
-3. dx 完整覆盖或全局默认加局部覆盖规则。
-4. multi-array 空行和注释规则。
-5. 单曲线 multi-array 的拒绝/引导规则。
-
-随后实施：
-
-1. 多 block Reader。
-2. 基础曲线检查。
-3. OFT Region 内点与 point-in-polygon 的轻量包含推导。
-4. 唯一根 parent/children 树。
-5. deterministic synthetic plasma role plan。
-6. `regions inspect`。
-7. regions map。
-8. inspection PNG。
-9. 不引入 Shapely/GEOS 或通用 polygon boolean。
+第一批不生成完整 Triangle 网格，不修改 Writer、M3D-C1 或 helper。
 
 ### 批次 2：generate 业务链
 
 1. `regions generate`。
-2. map/SHA-256 重验。
-3. resolved dx。
-4. OFT Domain。
-5. N-region `Mesh2D`。
-6. mesh PNG。
-7. 不修改 Writer/helper。
+2. 必须读取原始 multi-array 文件和 TOML regions map。
+3. 不使用 SHA-256；重建并核对 curve/Region/parent/children/technical-role/编号。
+4. `--mesh-dx`、`--region-dx` 和独立配置合并。
+5. OFT/Triangle N-region Domain。
+6. N-region `Mesh2D`。
+7. 每 Region triangle count 和基本结构检查。
+8. mesh PNG。
+9. 不修改 Writer/helper。
 
-### 批次 5：真实输入和 M3D-C1 后续评估
+### 批次 3：完整回归和真实使用
 
 1. 真实 multi-array 输入。
 2. inspection 人工确认。
