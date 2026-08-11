@@ -329,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--region-dx",
         dest="region_dx",
         action="append",
-        default=UNSET,
+        default=None,
         metavar="ID=DX",
         help="按最终 Region ID 覆盖网格尺度，可重复提供",
     )
@@ -647,7 +647,11 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         regions_map=args.regions_map,
         plot=args.plot,
         mesh_dx=args.mesh_dx,
-        region_dx=args.region_dx,
+        region_dx=(
+            args.region_dx
+            if args.region_dx is not None
+            else UNSET
+        ),
         verbose=True if args.verbose else UNSET,
     )
     cfg = config_mod.load_regions_generate_config(

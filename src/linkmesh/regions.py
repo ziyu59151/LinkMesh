@@ -467,12 +467,21 @@ def validate_region_map(records: Sequence[RegionMapEntry]) -> None:
         if not set(record.child_region_ids) <= known_ids:
             raise RegionsError("regions map 引用了未知 child_region_id")
         for child_id in record.child_region_ids:
-            if by_region_id[child_id].parent_region_id != record.region_id:
-                raise RegionsError("regions map 的 parent/children 关系不一致")
+            child_parent_id = by_region_id[child_id].parent_region_id
+            if child_parent_id != record.region_id:
+                raise RegionsError(
+                    f"Region ID {record.region_id} 的 child_region_ids 包含 "
+                    f"{child_id}，但该 child 的 parent_region_id="
+                    f"{child_parent_id}"
+                )
         if record.parent_region_id:
             parent = by_region_id[record.parent_region_id]
             if record.region_id not in parent.child_region_ids:
-                raise RegionsError("regions map 的 child/parent 关系不一致")
+                raise RegionsError(
+                    f"Region ID {record.region_id} 的 parent_region_id="
+                    f"{record.parent_region_id}，但该 parent 的 "
+                    f"child_region_ids 不包含 {record.region_id}"
+                )
 
     visit_state: dict[int, int] = {
         region_id: 0 for region_id in known_ids

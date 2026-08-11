@@ -475,8 +475,9 @@ def _validate_multi_region_plan(plan: Any, *, require_ids: bool) -> tuple[Any, .
     ]
     if len(roots) != 1 or roots[0] != plan.root_curve_id:
         raise ValueError("Region plan 必须恰好包含一个一致的 root")
+    known_curve_ids = set(by_curve_id)
     if any(
-        entry.parent_curve_id not in by_curve_id | {0}
+        entry.parent_curve_id not in known_curve_ids | {0}
         for entry in entries
     ):
         raise ValueError("Region plan 引用了未知 parent_curve_id")
