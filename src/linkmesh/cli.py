@@ -337,6 +337,7 @@ def build_parser() -> argparse.ArgumentParser:
     generate_configuration_group = generate_parser.add_argument_group(
         "Configuration"
     )
+    generate_task_group = generate_parser.add_argument_group("Task")
     generate_input_group = generate_parser.add_argument_group("Input")
     generate_mesh_group = generate_parser.add_argument_group(
         "Mesh Resolution"
@@ -349,6 +350,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="只加载该 regions generate TOML 配置",
+    )
+    generate_task_group.add_argument(
+        "--target",
+        default=UNSET,
+        choices=("mesh_only", "trimeg"),
+        help="输出目标（默认：mesh_only）；仅作用于 regions generate",
     )
     generate_input_group.add_argument(
         "--multi-array-file",
@@ -379,6 +386,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="ID=DX",
         help="按最终 Region ID 局部覆盖尺度，可重复提供，单位 m",
+    )
+    generate_output_group.add_argument(
+        "--hdf5",
+        default=UNSET,
+        metavar="PATH",
+        help="TRIMEG HDF5 输出路径；target=trimeg 时必需",
     )
     generate_output_group.add_argument(
         "--plot",
@@ -701,9 +714,11 @@ def _run_regions_inspect(args: argparse.Namespace) -> None:
 def _run_regions_generate(args: argparse.Namespace) -> None:
     """Rebuild, validate, and generate a full OFT N-region mesh."""
     overrides = config_mod.RegionsGenerateOverrides(
+        target=args.target,
         multi_array_file=args.multi_array_file,
         regions_map=args.regions_map,
         plot=args.plot,
+        hdf5=args.hdf5,
         mesh_dx=args.mesh_dx,
         region_dx=(
             args.region_dx
@@ -751,6 +766,11 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
     if any(count == 0 for count in counts.values()):
         raise ValueError("完整网格中至少一个 map Region 没有三角形")
 
+    if cfg.target == "trimeg":
+        from linkmesh.writers.hdf5_writer import write_hdf5
+
+        write_hdf5(mesh, str(cfg.hdf5_path), verbose=False)
+
     plot_regions_mesh(mesh, records, str(cfg.plot_path))
 
     if cfg.verbose:
@@ -759,7 +779,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
             for record in records
         }
         print(
-            f"[LinkMesh] nodes={mesh.n_nodes}, "
+            f"[LinkMesh] target={cfg.target}, nodes={mesh.n_nodes}, "
             f"triangles={mesh.n_triangles}, regions={len(counts)}"
         )
         for region_id in sorted(counts):
@@ -774,6 +794,8 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
                 f"curve_id={record.curve_id}, triangles={counts[region_id]}"
                 f"{label}"
             )
+        if cfg.hdf5_path is not None:
+            print(f"[LinkMesh] TRIMEG HDF5: {cfg.hdf5_path}")
         print(f"[LinkMesh] mesh PNG: {cfg.plot_path}")
     else:
         print(

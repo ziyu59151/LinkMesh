@@ -248,10 +248,12 @@ def test_regions_generate_help_is_scoped(capsys):
     help_text = capsys.readouterr().out
     for option in (
         "--config",
+        "--target",
         "--multi-array-file",
         "--regions-map",
         "--mesh-dx",
         "--region-dx",
+        "--hdf5",
         "--plot",
         "--verbose",
     ):
@@ -259,12 +261,16 @@ def test_regions_generate_help_is_scoped(capsys):
     assert "最终 Region ID" in help_text
     assert "可重复提供" in help_text
     assert "完整覆盖全部 Region" in help_text
+    assert "{mesh_only,trimeg}" in help_text
+    assert "m3dc1" not in help_text
     assert "--gfile" not in help_text
-    assert "--hdf5" not in help_text
+    assert "--model" not in help_text
     assert "--smb" not in help_text
+    assert "--no-hdf5" not in help_text
     _assert_group_order(
         help_text,
         "Configuration",
+        "Task",
         "Input",
         "Mesh Resolution",
         "Output",
@@ -371,6 +377,7 @@ def test_regions_generate_rebuilds_validates_and_plots(
     resolve = MagicMock(return_value={1: 0.03, 2: 0.08})
     generate = MagicMock(return_value=mesh)
     plot = MagicMock()
+    hdf5 = MagicMock()
 
     monkeypatch.setattr("linkmesh.regions.read_regions_map", read_map)
     monkeypatch.setattr(
@@ -399,6 +406,10 @@ def test_regions_generate_rebuilds_validates_and_plots(
         "linkmesh.utils.plotter.plot_regions_mesh",
         plot,
     )
+    monkeypatch.setattr(
+        "linkmesh.writers.hdf5_writer.write_hdf5",
+        hdf5,
+    )
 
     cli._run(
         _parse(
@@ -425,10 +436,132 @@ def test_regions_generate_rebuilds_validates_and_plots(
         {1: 0.03, 2: 0.08},
     )
     plot.assert_called_once_with(mesh, records, str((tmp_path / "mesh.png").resolve()))
+    assert hdf5.call_count == 0
     output = capsys.readouterr().out
     assert "Region 1" in output
     assert "triangles=2" in output
     assert "Region 2" in output
+
+
+def test_regions_generate_trimeg_reuses_mesh_and_calls_hdf5_once(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    records = (
+        SimpleNamespace(
+            region_id=1,
+            curve_id=2,
+            parent_region_id=2,
+            child_region_ids=(),
+            color="#D55E00",
+            physical_label="",
+        ),
+        SimpleNamespace(
+            region_id=2,
+            curve_id=1,
+            parent_region_id=0,
+            child_region_ids=(1,),
+            color="#0072B2",
+            physical_label="",
+        ),
+    )
+    mesh = SimpleNamespace(
+        n_nodes=5,
+        n_triangles=3,
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+    generate = MagicMock(return_value=mesh)
+    hdf5 = MagicMock()
+
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        MagicMock(return_value=blocks),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.read_regions_map",
+        MagicMock(return_value=records),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.build_region_plan",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        MagicMock(return_value={1: 2, 2: 1}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.assign_final_region_ids",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.validate_plan_against_map",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.resolve_region_dx",
+        MagicMock(return_value={1: 0.03, 2: 0.08}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
+        generate,
+    )
+    monkeypatch.setattr(
+        "linkmesh.writers.hdf5_writer.write_hdf5",
+        hdf5,
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_mesh",
+        MagicMock(),
+    )
+    build_spec = MagicMock()
+    model_writer = MagicMock()
+    smb_writer = MagicMock()
+    monkeypatch.setattr(
+        "linkmesh.m3dc1_model.build_single_face_model_spec",
+        build_spec,
+    )
+    monkeypatch.setattr(
+        "linkmesh.writers.m3dc1_model_writer.write_m3dc1_model",
+        model_writer,
+    )
+    monkeypatch.setattr(
+        "linkmesh.writers.smb_writer.write_smb",
+        smb_writer,
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "generate",
+            "--target",
+            "trimeg",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "mesh.png",
+            "--mesh-dx",
+            "0.08",
+            "--hdf5",
+            "mesh.h5",
+        )
+    )
+
+    generate.assert_called_once()
+    hdf5.assert_called_once_with(
+        mesh,
+        str((tmp_path / "mesh.h5").resolve()),
+        verbose=False,
+    )
+    assert build_spec.call_count == 0
+    assert model_writer.call_count == 0
+    assert smb_writer.call_count == 0
 
 
 def test_mesh_only_selects_mesher_without_writers(monkeypatch, tmp_path):

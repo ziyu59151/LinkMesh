@@ -187,9 +187,11 @@ class RegionsInspectConfig:
 class RegionsGenerateOverrides:
     """Explicit CLI values for the isolated regions-generate configuration."""
 
+    target: Any = UNSET
     multi_array_file: Any = UNSET
     regions_map: Any = UNSET
     plot: Any = UNSET
+    hdf5: Any = UNSET
     mesh_dx: Any = UNSET
     region_dx: Any = UNSET
     verbose: Any = UNSET
@@ -202,9 +204,11 @@ class RegionsGenerateConfig:
     schema_version: int
     config_path: Optional[Path]
     mode: Literal["generate"]
+    target: Literal["mesh_only", "trimeg"]
     multi_array_file_path: Path
     regions_map_path: Path
     plot_path: Path
+    hdf5_path: Optional[Path]
     mesh_dx: Optional[float]
     region_dx: Mapping[int, float]
     verbose: bool
@@ -586,9 +590,11 @@ def _load_regions_generate_toml(
 
     allowed_regions = {
         "mode",
+        "target",
         "multi_array_file",
         "regions_map",
         "plot",
+        "hdf5",
         "mesh",
     }
     unknown_regions = set(regions) - allowed_regions
@@ -614,7 +620,14 @@ def _load_regions_generate_toml(
         )
 
     values: dict[str, Any] = {"mode": "generate"}
-    for key in ("multi_array_file", "regions_map", "plot"):
+    if "target" in regions:
+        values["target"] = _check_enum(
+            regions["target"],
+            ("mesh_only", "trimeg"),
+            "[regions].target",
+            config_path,
+        )
+    for key in ("multi_array_file", "regions_map", "plot", "hdf5"):
         if key in regions:
             values[key] = _check_str_path(
                 regions[key],
@@ -722,15 +735,43 @@ def load_regions_inspect_config(
         "verbose",
         config_path,
     )
+    target = _check_enum(
+        merged("target", "mesh_only"),
+        ("mesh_only", "trimeg"),
+        "regions target",
+        config_path,
+    )
     multi_array_file_path = required_path("multi_array_file")
     regions_map_path = required_path("regions_map")
     plot_path = required_path("plot")
 
-    resolved_paths = (
+    explicit_hdf5 = overrides.hdf5
+    raw_hdf5 = merged("hdf5")
+    hdf5_path: Optional[Path] = None
+    if raw_hdf5 is not None:
+        hdf5_base = base_cwd if explicit_hdf5 is not UNSET else config_dir
+        hdf5_path = _resolve_path(
+            _check_str_path(raw_hdf5, "hdf5", config_path),
+            hdf5_base,
+        )
+
+    if target == "trimeg" and hdf5_path is None:
+        raise ConfigError(
+            "regions generate target=trimeg 需要 --hdf5 或 [regions].hdf5"
+        )
+    if target == "mesh_only" and hdf5_path is not None:
+        raise ConfigError(
+            "regions generate target=mesh_only 禁止提供 --hdf5 或 "
+            "[regions].hdf5"
+        )
+
+    resolved_paths = [
         ("multi_array_file", multi_array_file_path),
         ("regions_map", regions_map_path),
         ("plot", plot_path),
-    )
+    ]
+    if hdf5_path is not None:
+        resolved_paths.append(("hdf5", hdf5_path))
     for index, (first_name, first_path) in enumerate(resolved_paths):
         for second_name, second_path in resolved_paths[index + 1:]:
             if first_path == second_path:
@@ -843,9 +884,11 @@ def load_regions_generate_config(
         schema_version=SCHEMA_VERSION,
         config_path=config_path,
         mode="generate",
+        target=target,
         multi_array_file_path=multi_array_file_path,
         regions_map_path=regions_map_path,
         plot_path=plot_path,
+        hdf5_path=hdf5_path,
         mesh_dx=mesh_dx,
         region_dx=MappingProxyType(dict(sorted(region_dx.items()))),
         verbose=verbose,

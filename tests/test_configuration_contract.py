@@ -172,7 +172,9 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
 
     config = load_regions_generate_config(
         RegionsGenerateOverrides(
+            target="trimeg",
             plot="cli.png",
+            hdf5="cli.h5",
             mesh_dx=0.10,
             region_dx=["2=0.04", "3=0.02"],
         ),
@@ -184,7 +186,9 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
     assert config.regions_map_path == (
         config_dir / "regions-map.toml"
     ).resolve()
+    assert config.target == "trimeg"
     assert config.plot_path == (tmp_path / "cli.png").resolve()
+    assert config.hdf5_path == (tmp_path / "cli.h5").resolve()
     assert config.mesh_dx == 0.10
     assert dict(config.region_dx) == {1: 0.03, 2: 0.04, 3: 0.02}
 
@@ -198,6 +202,124 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
         (["bad"], "ID=DX"),
     ],
 )
+def test_regions_generate_target_defaults_and_hdf5_contract(tmp_path):
+    base = {
+        "multi_array_file": "multi.rz",
+        "regions_map": "regions.toml",
+        "plot": "mesh.png",
+        "mesh_dx": 0.08,
+    }
+
+    mesh_only = load_regions_generate_config(
+        RegionsGenerateOverrides(**base),
+        cwd=tmp_path,
+    )
+    assert mesh_only.target == "mesh_only"
+    assert mesh_only.hdf5_path is None
+
+    with pytest.raises(ConfigError, match="mesh_only.*禁止"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(**base, hdf5="mesh.h5"),
+            cwd=tmp_path,
+        )
+
+    with pytest.raises(ConfigError, match="trimeg.*需要"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(**base, target="trimeg"),
+            cwd=tmp_path,
+        )
+
+    trimeg = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            **base,
+            target="trimeg",
+            hdf5="mesh.h5",
+        ),
+        cwd=tmp_path,
+    )
+    assert trimeg.target == "trimeg"
+    assert trimeg.hdf5_path == (tmp_path / "mesh.h5").resolve()
+
+
+@pytest.mark.parametrize("target", ["m3dc1", "invalid", 1])
+def test_regions_generate_rejects_unsupported_target(tmp_path, target):
+    with pytest.raises(ConfigError, match="target"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                target=target,
+                multi_array_file="multi.rz",
+                regions_map="regions.toml",
+                plot="mesh.png",
+                mesh_dx=0.08,
+            ),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_generate_cli_overrides_toml_target_and_hdf5_bases(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "target = 'trimeg'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "hdf5 = 'toml.h5'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n",
+        encoding="utf-8",
+    )
+
+    toml_config = load_regions_generate_config(
+        RegionsGenerateOverrides(),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+    assert toml_config.hdf5_path == (config_dir / "toml.h5").resolve()
+
+    cli_config = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            target="trimeg",
+            hdf5="cli.h5",
+        ),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+    assert cli_config.target == "trimeg"
+    assert cli_config.hdf5_path == (tmp_path / "cli.h5").resolve()
+
+
+@pytest.mark.parametrize(
+    "hdf5, message",
+    [
+        ("multi.rz", "multi_array_file.*hdf5"),
+        ("regions.toml", "regions_map.*hdf5"),
+        ("mesh.png", "plot.*hdf5"),
+    ],
+)
+def test_regions_generate_rejects_hdf5_path_collisions(
+    tmp_path,
+    hdf5,
+    message,
+):
+    with pytest.raises(ConfigError, match=message):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                target="trimeg",
+                multi_array_file="multi.rz",
+                regions_map="regions.toml",
+                plot="mesh.png",
+                hdf5=hdf5,
+                mesh_dx=0.08,
+            ),
+            cwd=tmp_path,
+        )
+
+
 def test_regions_generate_rejects_invalid_cli_region_dx(
     tmp_path,
     tokens,
