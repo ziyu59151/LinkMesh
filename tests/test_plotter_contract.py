@@ -7,11 +7,16 @@ pytest.importorskip("matplotlib")
 
 from linkmesh.mesh import Mesh2D
 from linkmesh.regions import (
+    RegionMapEntry,
     assign_final_region_ids,
     build_region_plan,
     region_map_entries,
 )
-from linkmesh.utils.plotter import plot_mesh, plot_regions_inspection
+from linkmesh.utils.plotter import (
+    plot_mesh,
+    plot_regions_inspection,
+    plot_regions_mesh,
+)
 
 
 def _mesh() -> Mesh2D:
@@ -88,6 +93,101 @@ def test_regions_inspection_uses_figure_legend_and_no_axes_text(
     }
     for entry, snapshot in zip(numbered.entries, snapshots):
         np.testing.assert_array_equal(entry.points, snapshot)
+
+
+def test_regions_mesh_uses_map_colors_and_figure_legend(
+    tmp_path,
+    monkeypatch,
+):
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [0.0, 2.0],
+                [2.0, 2.0],
+                [2.0, 0.0],
+                [1.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array(
+            [[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]],
+            dtype=np.int32,
+        ),
+        region_ids=np.array([2, 1, 1, 2], dtype=np.int32),
+        outer_boundary=np.array(
+            [[0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0]],
+            dtype=np.float64,
+        ),
+    )
+    records = (
+        RegionMapEntry(1, 2, 2, (), "#D55E00", "core"),
+        RegionMapEntry(2, 1, 0, (1,), "#0072B2", ""),
+    )
+    output = tmp_path / "generated.png"
+
+    import matplotlib.axes
+    import matplotlib.figure
+
+    tripcolor_calls = []
+    legend_calls = []
+    original_tripcolor = matplotlib.axes.Axes.tripcolor
+    original_legend = matplotlib.figure.Figure.legend
+
+    def recording_tripcolor(self, *args, **kwargs):
+        tripcolor_calls.append(kwargs)
+        return original_tripcolor(self, *args, **kwargs)
+
+    def recording_legend(self, *args, **kwargs):
+        legend = original_legend(self, *args, **kwargs)
+        legend_calls.append((legend, kwargs))
+        return legend
+
+    monkeypatch.setattr(
+        matplotlib.axes.Axes,
+        "tripcolor",
+        recording_tripcolor,
+    )
+    monkeypatch.setattr(
+        matplotlib.figure.Figure,
+        "legend",
+        recording_legend,
+    )
+
+    plot_regions_mesh(mesh, records, str(output))
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert len(tripcolor_calls) == 1
+    assert list(tripcolor_calls[0]["cmap"].colors) == [
+        "#D55E00",
+        "#0072B2",
+    ]
+    assert len(legend_calls) == 1
+    legend, kwargs = legend_calls[0]
+    assert legend.axes is None
+    assert kwargs["loc"] == "lower center"
+    assert [text.get_text() for text in legend.get_texts()] == [
+        "Region 1: curve 2, parent 2, children -, label core",
+        "Region 2: curve 1, parent 0, children 1",
+    ]
+
+
+def test_regions_mesh_failure_does_not_replace_existing_output(
+    tmp_path,
+):
+    output = tmp_path / "generated.png"
+    output.write_bytes(b"existing")
+    records = (
+        RegionMapEntry(1, 2, 2, (), "#D55E00"),
+        RegionMapEntry(2, 1, 0, (1,), "#0072B2"),
+    )
+    mesh = _mesh()
+
+    with pytest.raises(ValueError, match="Region ID"):
+        plot_regions_mesh(mesh, records, str(output))
+
+    assert output.read_bytes() == b"existing"
 
 
 def test_reference_only_mode_selects_lcfs_and_preserves_inputs(

@@ -242,6 +242,62 @@ def test_region_map_accepts_valid_nested_and_sibling_tree():
     validate_region_map(records)
 
 
+def test_numbered_plan_matches_map_while_allowing_user_metadata_edits():
+    root = np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float)
+    child = np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float)
+    from linkmesh.regions import assign_final_region_ids
+
+    plan = assign_final_region_ids(
+        build_region_plan((root, child)),
+        {1: 2, 2: 1},
+    )
+    records = (
+        RegionMapEntry(1, 2, 2, (), "#FFFFFF", "user label"),
+        RegionMapEntry(2, 1, 0, (1,), "#000000", ""),
+    )
+
+    validate_plan_against_map(plan, records)
+
+
+def test_numbered_plan_rejects_map_identity_and_topology_conflicts():
+    root = np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float)
+    child = np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float)
+    from linkmesh.regions import assign_final_region_ids
+
+    plan = assign_final_region_ids(
+        build_region_plan((root, child)),
+        {1: 2, 2: 1},
+    )
+    conflicting = (
+        RegionMapEntry(1, 1, 0, (2,), "#0072B2"),
+        RegionMapEntry(2, 2, 1, (), "#D55E00"),
+    )
+
+    with pytest.raises(RegionsError, match="Region ID 已变化"):
+        validate_plan_against_map(plan, conflicting)
+
+
+def test_resolve_region_dx_supports_default_overrides_and_full_coverage():
+    records = (
+        RegionMapEntry(1, 2, 2, (), "#0072B2"),
+        RegionMapEntry(2, 1, 0, (1,), "#D55E00"),
+    )
+
+    assert resolve_region_dx(records, 0.08, {1: 0.03}) == {
+        1: 0.03,
+        2: 0.08,
+    }
+    assert resolve_region_dx(records, None, {1: 0.03, 2: 0.05}) == {
+        1: 0.03,
+        2: 0.05,
+    }
+
+    with pytest.raises(RegionsError, match="完整覆盖"):
+        resolve_region_dx(records, None, {1: 0.03})
+    with pytest.raises(RegionsError, match="未知 Region ID 3"):
+        resolve_region_dx(records, 0.08, {3: 0.03})
+
+
 def _install_fake_oft(monkeypatch, equilibrium) -> None:
     root = ModuleType("OpenFUSIONToolkit")
     tokamaker = ModuleType("OpenFUSIONToolkit.TokaMaker")

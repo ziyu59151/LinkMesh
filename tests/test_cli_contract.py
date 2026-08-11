@@ -147,6 +147,124 @@ def test_regions_inspect_runs_setup_only_map_and_plot(
     assert write_map.call_count == 1
 
 
+def test_regions_generate_help_is_scoped(capsys):
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as captured:
+        parser.parse_args(["regions", "generate", "--help"])
+
+    assert captured.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "--region-dx" in help_text
+    assert "--mesh-dx" in help_text
+    assert "--gfile" not in help_text
+
+
+def test_regions_generate_rebuilds_validates_and_plots(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    records = (
+        SimpleNamespace(
+            region_id=1,
+            curve_id=2,
+            parent_region_id=2,
+            child_region_ids=(),
+            color="#D55E00",
+            physical_label="core",
+        ),
+        SimpleNamespace(
+            region_id=2,
+            curve_id=1,
+            parent_region_id=0,
+            child_region_ids=(1,),
+            color="#0072B2",
+            physical_label="",
+        ),
+    )
+    plan = object()
+    numbered_plan = object()
+    mesh = SimpleNamespace(
+        n_nodes=5,
+        n_triangles=3,
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+
+    read_map = MagicMock(return_value=records)
+    read_blocks = MagicMock(return_value=blocks)
+    build_plan = MagicMock(return_value=plan)
+    setup = MagicMock(return_value={1: 2, 2: 1})
+    assign = MagicMock(return_value=numbered_plan)
+    validate = MagicMock()
+    resolve = MagicMock(return_value={1: 0.03, 2: 0.08})
+    generate = MagicMock(return_value=mesh)
+    plot = MagicMock()
+
+    monkeypatch.setattr("linkmesh.regions.read_regions_map", read_map)
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        read_blocks,
+    )
+    monkeypatch.setattr("linkmesh.regions.build_region_plan", build_plan)
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        setup,
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.assign_final_region_ids",
+        assign,
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.validate_plan_against_map",
+        validate,
+    )
+    monkeypatch.setattr("linkmesh.regions.resolve_region_dx", resolve)
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
+        generate,
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_mesh",
+        plot,
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "generate",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "mesh.png",
+            "--mesh-dx",
+            "0.08",
+            "--region-dx",
+            "1=0.03",
+            "--verbose",
+        )
+    )
+
+    validate.assert_called_once_with(numbered_plan, records)
+    resolve.assert_called_once_with(records, 0.08, {1: 0.03})
+    generate.assert_called_once_with(
+        numbered_plan,
+        {1: 0.03, 2: 0.08},
+    )
+    plot.assert_called_once_with(mesh, records, str((tmp_path / "mesh.png").resolve()))
+    output = capsys.readouterr().out
+    assert "Region 1" in output
+    assert "triangles=2" in output
+    assert "Region 2" in output
+
+
 def test_mesh_only_selects_mesher_without_writers(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     mocks = _install_boundaries(monkeypatch)

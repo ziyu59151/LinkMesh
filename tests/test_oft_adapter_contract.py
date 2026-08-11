@@ -11,6 +11,7 @@ from linkmesh.mesher.oft_adapter import (
     _OUTER_REGION_ATTR,
     build_oft_domain_from_gfile,
     build_single_region_domain_from_boundary,
+    generate_multi_region_mesh,
     inspect_multi_region_ids,
     mesh_from_oft_domain,
 )
@@ -233,6 +234,108 @@ def test_multi_region_inspect_uses_setup_only_and_final_ids(monkeypatch):
     assert roles["LM_CURVE_1"] == "boundary"
     assert roles["LM_CURVE_2"] == "plasma"
     assert roles["LM_CURVE_3"] == "vacuum"
+
+
+class _GenerateDomain:
+    instances = []
+
+    def __init__(self):
+        type(self).instances.append(self)
+        self.regions = []
+        self.region_info = {}
+        self.define_calls = []
+        self.setup_only = None
+
+    def define_region(self, name, dx, role):
+        self.define_calls.append((name, dx, role))
+        self.region_info[name.upper()] = {
+            "id": 99,
+            "type": role,
+        }
+
+    def add_polygon(self, points, name, parent_name=None):
+        region = _Region()
+        region.points = np.array(points, dtype=np.float64, copy=True)
+        region.name = name
+        region.parent_name = parent_name
+        self.regions.append(region)
+
+    def build_mesh(self, *, setup_only=False):
+        self.setup_only = setup_only
+        final_ids = {
+            "LM_CURVE_1": 2,
+            "LM_CURVE_2": 1,
+            "LM_CURVE_3": 3,
+        }
+        for name, region_id in final_ids.items():
+            self.region_info[name]["id"] = region_id
+
+        if setup_only:
+            return None, None, None
+
+        self.regions[0]._resampled_points = np.array(
+            [[0.0, 0.0], [0.0, 4.0], [4.0, 4.0], [4.0, 0.0]],
+            dtype=np.float64,
+        )
+        nodes = np.array(
+            [
+                [0.0, 0.0],
+                [4.0, 0.0],
+                [4.0, 4.0],
+                [0.0, 4.0],
+                [2.0, 2.0],
+            ],
+            dtype=np.float64,
+        )
+        triangles = np.array(
+            [[0, 1, 4], [1, 2, 4], [2, 3, 4]],
+            dtype=np.int32,
+        )
+        attributes = np.array([2, 1, 3], dtype=np.int32)
+        return nodes, triangles, attributes
+
+
+def test_multi_region_full_build_uses_final_id_dx_and_fresh_domain(
+    monkeypatch,
+):
+    _GenerateDomain.instances = []
+    monkeypatch.setattr(
+        oft_adapter,
+        "_load_gs_domain_class",
+        lambda: _GenerateDomain,
+    )
+    monkeypatch.setattr(
+        oft_adapter,
+        "_get_installed_oft_version",
+        lambda: "26.6",
+    )
+    root = np.array([[0, 0], [0, 4], [4, 4], [4, 0]], dtype=float)
+    left = np.array([[0.5, 0.5], [0.5, 1.5], [1.5, 1.5], [1.5, 0.5]])
+    right = np.array([[2.5, 0.5], [2.5, 1.5], [3.5, 1.5], [3.5, 0.5]])
+    plan = build_region_plan((root, left, right))
+
+    setup_ids = inspect_multi_region_ids(plan)
+    from linkmesh.regions import assign_final_region_ids
+
+    numbered = assign_final_region_ids(plan, setup_ids)
+    mesh = generate_multi_region_mesh(
+        numbered,
+        {1: 0.03, 2: 0.08, 3: 0.05},
+    )
+
+    assert len(_GenerateDomain.instances) == 2
+    setup_domain, full_domain = _GenerateDomain.instances
+    assert setup_domain is not full_domain
+    assert setup_domain.setup_only is True
+    assert full_domain.setup_only is False
+    assert full_domain.define_calls == [
+        ("LM_CURVE_1", 0.08, "boundary"),
+        ("LM_CURVE_2", 0.03, "plasma"),
+        ("LM_CURVE_3", 0.05, "vacuum"),
+    ]
+    assert mesh.region_ids.tolist() == [2, 1, 3]
+    assert mesh.outer_boundary is not None
+    assert set(mesh.region_ids.tolist()) == {1, 2, 3}
 
 
 class _NestedDomain:
