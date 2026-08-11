@@ -735,43 +735,15 @@ def load_regions_inspect_config(
         "verbose",
         config_path,
     )
-    target = _check_enum(
-        merged("target", "mesh_only"),
-        ("mesh_only", "trimeg"),
-        "regions target",
-        config_path,
-    )
     multi_array_file_path = required_path("multi_array_file")
     regions_map_path = required_path("regions_map")
     plot_path = required_path("plot")
 
-    explicit_hdf5 = overrides.hdf5
-    raw_hdf5 = merged("hdf5")
-    hdf5_path: Optional[Path] = None
-    if raw_hdf5 is not None:
-        hdf5_base = base_cwd if explicit_hdf5 is not UNSET else config_dir
-        hdf5_path = _resolve_path(
-            _check_str_path(raw_hdf5, "hdf5", config_path),
-            hdf5_base,
-        )
-
-    if target == "trimeg" and hdf5_path is None:
-        raise ConfigError(
-            "regions generate target=trimeg 必须提供 --hdf5 或 [regions].hdf5"
-        )
-    if target == "mesh_only" and hdf5_path is not None:
-        raise ConfigError(
-            "regions generate target=mesh_only 不允许提供 --hdf5 或 "
-            "[regions].hdf5"
-        )
-
-    resolved_paths = [
+    resolved_paths = (
         ("multi_array_file", multi_array_file_path),
         ("regions_map", regions_map_path),
         ("plot", plot_path),
-    ]
-    if hdf5_path is not None:
-        resolved_paths.append(("hdf5", hdf5_path))
+    )
 
     for index, (first_name, first_path) in enumerate(resolved_paths):
         for second_name, second_path in resolved_paths[index + 1:]:
@@ -835,15 +807,48 @@ def load_regions_generate_config(
             base,
         )
 
+    target = _check_enum(
+        merged("target", "mesh_only"),
+        ("mesh_only", "trimeg"),
+        "regions target",
+        config_path,
+    )
     multi_array_file_path = required_path("multi_array_file")
     regions_map_path = required_path("regions_map")
     plot_path = required_path("plot")
 
-    resolved_paths = (
+    raw_hdf5 = merged("hdf5")
+    hdf5_path: Optional[Path] = None
+    if raw_hdf5 is not None:
+        hdf5_base = (
+            base_cwd
+            if overrides.hdf5 is not UNSET
+            else config_dir
+        )
+        hdf5_path = _resolve_path(
+            _check_str_path(raw_hdf5, "hdf5", config_path),
+            hdf5_base,
+        )
+
+    if target == "trimeg" and hdf5_path is None:
+        raise ConfigError(
+            "regions generate target=trimeg 需要 hdf5，"
+            "必须提供 --hdf5 或 [regions].hdf5"
+        )
+    if target == "mesh_only" and hdf5_path is not None:
+        raise ConfigError(
+            "regions generate target=mesh_only 禁止提供 hdf5；"
+            "不允许使用 --hdf5 或 [regions].hdf5"
+        )
+
+    resolved_paths = [
         ("multi_array_file", multi_array_file_path),
         ("regions_map", regions_map_path),
         ("plot", plot_path),
-    )
+    ]
+    if hdf5_path is not None:
+        resolved_paths.append(("hdf5", hdf5_path))
+
     for index, (first_name, first_path) in enumerate(resolved_paths):
         for second_name, second_path in resolved_paths[index + 1:]:
             if first_path == second_path:
