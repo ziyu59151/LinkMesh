@@ -338,6 +338,45 @@ def test_multi_region_full_build_uses_final_id_dx_and_fresh_domain(
     assert set(mesh.region_ids.tolist()) == {1, 2, 3}
 
 
+def test_multi_region_full_build_rejects_changed_final_mapping(
+    monkeypatch,
+):
+    class ChangedDomain(_GenerateDomain):
+        def build_mesh(self, *, setup_only=False):
+            result = super().build_mesh(setup_only=setup_only)
+            if not setup_only:
+                self.region_info["LM_CURVE_2"]["id"] = 3
+                self.region_info["LM_CURVE_3"]["id"] = 1
+            return result
+
+    _GenerateDomain.instances = []
+    monkeypatch.setattr(
+        oft_adapter,
+        "_load_gs_domain_class",
+        lambda: ChangedDomain,
+    )
+    monkeypatch.setattr(
+        oft_adapter,
+        "_get_installed_oft_version",
+        lambda: "26.6",
+    )
+    root = np.array([[0, 0], [0, 4], [4, 4], [4, 0]], dtype=float)
+    left = np.array([[0.5, 0.5], [0.5, 1.5], [1.5, 1.5], [1.5, 0.5]])
+    right = np.array([[2.5, 0.5], [2.5, 1.5], [3.5, 1.5], [3.5, 0.5]])
+    from linkmesh.regions import assign_final_region_ids
+
+    numbered = assign_final_region_ids(
+        build_region_plan((root, left, right)),
+        {1: 2, 2: 1, 3: 3},
+    )
+
+    with pytest.raises(ValueError, match="setup-only/map"):
+        generate_multi_region_mesh(
+            numbered,
+            {1: 0.03, 2: 0.08, 3: 0.05},
+        )
+
+
 class _NestedDomain:
     def __init__(self):
         self.regions = []

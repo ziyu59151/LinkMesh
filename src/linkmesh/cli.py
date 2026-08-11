@@ -47,6 +47,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+import numpy as np
+
 from linkmesh import config as config_mod
 from linkmesh.config import CliOverrides, ConfigError, UNSET
 
@@ -285,6 +287,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="打印 inspect 过程信息",
     )
 
+    generate_parser = regions_actions.add_parser(
+        "generate",
+        help="按 regions map 和分区域尺度生成多区域网格",
+    )
+    generate_parser.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="只加载该 regions generate TOML 配置",
+    )
+    generate_parser.add_argument(
+        "--multi-array-file",
+        dest="multi_array_file",
+        default=UNSET,
+        metavar="PATH",
+        help="重复 counted R-Z blocks 输入路径",
+    )
+    generate_parser.add_argument(
+        "--regions-map",
+        dest="regions_map",
+        default=UNSET,
+        metavar="PATH",
+        help="inspect 生成的 TOML regions map 输入路径",
+    )
+    generate_parser.add_argument(
+        "--plot",
+        default=UNSET,
+        metavar="PATH",
+        help="最终多区域 mesh PNG 输出路径",
+    )
+    generate_parser.add_argument(
+        "--mesh-dx",
+        dest="mesh_dx",
+        type=float,
+        default=UNSET,
+        metavar="FLOAT",
+        help="全部最终 Region 的默认目标网格尺度，单位 m",
+    )
+    generate_parser.add_argument(
+        "--region-dx",
+        dest="region_dx",
+        action="append",
+        default=UNSET,
+        metavar="ID=DX",
+        help="按最终 Region ID 覆盖网格尺度，可重复提供",
+    )
+    generate_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="打印每个 Region 的三角形统计",
+    )
+
     return parser
 
 
@@ -357,7 +411,14 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
 def _run(args: argparse.Namespace) -> None:
     """LinkMesh 主执行逻辑（由 main() 调用，异常由 main() 统一捕获）。"""
     if getattr(args, "command", None) == "regions":
-        _run_regions_inspect(args)
+        if args.regions_action == "inspect":
+            _run_regions_inspect(args)
+        elif args.regions_action == "generate":
+            _run_regions_generate(args)
+        else:
+            raise NotImplementedError(
+                f"regions action 尚未实现：{args.regions_action}"
+            )
         return
 
     # ------------------------------------------------------------------ #
@@ -537,11 +598,6 @@ def _run(args: argparse.Namespace) -> None:
 
 def _run_regions_inspect(args: argparse.Namespace) -> None:
     """Execute the first-batch inspect chain without Triangle generation."""
-    if args.regions_action != "inspect":
-        raise NotImplementedError(
-            f"regions action 尚未实现：{args.regions_action}"
-        )
-
     overrides = config_mod.RegionsInspectOverrides(
         multi_array_file=args.multi_array_file,
         regions_map=args.regions_map,
@@ -582,6 +638,86 @@ def _run_regions_inspect(args: argparse.Namespace) -> None:
         print(f"[LinkMesh] multi-array curves: {len(blocks)}")
         print(f"[LinkMesh] regions map: {cfg.regions_map_path}")
         print(f"[LinkMesh] inspection PNG: {cfg.plot_path}")
+
+
+def _run_regions_generate(args: argparse.Namespace) -> None:
+    """Rebuild, validate, and generate a full OFT N-region mesh."""
+    overrides = config_mod.RegionsGenerateOverrides(
+        multi_array_file=args.multi_array_file,
+        regions_map=args.regions_map,
+        plot=args.plot,
+        mesh_dx=args.mesh_dx,
+        region_dx=args.region_dx,
+        verbose=True if args.verbose else UNSET,
+    )
+    cfg = config_mod.load_regions_generate_config(
+        overrides,
+        config_arg=args.config,
+    )
+
+    from linkmesh.mesher.oft_adapter import (
+        generate_multi_region_mesh,
+        inspect_multi_region_ids,
+    )
+    from linkmesh.readers.boundary_reader import read_multi_boundary_file
+    from linkmesh.regions import (
+        assign_final_region_ids,
+        build_region_plan,
+        read_regions_map,
+        resolve_region_dx,
+        validate_plan_against_map,
+    )
+    from linkmesh.utils.plotter import plot_regions_mesh
+
+    records = read_regions_map(cfg.regions_map_path)
+    blocks = read_multi_boundary_file(cfg.multi_array_file_path)
+    plan = build_region_plan(blocks)
+    region_ids = inspect_multi_region_ids(plan)
+    numbered_plan = assign_final_region_ids(plan, region_ids)
+    validate_plan_against_map(numbered_plan, records)
+    resolved_dx = resolve_region_dx(
+        records,
+        cfg.mesh_dx,
+        dict(cfg.region_dx),
+    )
+
+    mesh = generate_multi_region_mesh(numbered_plan, resolved_dx)
+    counts = {
+        region_id: int(np.count_nonzero(mesh.region_ids == region_id))
+        for region_id in sorted(resolved_dx)
+    }
+    if any(count == 0 for count in counts.values()):
+        raise ValueError("完整网格中至少一个 map Region 没有三角形")
+
+    plot_regions_mesh(mesh, records, str(cfg.plot_path))
+
+    if cfg.verbose:
+        record_by_id = {
+            record.region_id: record
+            for record in records
+        }
+        print(
+            f"[LinkMesh] nodes={mesh.n_nodes}, "
+            f"triangles={mesh.n_triangles}, regions={len(counts)}"
+        )
+        for region_id in sorted(counts):
+            record = record_by_id[region_id]
+            label = (
+                f", label={record.physical_label}"
+                if record.physical_label
+                else ""
+            )
+            print(
+                f"[LinkMesh] Region {region_id}: "
+                f"curve_id={record.curve_id}, triangles={counts[region_id]}"
+                f"{label}"
+            )
+        print(f"[LinkMesh] mesh PNG: {cfg.plot_path}")
+    else:
+        print(
+            f"节点数: {mesh.n_nodes}，三角形数: {mesh.n_triangles}，"
+            f"Region 数: {len(counts)}"
+        )
 
 
 if __name__ == "__main__":

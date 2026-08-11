@@ -261,6 +261,39 @@ def test_numbered_plan_matches_map_while_allowing_user_metadata_edits():
     validate_plan_against_map(plan, records)
 
 
+@pytest.mark.parametrize(
+    "records, message",
+    [
+        (
+            (
+                RegionMapEntry(1, 2, 0, (), "#FFFFFF"),
+                RegionMapEntry(2, 1, 1, (1,), "#000000"),
+            ),
+            "parent_region_id",
+        ),
+        (
+            (
+                RegionMapEntry(1, 2, 2, (), "#FFFFFF"),
+                RegionMapEntry(2, 1, 0, (), "#000000"),
+            ),
+            "child_region_ids",
+        ),
+    ],
+)
+def test_numbered_plan_rejects_map_topology_conflicts(records, message):
+    root = np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float)
+    child = np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float)
+    from linkmesh.regions import assign_final_region_ids
+
+    plan = assign_final_region_ids(
+        build_region_plan((root, child)),
+        {1: 2, 2: 1},
+    )
+
+    with pytest.raises(RegionsError, match=message):
+        validate_plan_against_map(plan, records)
+
+
 def test_numbered_plan_rejects_map_identity_and_topology_conflicts():
     root = np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float)
     child = np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float)
@@ -387,3 +420,5 @@ def test_gfile_reader_reports_oft_import_failure(monkeypatch):
 
     assert "native OFT unavailable" in str(captured.value)
     assert isinstance(captured.value.__cause__, OSError)
+python -m pytest -q tests/test_configuration_contract.py tests/test_geometry_and_readers.py tests/test_oft_adapter_contract.py tests/test_plotter_contract.py tests/test_cli_contract.py
+python -m linkmesh regions generate --help

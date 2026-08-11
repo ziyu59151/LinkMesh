@@ -7,8 +7,10 @@ import pytest
 from linkmesh.config import (
     CliOverrides,
     ConfigError,
+    RegionsGenerateOverrides,
     RegionsInspectOverrides,
     load_effective_config,
+    load_regions_generate_config,
     load_regions_inspect_config,
 )
 
@@ -145,6 +147,95 @@ def test_regions_inspect_config_rejects_normalized_toml_cli_collision(
                 regions_map=str(shared_path),
             ),
             config_arg=str(config_path),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    config_path = config_dir / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'toml.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n"
+        "[regions.mesh.region_dx]\n"
+        "1 = 0.03\n"
+        "2 = 0.05\n",
+        encoding="utf-8",
+    )
+
+    config = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            plot="cli.png",
+            mesh_dx=0.10,
+            region_dx=["2=0.04", "3=0.02"],
+        ),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+
+    assert config.multi_array_file_path == (config_dir / "multi.rz").resolve()
+    assert config.regions_map_path == (
+        config_dir / "regions-map.toml"
+    ).resolve()
+    assert config.plot_path == (tmp_path / "cli.png").resolve()
+    assert config.mesh_dx == 0.10
+    assert dict(config.region_dx) == {1: 0.03, 2: 0.04, 3: 0.02}
+
+
+@pytest.mark.parametrize(
+    "tokens, message",
+    [
+        (["1=0.03", "1=0.04"], "重复"),
+        (["0=0.03"], "正整数"),
+        (["1=nan"], "有限正数"),
+        (["bad"], "ID=DX"),
+    ],
+)
+def test_regions_generate_rejects_invalid_cli_region_dx(
+    tmp_path,
+    tokens,
+    message,
+):
+    with pytest.raises(ConfigError, match=message):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                multi_array_file="multi.rz",
+                regions_map="regions.toml",
+                plot="mesh.png",
+                region_dx=tokens,
+            ),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_generate_rejects_path_collision_and_missing_resolution(
+    tmp_path,
+):
+    with pytest.raises(ConfigError, match="路径冲突"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                multi_array_file="shared",
+                regions_map="regions.toml",
+                plot="shared",
+                mesh_dx=0.08,
+            ),
+            cwd=tmp_path,
+        )
+
+    with pytest.raises(ConfigError, match="mesh-dx|mesh_dx"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                multi_array_file="multi.rz",
+                regions_map="regions.toml",
+                plot="mesh.png",
+            ),
             cwd=tmp_path,
         )
 

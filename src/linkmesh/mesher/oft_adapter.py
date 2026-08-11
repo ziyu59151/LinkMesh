@@ -450,19 +450,36 @@ def _capture_and_attach_outer_region(domain: Any, n_before: int) -> Any:
 # multi-array inspect：只执行 OFT setup_only 编号                              #
 # --------------------------------------------------------------------------- #
 
-def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
-    """Build a fresh OFT Domain and return final IDs from setup_only.
+def _multi_region_name(curve_id: int) -> str:
+    """Return the shared deterministic OFT Region name for one input curve."""
+    return f"LM_CURVE_{curve_id}"
 
-    This function never requests Triangle nodes, cells, or attributes.
-    Technical roles are consumed only as OFT adapter compatibility metadata.
-    """
+
+def _validate_multi_region_plan(plan: Any, *, require_ids: bool) -> tuple[Any, ...]:
     entries = tuple(plan.entries)
     if len(entries) < 2:
-        raise ValueError("multi-region inspect 至少需要两个 Region")
+        raise ValueError("multi-region plan 至少需要两个 Region")
+
+    curve_ids = [entry.curve_id for entry in entries]
+    if (
+        any(isinstance(curve_id, bool) or curve_id <= 0 for curve_id in curve_ids)
+        or len(set(curve_ids)) != len(curve_ids)
+    ):
+        raise ValueError("Region plan 含非正或重复 curve_id")
 
     by_curve_id = {entry.curve_id: entry for entry in entries}
-    if len(by_curve_id) != len(entries):
-        raise ValueError("Region plan 含重复 curve_id")
+    roots = [
+        entry.curve_id
+        for entry in entries
+        if entry.parent_curve_id == 0
+    ]
+    if len(roots) != 1 or roots[0] != plan.root_curve_id:
+        raise ValueError("Region plan 必须恰好包含一个一致的 root")
+    if any(
+        entry.parent_curve_id not in by_curve_id | {0}
+        for entry in entries
+    ):
+        raise ValueError("Region plan 引用了未知 parent_curve_id")
 
     role_counts = {
         role: sum(entry.technical_role == role for entry in entries)
@@ -479,8 +496,56 @@ def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
     ):
         raise ValueError("Region plan 含未批准的 OFT technical role")
 
-    def region_name(curve_id: int) -> str:
-        return f"LM_CURVE_{curve_id}"
+    if require_ids:
+        region_ids: list[int] = []
+        for entry in entries:
+            if entry.region_id is None:
+                raise ValueError("Region plan 缺少 OFT 最终 Region ID")
+            region_id = _coerce_region_id(entry.region_id)
+            if region_id <= 0:
+                raise ValueError("Region plan 的 OFT 最终 Region ID 必须为正")
+            region_ids.append(region_id)
+        if len(set(region_ids)) != len(region_ids):
+            raise ValueError("Region plan 含重复 OFT 最终 Region ID")
+
+    return entries
+
+
+def _add_multi_region_polygons(
+    domain: Any,
+    entries: tuple[Any, ...],
+    root_curve_id: int,
+) -> None:
+    """Add polygons in curve order and capture the unique root Region."""
+    for entry in sorted(entries, key=lambda item: item.curve_id):
+        parent_name = (
+            None
+            if entry.parent_curve_id == 0
+            else _multi_region_name(entry.parent_curve_id)
+        )
+        regions = getattr(domain, "regions", None)
+        if regions is None or not hasattr(regions, "__len__"):
+            raise ValueError(
+                "domain.regions 不存在或不是预期容器，无法构造 multi-region Domain"
+            )
+        n_before = len(regions)
+        domain.add_polygon(
+            np.array(entry.points, dtype=np.float64, copy=True),
+            _multi_region_name(entry.curve_id),
+            parent_name=parent_name,
+        )
+        if entry.curve_id == root_curve_id:
+            _capture_and_attach_outer_region(domain, n_before)
+
+
+def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
+    """Build a fresh OFT Domain and return final IDs from setup_only.
+
+    This function never requests Triangle nodes, cells, or attributes.
+    Technical roles are consumed only as OFT adapter compatibility metadata.
+    """
+    entries = _validate_multi_region_plan(plan, require_ids=False)
+    by_curve_id = {entry.curve_id: entry for entry in entries}
 
     gs_domain = _load_gs_domain_class()
     domain = gs_domain()
@@ -489,22 +554,16 @@ def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
     setup_dx = 1.0
     for entry in sorted(entries, key=lambda item: item.curve_id):
         domain.define_region(
-            region_name(entry.curve_id),
+            _multi_region_name(entry.curve_id),
             setup_dx,
             entry.technical_role,
         )
 
-    for entry in sorted(entries, key=lambda item: item.curve_id):
-        parent_name = (
-            None
-            if entry.parent_curve_id == 0
-            else region_name(entry.parent_curve_id)
-        )
-        domain.add_polygon(
-            np.array(entry.points, dtype=np.float64, copy=True),
-            region_name(entry.curve_id),
-            parent_name=parent_name,
-        )
+    _add_multi_region_polygons(
+        domain,
+        entries,
+        plan.root_curve_id,
+    )
 
     result = domain.build_mesh(setup_only=True)
     if result != (None, None, None):
@@ -523,7 +582,7 @@ def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
     }
     mapping: dict[int, int] = {}
     for entry in entries:
-        name = region_name(entry.curve_id).upper()
+        name = _multi_region_name(entry.curve_id).upper()
         if name not in info_by_name:
             raise ValueError(
                 f"OFT setup_only 后缺少 curve_id={entry.curve_id} 对应 Region"
@@ -535,6 +594,78 @@ def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
     if set(mapping) != set(by_curve_id):
         raise ValueError("OFT setup_only 的 curve/Region 对应不完整")
     return mapping
+
+
+def generate_multi_region_mesh(
+    plan: Any,
+    dx_by_region_id: dict[int, float],
+) -> Mesh2D:
+    """Build a fresh full OFT Domain from a numbered plan and resolved dx."""
+    entries = _validate_multi_region_plan(plan, require_ids=True)
+    expected_ids = {
+        int(entry.region_id)
+        for entry in entries
+    }
+    if set(dx_by_region_id) != expected_ids:
+        raise ValueError(
+            "完整 Region dx 映射必须与编号 plan 的最终 Region ID 集合一致"
+        )
+
+    normalized_dx: dict[int, float] = {}
+    for region_id, raw_dx in dx_by_region_id.items():
+        if isinstance(raw_dx, bool):
+            raise ValueError(f"Region ID {region_id} 的 dx 必须是有限正数")
+        dx = float(raw_dx)
+        if not (np.isfinite(dx) and dx > 0.0):
+            raise ValueError(f"Region ID {region_id} 的 dx 必须是有限正数")
+        normalized_dx[int(region_id)] = dx
+
+    gs_domain = _load_gs_domain_class()
+    domain = gs_domain()
+    for entry in sorted(entries, key=lambda item: item.curve_id):
+        domain.define_region(
+            _multi_region_name(entry.curve_id),
+            normalized_dx[int(entry.region_id)],
+            entry.technical_role,
+        )
+
+    _add_multi_region_polygons(
+        domain,
+        entries,
+        plan.root_curve_id,
+    )
+    mesh = mesh_from_oft_domain(domain)
+
+    raw_info = getattr(domain, "region_info", None)
+    if not hasattr(raw_info, "items"):
+        raise ValueError("OFT 完整构建后缺少可读取的 region_info")
+    info_by_name = {
+        str(name).upper(): info
+        for name, info in raw_info.items()
+    }
+    actual_mapping: dict[int, int] = {}
+    for entry in entries:
+        name = _multi_region_name(entry.curve_id).upper()
+        if name not in info_by_name:
+            raise ValueError(
+                f"OFT 完整构建后缺少 curve_id={entry.curve_id} 对应 Region"
+            )
+        actual_mapping[entry.curve_id] = _coerce_region_id(
+            info_by_name[name]
+        )
+
+    expected_mapping = {
+        entry.curve_id: int(entry.region_id)
+        for entry in entries
+    }
+    if actual_mapping != expected_mapping:
+        raise ValueError(
+            "OFT 完整构建后的 curve_id -> Region ID 与 setup-only/map "
+            f"不一致：期望={expected_mapping}，实际={actual_mapping}"
+        )
+    if set(int(value) for value in mesh.region_ids.tolist()) != expected_ids:
+        raise ValueError("Mesh2D.region_ids 与编号 plan 的 Region ID 集合不一致")
+    return mesh
 
 
 # --------------------------------------------------------------------------- #

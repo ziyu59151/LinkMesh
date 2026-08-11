@@ -29,6 +29,9 @@ v1.11 M2.5 说明：
 
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
@@ -464,6 +467,191 @@ def plot_regions_inspection(
     )
     figure.savefig(filepath, dpi=160, bbox_inches="tight")
     plt.close(figure)
+
+
+def plot_regions_mesh(
+    mesh: "Mesh2D",
+    records,
+    filepath: str,
+) -> None:
+    """Atomically plot a generated mesh using regions-map display colors."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib.tri as mtri
+        from matplotlib.colors import BoundaryNorm, ListedColormap
+        from matplotlib.patches import Patch
+    except ImportError as exc:
+        raise ImportError(
+            "无法导入 matplotlib。请运行：pip install matplotlib"
+        ) from exc
+
+    ordered_records = tuple(
+        sorted(records, key=lambda record: record.region_id)
+    )
+    if len(ordered_records) < 2:
+        raise ValueError("regions mesh plot 至少需要两个 Region map records")
+
+    record_by_id = {
+        record.region_id: record
+        for record in ordered_records
+    }
+    if len(record_by_id) != len(ordered_records):
+        raise ValueError("regions map 含重复 Region ID")
+
+    mesh_ids = {
+        int(region_id)
+        for region_id in np.asarray(mesh.region_ids).reshape(-1)
+    }
+    if mesh_ids != set(record_by_id):
+        raise ValueError(
+            "Mesh2D Region ID 集合与 regions map 不一致"
+        )
+    if len(mesh.region_ids) != mesh.n_triangles:
+        raise ValueError("Mesh2D region_ids 长度与三角形数不一致")
+
+    output_path = Path(filepath)
+    if not output_path.parent.is_dir():
+        raise FileNotFoundError(
+            f"mesh PNG 父目录不存在：{output_path.parent}"
+        )
+
+    region_ids = [record.region_id for record in ordered_records]
+    region_to_index = {
+        region_id: index
+        for index, region_id in enumerate(region_ids)
+    }
+    colors = [record.color for record in ordered_records]
+    color_indices = np.array(
+        [region_to_index[int(value)] for value in mesh.region_ids],
+        dtype=np.float64,
+    )
+    listed_cmap = ListedColormap(colors)
+    norm = BoundaryNorm(
+        np.arange(-0.5, len(colors) + 0.5, 1.0),
+        listed_cmap.N,
+    )
+
+    legend_columns = (
+        1
+        if len(ordered_records) <= 2
+        else 2
+        if len(ordered_records) <= 6
+        else 3
+    )
+    legend_rows = (
+        len(ordered_records) + legend_columns - 1
+    ) // legend_columns
+    bottom_margin = min(0.50, 0.18 + 0.055 * legend_rows)
+
+    temporary_path: Path | None = None
+    figure = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".png",
+            prefix=f".{output_path.stem}.",
+            dir=output_path.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+
+        figure, axis = plt.subplots(figsize=(10, 7))
+        figure.subplots_adjust(
+            left=0.10,
+            right=0.97,
+            top=0.91,
+            bottom=bottom_margin,
+        )
+        triangulation = mtri.Triangulation(
+            mesh.nodes[:, 0],
+            mesh.nodes[:, 1],
+            mesh.triangles,
+        )
+        axis.tripcolor(
+            triangulation,
+            facecolors=color_indices,
+            cmap=listed_cmap,
+            norm=norm,
+            edgecolors="none",
+            alpha=0.48,
+        )
+        axis.triplot(
+            triangulation,
+            color="#555555",
+            linewidth=0.28,
+            alpha=0.72,
+        )
+
+        if mesh.outer_boundary is not None:
+            boundary = np.vstack(
+                (mesh.outer_boundary, mesh.outer_boundary[0])
+            )
+            axis.plot(
+                boundary[:, 0],
+                boundary[:, 1],
+                color="black",
+                linewidth=1.7,
+                zorder=4,
+            )
+
+        handles = []
+        for record in ordered_records:
+            children = ",".join(
+                str(value) for value in record.child_region_ids
+            ) or "-"
+            label = (
+                f"Region {record.region_id}: curve {record.curve_id}, "
+                f"parent {record.parent_region_id}, children {children}"
+            )
+            if record.physical_label:
+                label += f", label {record.physical_label}"
+            handles.append(
+                Patch(
+                    facecolor=record.color,
+                    edgecolor=record.color,
+                    alpha=0.55,
+                    label=label,
+                )
+            )
+
+        axis.set_xlabel("R [m]")
+        axis.set_ylabel("Z [m]")
+        axis.set_title("LinkMesh Multi-Region Mesh")
+        axis.set_aspect("equal", adjustable="box")
+        figure.legend(
+            handles=handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 0.055),
+            ncols=legend_columns,
+            fontsize=7,
+            framealpha=0.9,
+        )
+        figure.text(
+            0.5,
+            0.015,
+            (
+                f"Nodes: {mesh.n_nodes}    "
+                f"Triangles: {mesh.n_triangles}    "
+                f"Regions: {len(ordered_records)}"
+            ),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+        figure.savefig(
+            temporary_path,
+            dpi=160,
+            bbox_inches="tight",
+            format="png",
+        )
+        plt.close(figure)
+        figure = None
+        os.replace(temporary_path, output_path)
+        temporary_path = None
+    finally:
+        if figure is not None:
+            plt.close(figure)
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
 
 
 def plot_lcfs_only(

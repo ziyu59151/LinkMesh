@@ -551,6 +551,140 @@ def serialize_regions_map(records: Sequence[RegionMapEntry]) -> str:
     return "\n".join(lines)
 
 
+def validate_plan_against_map(
+    plan: RegionPlan,
+    records: Sequence[RegionMapEntry],
+) -> None:
+    """Validate rebuilt Region identity/topology against an inspected map.
+
+    Display color and physical_label are intentionally excluded because they
+    are user-editable metadata. Any structural or numbering mismatch requires
+    the user to run ``linkmesh regions inspect`` again.
+    """
+    validate_region_map(records)
+
+    if any(entry.region_id is None for entry in plan.entries):
+        raise RegionsError("重建 Region plan 尚未取得完整 OFT 最终 Region ID")
+
+    rebuilt = {
+        record.curve_id: record
+        for record in region_map_entries(plan)
+    }
+    mapped = {
+        record.curve_id: record
+        for record in records
+    }
+
+    if set(rebuilt) != set(mapped):
+        raise RegionsError(
+            "regions map 的 curve_id 集合与重建结果不一致；"
+            "请重新执行 linkmesh regions inspect"
+        )
+
+    rebuilt_region_ids = {
+        record.region_id for record in rebuilt.values()
+    }
+    mapped_region_ids = {
+        record.region_id for record in mapped.values()
+    }
+    if rebuilt_region_ids != mapped_region_ids:
+        raise RegionsError(
+            "regions map 的 Region ID 集合与 OFT 重建结果不一致；"
+            "请重新执行 linkmesh regions inspect"
+        )
+
+    for curve_id in sorted(rebuilt):
+        expected = rebuilt[curve_id]
+        actual = mapped[curve_id]
+        if actual.region_id != expected.region_id:
+            raise RegionsError(
+                f"curve_id={curve_id} 的 OFT Region ID 已变化："
+                f"map={actual.region_id}，当前={expected.region_id}；"
+                "请重新执行 linkmesh regions inspect"
+            )
+        if actual.parent_region_id != expected.parent_region_id:
+            raise RegionsError(
+                f"Region ID {actual.region_id} 的 parent_region_id 已变化；"
+                "请重新执行 linkmesh regions inspect"
+            )
+        if actual.child_region_ids != expected.child_region_ids:
+            raise RegionsError(
+                f"Region ID {actual.region_id} 的 child_region_ids 已变化；"
+                "请重新执行 linkmesh regions inspect"
+            )
+
+
+def resolve_region_dx(
+    records: Sequence[RegionMapEntry],
+    mesh_dx: float | None,
+    region_dx: Mapping[int, float],
+) -> dict[int, float]:
+    """Resolve a complete independent final-Region-ID to dx mapping."""
+    validate_region_map(records)
+    known_ids = {record.region_id for record in records}
+
+    default_dx: float | None = None
+    if mesh_dx is not None:
+        if isinstance(mesh_dx, bool):
+            raise RegionsError("mesh_dx 必须是有限正数")
+        try:
+            default_dx = float(mesh_dx)
+        except (TypeError, ValueError) as exc:
+            raise RegionsError("mesh_dx 必须是有限正数") from exc
+        if not (math.isfinite(default_dx) and default_dx > 0.0):
+            raise RegionsError("mesh_dx 必须是有限正数")
+
+    normalized_overrides: dict[int, float] = {}
+    for raw_region_id, raw_dx in region_dx.items():
+        if isinstance(raw_region_id, bool):
+            raise RegionsError("region_dx 的 Region ID 必须是正整数")
+        try:
+            numeric_id = float(raw_region_id)
+        except (TypeError, ValueError) as exc:
+            raise RegionsError(
+                f"region_dx 的 Region ID 非法：{raw_region_id!r}"
+            ) from exc
+        if (
+            not math.isfinite(numeric_id)
+            or numeric_id != round(numeric_id)
+            or numeric_id <= 0
+        ):
+            raise RegionsError(
+                f"region_dx 的 Region ID 非法：{raw_region_id!r}"
+            )
+        region_id = int(numeric_id)
+        if region_id not in known_ids:
+            raise RegionsError(f"region_dx 引用了未知 Region ID {region_id}")
+
+        if isinstance(raw_dx, bool):
+            raise RegionsError(
+                f"Region ID {region_id} 的 dx 必须是有限正数"
+            )
+        try:
+            dx = float(raw_dx)
+        except (TypeError, ValueError) as exc:
+            raise RegionsError(
+                f"Region ID {region_id} 的 dx 必须是有限正数"
+            ) from exc
+        if not (math.isfinite(dx) and dx > 0.0):
+            raise RegionsError(
+                f"Region ID {region_id} 的 dx 必须是有限正数"
+            )
+        normalized_overrides[region_id] = dx
+
+    missing = known_ids - set(normalized_overrides)
+    if default_dx is None and missing:
+        raise RegionsError(
+            "未提供 mesh_dx 时，region_dx 必须完整覆盖全部 Region ID；"
+            f"缺失={sorted(missing)}"
+        )
+
+    return {
+        region_id: normalized_overrides.get(region_id, default_dx)
+        for region_id in sorted(known_ids)
+    }
+
+
 def write_regions_map(
     records: Sequence[RegionMapEntry],
     filepath: str | os.PathLike[str],

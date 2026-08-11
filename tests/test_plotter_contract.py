@@ -173,6 +173,55 @@ def test_regions_mesh_uses_map_colors_and_figure_legend(
     ]
 
 
+def test_regions_mesh_uses_no_axes_text_and_reports_figure_statistics(
+    tmp_path,
+    monkeypatch,
+):
+    import matplotlib.axes
+    import matplotlib.figure
+
+    figure_texts = []
+    original_figure_text = matplotlib.figure.Figure.text
+
+    def fail_axes_text(*_args, **_kwargs):
+        pytest.fail("regions mesh PNG 不得在坐标轴内绘制文字")
+
+    def recording_figure_text(self, *args, **kwargs):
+        figure_texts.append(args[2])
+        return original_figure_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", fail_axes_text)
+    monkeypatch.setattr(
+        matplotlib.figure.Figure,
+        "text",
+        recording_figure_text,
+    )
+
+    records = (
+        RegionMapEntry(1, 2, 2, (), "#D55E00", ""),
+        RegionMapEntry(2, 1, 0, (1,), "#0072B2", ""),
+    )
+    output = tmp_path / "statistics.png"
+    plot_regions_mesh(
+        Mesh2D(
+            nodes=_mesh().nodes,
+            triangles=_mesh().triangles,
+            region_ids=np.array([1, 2], dtype=np.int32),
+            outer_boundary=_mesh().outer_boundary,
+        ),
+        records,
+        str(output),
+    )
+
+    assert output.stat().st_size > 0
+    assert any(
+        "Nodes: 4" in text
+        and "Triangles: 2" in text
+        and "Regions: 2" in text
+        for text in figure_texts
+    )
+
+
 def test_regions_mesh_failure_does_not_replace_existing_output(
     tmp_path,
 ):

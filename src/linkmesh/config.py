@@ -48,7 +48,8 @@ import math
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Optional
+from types import MappingProxyType
+from typing import Any, Literal, Mapping, Optional
 
 
 # --------------------------------------------------------------------------- #
@@ -179,6 +180,33 @@ class RegionsInspectConfig:
     multi_array_file_path: Path
     regions_map_path: Path
     plot_path: Path
+    verbose: bool
+
+
+@dataclass
+class RegionsGenerateOverrides:
+    """Explicit CLI values for the isolated regions-generate configuration."""
+
+    multi_array_file: Any = UNSET
+    regions_map: Any = UNSET
+    plot: Any = UNSET
+    mesh_dx: Any = UNSET
+    region_dx: Any = UNSET
+    verbose: Any = UNSET
+
+
+@dataclass(frozen=True)
+class RegionsGenerateConfig:
+    """Resolved configuration for ``linkmesh regions generate`` only."""
+
+    schema_version: int
+    config_path: Optional[Path]
+    mode: Literal["generate"]
+    multi_array_file_path: Path
+    regions_map_path: Path
+    plot_path: Path
+    mesh_dx: Optional[float]
+    region_dx: Mapping[int, float]
     verbose: bool
 
 
@@ -459,6 +487,194 @@ def _load_regions_inspect_toml(config_path: Path) -> dict[str, Any]:
     return values
 
 
+def _parse_region_dx_key(
+    raw_region_id: Any,
+    name: str,
+    config_path: Optional[Path],
+) -> int:
+    if isinstance(raw_region_id, bool):
+        _fail(config_path, name, "Region ID 必须是正整数")
+    token = str(raw_region_id)
+    if not token.isdecimal():
+        _fail(config_path, name, f"Region ID 必须是正整数，实际={token!r}")
+    region_id = int(token, 10)
+    if region_id <= 0:
+        _fail(config_path, name, f"Region ID 必须是正整数，实际={token!r}")
+    return region_id
+
+
+def _parse_region_dx_tokens(
+    tokens: Any,
+    config_path: Optional[Path],
+) -> dict[int, float]:
+    if tokens is UNSET or tokens is None:
+        return {}
+    if not isinstance(tokens, (list, tuple)):
+        _fail(config_path, "--region-dx", "内部值必须是 token 序列")
+
+    parsed: dict[int, float] = {}
+    for token in tokens:
+        if not isinstance(token, str) or token.count("=") != 1:
+            _fail(
+                config_path,
+                "--region-dx",
+                f"必须使用 ID=DX 格式，实际={token!r}",
+            )
+        raw_region_id, raw_dx = token.split("=", 1)
+        region_id = _parse_region_dx_key(
+            raw_region_id,
+            "--region-dx",
+            config_path,
+        )
+        if region_id in parsed:
+            _fail(
+                config_path,
+                "--region-dx",
+                f"重复提供 Region ID {region_id}",
+            )
+        try:
+            dx_value: Any = float(raw_dx)
+        except ValueError as exc:
+            raise ConfigError(
+                f"--region-dx：Region ID {region_id} 的 DX 必须是有限正数，"
+                f"实际={raw_dx!r}"
+            ) from exc
+        parsed[region_id] = _check_positive_float(
+            dx_value,
+            f"--region-dx {region_id}",
+            config_path,
+        )
+    return parsed
+
+
+def _load_regions_generate_toml(
+    config_path: Path,
+) -> dict[str, Any]:
+    try:
+        with config_path.open("rb") as file_object:
+            raw = tomllib.load(file_object)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(
+            f"[配置文件 {config_path}] TOML 语法错误：{exc}"
+        ) from exc
+    except OSError as exc:
+        raise ConfigError(
+            f"[配置文件 {config_path}] 无法读取：{exc}"
+        ) from exc
+
+    allowed_top = {"schema_version", "regions", "runtime"}
+    unknown_top = set(raw) - allowed_top
+    if unknown_top:
+        _fail(
+            config_path,
+            "顶层",
+            f"未知 section 或键：{sorted(unknown_top)}",
+        )
+    schema_version = raw.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or schema_version != SCHEMA_VERSION
+    ):
+        _fail(config_path, "schema_version", "必须是整数 1")
+
+    regions = raw.get("regions", {})
+    runtime = raw.get("runtime", {})
+    if not isinstance(regions, dict):
+        _fail(config_path, "[regions]", "必须是 TOML table")
+    if not isinstance(runtime, dict):
+        _fail(config_path, "[runtime]", "必须是 TOML table")
+
+    allowed_regions = {
+        "mode",
+        "multi_array_file",
+        "regions_map",
+        "plot",
+        "mesh",
+    }
+    unknown_regions = set(regions) - allowed_regions
+    if unknown_regions:
+        _fail(
+            config_path,
+            "[regions]",
+            f"未知键：{sorted(unknown_regions)}",
+        )
+    unknown_runtime = set(runtime) - {"verbose"}
+    if unknown_runtime:
+        _fail(
+            config_path,
+            "[runtime]",
+            f"未知键：{sorted(unknown_runtime)}",
+        )
+
+    if regions.get("mode") != "generate":
+        _fail(
+            config_path,
+            "[regions].mode",
+            'regions generate 配置必须为字符串 "generate"',
+        )
+
+    values: dict[str, Any] = {"mode": "generate"}
+    for key in ("multi_array_file", "regions_map", "plot"):
+        if key in regions:
+            values[key] = _check_str_path(
+                regions[key],
+                f"[regions].{key}",
+                config_path,
+            )
+
+    mesh = regions.get("mesh", {})
+    if not isinstance(mesh, dict):
+        _fail(config_path, "[regions.mesh]", "必须是 TOML table")
+    unknown_mesh = set(mesh) - {"mesh_dx", "region_dx"}
+    if unknown_mesh:
+        _fail(
+            config_path,
+            "[regions.mesh]",
+            f"未知键：{sorted(unknown_mesh)}",
+        )
+    if "mesh_dx" in mesh:
+        values["mesh_dx"] = _check_positive_float(
+            mesh["mesh_dx"],
+            "[regions.mesh].mesh_dx",
+            config_path,
+        )
+
+    raw_region_dx = mesh.get("region_dx", {})
+    if not isinstance(raw_region_dx, dict):
+        _fail(
+            config_path,
+            "[regions.mesh.region_dx]",
+            "必须是 TOML table",
+        )
+    normalized_region_dx: dict[int, float] = {}
+    for raw_region_id, raw_dx in raw_region_dx.items():
+        region_id = _parse_region_dx_key(
+            raw_region_id,
+            "[regions.mesh.region_dx]",
+            config_path,
+        )
+        if region_id in normalized_region_dx:
+            _fail(
+                config_path,
+                "[regions.mesh.region_dx]",
+                f"规范化后重复 Region ID {region_id}",
+            )
+        normalized_region_dx[region_id] = _check_positive_float(
+            raw_dx,
+            f"[regions.mesh.region_dx].{raw_region_id}",
+            config_path,
+        )
+    values["region_dx"] = normalized_region_dx
+
+    if "verbose" in runtime:
+        values["verbose"] = _check_bool(
+            runtime["verbose"],
+            "[runtime].verbose",
+            config_path,
+        )
+    return values
+
+
 def load_regions_inspect_config(
     overrides: RegionsInspectOverrides,
     *,
@@ -531,6 +747,107 @@ def load_regions_inspect_config(
         multi_array_file_path=multi_array_file_path,
         regions_map_path=regions_map_path,
         plot_path=plot_path,
+        verbose=verbose,
+    )
+
+
+def load_regions_generate_config(
+    overrides: RegionsGenerateOverrides,
+    *,
+    config_arg: Optional[str] = None,
+    cwd: Optional[Path] = None,
+) -> RegionsGenerateConfig:
+    """Resolve isolated generate config using defaults < TOML < CLI."""
+    base_cwd = Path(cwd) if cwd is not None else Path.cwd()
+    config_path: Optional[Path] = None
+    values: dict[str, Any] = {}
+
+    if config_arg is not None:
+        config_path = _resolve_path(config_arg, base_cwd)
+        if not config_path.is_file():
+            raise ConfigError(
+                f"--config 指定的 regions 配置文件不存在：{config_path}"
+            )
+        values = _load_regions_generate_toml(config_path)
+
+    config_dir = config_path.parent if config_path is not None else base_cwd
+
+    def merged(name: str, default: Any = None) -> Any:
+        explicit = getattr(overrides, name)
+        if explicit is not UNSET:
+            return explicit
+        return values.get(name, default)
+
+    def required_path(name: str) -> Path:
+        explicit = getattr(overrides, name)
+        value = merged(name)
+        if value is None:
+            option_name = name.replace("_", "-")
+            raise ConfigError(
+                "regions generate 缺少必需路径："
+                f"--{option_name} 或 [regions].{name}"
+            )
+        base = base_cwd if explicit is not UNSET else config_dir
+        return _resolve_path(
+            _check_str_path(value, name, config_path),
+            base,
+        )
+
+    multi_array_file_path = required_path("multi_array_file")
+    regions_map_path = required_path("regions_map")
+    plot_path = required_path("plot")
+
+    resolved_paths = (
+        ("multi_array_file", multi_array_file_path),
+        ("regions_map", regions_map_path),
+        ("plot", plot_path),
+    )
+    for index, (first_name, first_path) in enumerate(resolved_paths):
+        for second_name, second_path in resolved_paths[index + 1:]:
+            if first_path == second_path:
+                raise ConfigError(
+                    "regions generate 路径冲突："
+                    f"{first_name} 与 {second_name} 解析为同一路径 "
+                    f"{first_path}"
+                )
+
+    raw_mesh_dx = merged("mesh_dx")
+    mesh_dx = (
+        None
+        if raw_mesh_dx is None
+        else _check_positive_float(
+            raw_mesh_dx,
+            "regions mesh_dx",
+            config_path,
+        )
+    )
+
+    toml_region_dx = dict(values.get("region_dx", {}))
+    cli_region_dx = _parse_region_dx_tokens(
+        overrides.region_dx,
+        config_path,
+    )
+    region_dx = {**toml_region_dx, **cli_region_dx}
+    if mesh_dx is None and not region_dx:
+        raise ConfigError(
+            "regions generate 需要 --mesh-dx，或通过 --region-dx/"
+            "[regions.mesh.region_dx] 提供完整 Region 覆盖"
+        )
+
+    verbose = _check_bool(
+        merged("verbose", False),
+        "verbose",
+        config_path,
+    )
+    return RegionsGenerateConfig(
+        schema_version=SCHEMA_VERSION,
+        config_path=config_path,
+        mode="generate",
+        multi_array_file_path=multi_array_file_path,
+        regions_map_path=regions_map_path,
+        plot_path=plot_path,
+        mesh_dx=mesh_dx,
+        region_dx=MappingProxyType(dict(sorted(region_dx.items()))),
         verbose=verbose,
     )
 

@@ -158,6 +158,8 @@ def test_regions_generate_help_is_scoped(capsys):
     assert "--region-dx" in help_text
     assert "--mesh-dx" in help_text
     assert "--gfile" not in help_text
+    assert "--hdf5" not in help_text
+    assert "--smb" not in help_text
 
 
 def test_regions_generate_rebuilds_validates_and_plots(
