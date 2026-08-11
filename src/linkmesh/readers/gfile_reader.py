@@ -110,12 +110,12 @@ def read_gfile(filepath: str) -> GFileData:
     # 导入 OFT API（只读参考：TOKAMAKER/.../TokaMaker/eqdsk.py:673）
     try:
         from OpenFUSIONToolkit.TokaMaker.eqdsk import GEQDSKEquilibrium
-    except ImportError as e:
+    except Exception as exc:
         raise ImportError(
-            "无法导入 OFT GEQDSKEquilibrium。请确认 OpenFUSIONToolkit 已安装，"
-            "或 TOKAMAKER/ 目录下的 OFT Python 包已加入 PYTHONPATH。"
-            f"原始错误：{e}"
-        ) from e
+            "无法导入 OFT GFile/EQDSK Reader "
+            "OpenFUSIONToolkit.TokaMaker.eqdsk.GEQDSKEquilibrium。"
+            f"原始错误：{exc}"
+        ) from exc
 
     # 调用 OFT 完成全部 GFile 解析，LinkMesh 侧不执行任何文本解析
     eq = GEQDSKEquilibrium(filepath)

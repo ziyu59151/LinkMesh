@@ -38,7 +38,10 @@ def test_plotter_generates_nonempty_png_without_gfile(tmp_path):
     assert output.stat().st_size > 0
 
 
-def test_regions_inspection_generates_png_with_map_colors(tmp_path):
+def test_regions_inspection_uses_figure_legend_and_no_axes_text(
+    tmp_path,
+    monkeypatch,
+):
     outer = np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float)
     inner = np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float)
     plan = build_region_plan((outer, inner))
@@ -47,10 +50,39 @@ def test_regions_inspection_generates_png_with_map_colors(tmp_path):
     snapshots = [entry.points.copy() for entry in numbered.entries]
     output = tmp_path / "regions.png"
 
+    import matplotlib.axes
+    import matplotlib.figure
+
+    legend_calls = []
+    original_legend = matplotlib.figure.Figure.legend
+
+    def fail_axes_text(*_args, **_kwargs):
+        pytest.fail("inspection PNG 不得在坐标轴内绘制文本标注")
+
+    def recording_legend(self, *args, **kwargs):
+        legend = original_legend(self, *args, **kwargs)
+        legend_calls.append((legend, kwargs))
+        return legend
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", fail_axes_text)
+    monkeypatch.setattr(
+        matplotlib.figure.Figure,
+        "legend",
+        recording_legend,
+    )
+
     plot_regions_inspection(numbered, records, str(output))
 
     assert output.is_file()
     assert output.stat().st_size > 0
+    assert len(legend_calls) == 1
+    legend, legend_kwargs = legend_calls[0]
+    assert legend.axes is None
+    assert legend_kwargs["loc"] == "lower center"
+    assert [text.get_text() for text in legend.get_texts()] == [
+        "Region 1: curve 2, parent 2, children -",
+        "Region 2: curve 1, parent 0, children 1",
+    ]
     assert {record.color for record in records} == {
         entry.color for entry in numbered.entries
     }

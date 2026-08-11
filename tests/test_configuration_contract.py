@@ -72,6 +72,83 @@ def test_regions_inspect_config_rejects_unknown_key_and_missing_required(
         )
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {
+            "multi_array_file": "shared",
+            "regions_map": "shared",
+            "plot": "plot.png",
+        },
+        {
+            "multi_array_file": "shared",
+            "regions_map": "regions.toml",
+            "plot": "shared",
+        },
+        {
+            "multi_array_file": "input.rz",
+            "regions_map": "shared",
+            "plot": "shared",
+        },
+    ],
+)
+def test_regions_inspect_config_rejects_each_path_collision(
+    tmp_path,
+    overrides,
+):
+    with pytest.raises(ConfigError, match="路径冲突"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(**overrides),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_inspect_config_accepts_distinct_normalized_paths(tmp_path):
+    config = load_regions_inspect_config(
+        RegionsInspectOverrides(
+            multi_array_file="input.rz",
+            regions_map="regions.toml",
+            plot="regions.png",
+        ),
+        cwd=tmp_path,
+    )
+
+    assert len(
+        {
+            config.multi_array_file_path,
+            config.regions_map_path,
+            config.plot_path,
+        }
+    ) == 3
+
+
+def test_regions_inspect_config_rejects_normalized_toml_cli_collision(
+    tmp_path,
+):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    shared_path = (config_dir / "shared").resolve()
+    config_path = config_dir / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'shared'\n"
+        "regions_map = 'map.toml'\n"
+        "plot = 'plot.png'\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="multi_array_file.*regions_map"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(
+                regions_map=str(shared_path),
+            ),
+            config_arg=str(config_path),
+            cwd=tmp_path,
+        )
+
+
 def test_builtin_defaults_and_target_conditional_output(tmp_path):
     config = _load(
         tmp_path,

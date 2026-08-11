@@ -388,14 +388,37 @@ def plot_regions_inspection(
     }:
         raise ValueError("inspection plan 与 regions map 的 curve_id 不一致")
 
-    figure, axis = plt.subplots(
-        figsize=(8, 7),
-        constrained_layout=True,
+    entry_by_curve_id = {
+        entry.curve_id: entry
+        for entry in plan.entries
+    }
+    ordered_records = sorted(
+        records,
+        key=lambda record: record.region_id,
+    )
+    legend_columns = (
+        1
+        if len(ordered_records) <= 2
+        else 2
+        if len(ordered_records) <= 6
+        else 3
+    )
+    legend_rows = (
+        len(ordered_records) + legend_columns - 1
+    ) // legend_columns
+    bottom_margin = min(0.46, 0.14 + 0.055 * legend_rows)
+
+    figure, axis = plt.subplots(figsize=(10, 7))
+    figure.subplots_adjust(
+        left=0.10,
+        right=0.97,
+        top=0.92,
+        bottom=bottom_margin,
     )
     handles = []
 
-    for entry in sorted(plan.entries, key=lambda item: item.depth):
-        record = record_by_curve_id[entry.curve_id]
+    for record in ordered_records:
+        entry = entry_by_curve_id[record.curve_id]
         points = np.array(entry.points, dtype=np.float64, copy=True)
         display = np.vstack((points, points[0]))
         axis.fill(
@@ -412,20 +435,9 @@ def plot_regions_inspection(
             linewidth=1.8,
             zorder=10 + entry.depth,
         )
-        center = np.mean(points, axis=0)
         children = ",".join(
             str(child_id) for child_id in record.child_region_ids
         ) or "-"
-        axis.text(
-            center[0],
-            center[1],
-            f"curve {record.curve_id}\nRegion {record.region_id}",
-            color=record.color,
-            fontsize=8,
-            ha="center",
-            va="center",
-            zorder=30,
-        )
         handles.append(
             Patch(
                 facecolor=record.color,
@@ -442,7 +454,14 @@ def plot_regions_inspection(
     axis.set_ylabel("Z [m]")
     axis.set_title("LinkMesh Regions Inspection")
     axis.set_aspect("equal", adjustable="box")
-    axis.legend(handles=handles, loc="best", fontsize=7)
+    figure.legend(
+        handles=handles,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncols=legend_columns,
+        fontsize=7,
+        framealpha=0.9,
+    )
     figure.savefig(filepath, dpi=160, bbox_inches="tight")
     plt.close(figure)
 

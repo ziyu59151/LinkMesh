@@ -249,7 +249,10 @@ def build_region_plan(blocks: Sequence[np.ndarray]) -> RegionPlan:
     }
     for child_id, child_point in interior_points.items():
         for candidate_id, candidate_polygon in curves.items():
-            if child_id == candidate_id:
+            if (
+                child_id == candidate_id
+                or areas[candidate_id] <= areas[child_id]
+            ):
                 continue
             relation = _point_in_polygon(child_point, candidate_polygon)
             if relation is None:
@@ -257,7 +260,7 @@ def build_region_plan(blocks: Sequence[np.ndarray]) -> RegionPlan:
                     f"curve_id={child_id} 的内部点落在 curve_id={candidate_id} "
                     "边界上，包含关系有歧义"
                 )
-            if relation and areas[candidate_id] > areas[child_id]:
+            if relation:
                 containing[child_id].add(candidate_id)
 
     parent_by_id: dict[int, int] = {}
@@ -470,6 +473,48 @@ def validate_region_map(records: Sequence[RegionMapEntry]) -> None:
             parent = by_region_id[record.parent_region_id]
             if record.region_id not in parent.child_region_ids:
                 raise RegionsError("regions map 的 child/parent 关系不一致")
+
+    visit_state: dict[int, int] = {
+        region_id: 0 for region_id in known_ids
+    }
+
+    def check_cycle(region_id: int) -> None:
+        state = visit_state[region_id]
+        if state == 1:
+            raise RegionsError(
+                f"regions map 存在 cycle，涉及 Region ID {region_id}"
+            )
+        if state == 2:
+            return
+
+        visit_state[region_id] = 1
+        for child_id in by_region_id[region_id].child_region_ids:
+            check_cycle(child_id)
+        visit_state[region_id] = 2
+
+    for region_id in sorted(known_ids):
+        if visit_state[region_id] == 0:
+            check_cycle(region_id)
+
+    reachable: set[int] = set()
+
+    def visit_from_root(region_id: int) -> None:
+        if region_id in reachable:
+            raise RegionsError(
+                "regions map 从 root 遍历时重复访问 "
+                f"Region ID {region_id}"
+            )
+        reachable.add(region_id)
+        for child_id in by_region_id[region_id].child_region_ids:
+            visit_from_root(child_id)
+
+    visit_from_root(roots[0])
+    if reachable != known_ids:
+        unreachable = sorted(known_ids - reachable)
+        raise RegionsError(
+            "regions map 含 root 不可达或 disconnected 的 Region："
+            f"{unreachable}"
+        )
 
 
 def _toml_string(value: str) -> str:

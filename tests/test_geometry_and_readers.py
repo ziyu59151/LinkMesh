@@ -14,7 +14,12 @@ from linkmesh.readers.boundary_reader import (
     read_boundary_file,
     read_multi_boundary_file,
 )
-from linkmesh.regions import RegionsError, build_region_plan
+from linkmesh.regions import (
+    RegionMapEntry,
+    RegionsError,
+    build_region_plan,
+    validate_region_map,
+)
 from linkmesh.readers.gfile_reader import read_gfile
 
 
@@ -207,6 +212,36 @@ def test_region_plan_rejects_multiple_roots():
         build_region_plan((first, second))
 
 
+def test_region_plan_keeps_boundary_ambiguity_for_larger_parent_candidate():
+    root = np.array([[0, 0], [0, 4], [4, 4], [4, 0]], dtype=float)
+    crossing = np.array([[3, -1], [3, 1], [5, 1], [5, -1]], dtype=float)
+
+    with pytest.raises(RegionsError, match="包含关系有歧义"):
+        build_region_plan((root, crossing))
+
+
+def test_region_map_rejects_cycle_disconnected_from_unique_root():
+    records = (
+        RegionMapEntry(1, 1, 0, (), "#0072B2"),
+        RegionMapEntry(2, 2, 3, (3,), "#D55E00"),
+        RegionMapEntry(3, 3, 2, (2,), "#009E73"),
+    )
+
+    with pytest.raises(RegionsError, match="cycle"):
+        validate_region_map(records)
+
+
+def test_region_map_accepts_valid_nested_and_sibling_tree():
+    records = (
+        RegionMapEntry(1, 4, 2, (), "#0072B2"),
+        RegionMapEntry(2, 2, 4, (1,), "#D55E00"),
+        RegionMapEntry(3, 3, 4, (), "#009E73"),
+        RegionMapEntry(4, 1, 0, (2, 3), "#CC79A7"),
+    )
+
+    validate_region_map(records)
+
+
 def _install_fake_oft(monkeypatch, equilibrium) -> None:
     root = ModuleType("OpenFUSIONToolkit")
     tokamaker = ModuleType("OpenFUSIONToolkit.TokaMaker")
@@ -292,4 +327,5 @@ def test_gfile_reader_reports_oft_import_failure(monkeypatch):
     with pytest.raises(ImportError) as captured:
         read_gfile("eq.gfile")
 
+    assert "native OFT unavailable" in str(captured.value)
     assert isinstance(captured.value.__cause__, OSError)

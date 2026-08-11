@@ -506,13 +506,31 @@ def load_regions_inspect_config(
         "verbose",
         config_path,
     )
+    multi_array_file_path = required_path("multi_array_file")
+    regions_map_path = required_path("regions_map")
+    plot_path = required_path("plot")
+
+    resolved_paths = (
+        ("multi_array_file", multi_array_file_path),
+        ("regions_map", regions_map_path),
+        ("plot", plot_path),
+    )
+    for index, (first_name, first_path) in enumerate(resolved_paths):
+        for second_name, second_path in resolved_paths[index + 1:]:
+            if first_path == second_path:
+                raise ConfigError(
+                    "regions inspect 路径冲突："
+                    f"{first_name} 与 {second_name} 解析为同一路径 "
+                    f"{first_path}"
+                )
+
     return RegionsInspectConfig(
         schema_version=SCHEMA_VERSION,
         config_path=config_path,
         mode="inspect",
-        multi_array_file_path=required_path("multi_array_file"),
-        regions_map_path=required_path("regions_map"),
-        plot_path=required_path("plot"),
+        multi_array_file_path=multi_array_file_path,
+        regions_map_path=regions_map_path,
+        plot_path=plot_path,
         verbose=verbose,
     )
 
