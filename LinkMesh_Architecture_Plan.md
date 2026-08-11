@@ -3,8 +3,8 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.7**（OFT 26.6 多区域生成、基本结构、Region 编号与 no-plasma 对照调查已完成；synthetic plasma compatibility role 隔离规则已批准；multi-array 业务仍待实现）
-- 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/work_plan.md` 只作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
+- 文档状态：正式版 **4.8**（OFT 26.6 多区域生成、基本结构、Region 编号与 no-plasma 对照调查已完成；`multi_array_file`、`regions inspect/generate`、TOML regions map、dx 合并与独立配置产品接口已完成最终裁决；业务源码尚未实现）
+- 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
 
