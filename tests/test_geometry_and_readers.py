@@ -420,5 +420,3 @@ def test_gfile_reader_reports_oft_import_failure(monkeypatch):
 
     assert "native OFT unavailable" in str(captured.value)
     assert isinstance(captured.value.__cause__, OSError)
-python -m pytest -q tests/test_configuration_contract.py tests/test_geometry_and_readers.py tests/test_oft_adapter_contract.py tests/test_plotter_contract.py tests/test_cli_contract.py
-python -m linkmesh regions generate --help
