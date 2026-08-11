@@ -757,11 +757,11 @@ def load_regions_inspect_config(
 
     if target == "trimeg" and hdf5_path is None:
         raise ConfigError(
-            "regions generate target=trimeg 需要 --hdf5 或 [regions].hdf5"
+            "regions generate target=trimeg 必须提供 --hdf5 或 [regions].hdf5"
         )
     if target == "mesh_only" and hdf5_path is not None:
         raise ConfigError(
-            "regions generate target=mesh_only 禁止提供 --hdf5 或 "
+            "regions generate target=mesh_only 不允许提供 --hdf5 或 "
             "[regions].hdf5"
         )
 
@@ -772,6 +772,7 @@ def load_regions_inspect_config(
     ]
     if hdf5_path is not None:
         resolved_paths.append(("hdf5", hdf5_path))
+
     for index, (first_name, first_path) in enumerate(resolved_paths):
         for second_name, second_path in resolved_paths[index + 1:]:
             if first_path == second_path:
