@@ -12,7 +12,9 @@ from linkmesh.mesh import Mesh2D
 from linkmesh.readers.boundary_reader import (
     BoundaryFormatError,
     read_boundary_file,
+    read_multi_boundary_file,
 )
+from linkmesh.regions import RegionsError, build_region_plan
 from linkmesh.readers.gfile_reader import read_gfile
 
 
@@ -145,6 +147,64 @@ def test_boundary_reader_rejects_distinct_format_and_geometry_errors(
 
     with pytest.raises(exception):
         read_boundary_file(path)
+
+
+def test_multi_boundary_reader_ignores_empty_lines_and_preserves_blocks(
+    tmp_path,
+):
+    path = tmp_path / "multi"
+    path.write_text(
+        "\n4\n0 0\n\n2 0\n2 2\n0 2\n\n"
+        "4\n0.5 0.5\n1.0 0.5\n\n1.0 1.0\n0.5 1.0\n\n",
+        encoding="utf-8",
+    )
+
+    blocks = read_multi_boundary_file(path)
+
+    assert len(blocks) == 2
+    assert all(block.dtype == np.float64 for block in blocks)
+    np.testing.assert_array_equal(blocks[0][0], [0.0, 0.0])
+    np.testing.assert_array_equal(blocks[1][0], [0.5, 0.5])
+
+
+def test_multi_boundary_reader_rejects_single_and_truncated_blocks(tmp_path):
+    single = tmp_path / "single"
+    single.write_text("3\n0 0\n1 0\n0 1\n", encoding="utf-8")
+    with pytest.raises(BoundaryFormatError, match="array_file"):
+        read_multi_boundary_file(single)
+
+    truncated = tmp_path / "truncated"
+    truncated.write_text(
+        "3\n0 0\n1 0\n0 1\n4\n0 0\n1 0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(BoundaryFormatError, match="EOF"):
+        read_multi_boundary_file(truncated)
+
+
+def test_region_plan_supports_nested_siblings_and_synthetic_tie_break():
+    root = np.array([[-1, -1], [-1, 3], [5, 3], [5, -1]], dtype=float)
+    left = np.array([[0, 0], [0, 2], [2, 2], [2, 0]], dtype=float)
+    right = np.array([[3, 0], [3, 2], [4, 2], [4, 0]], dtype=float)
+    core = np.array([[0.5, 0.5], [0.5, 1.5], [1.5, 1.5], [1.5, 0.5]])
+
+    plan = build_region_plan((root, left, right, core))
+    entries = plan.by_curve_id()
+
+    assert plan.root_curve_id == 1
+    assert entries[1].child_curve_ids == (2, 3)
+    assert entries[2].child_curve_ids == (4,)
+    assert entries[4].depth == 2
+    assert entries[4].technical_role == "plasma"
+    assert entries[3].technical_role == "vacuum"
+
+
+def test_region_plan_rejects_multiple_roots():
+    first = np.array([[0, 0], [0, 1], [1, 1], [1, 0]], dtype=float)
+    second = np.array([[2, 0], [2, 1], [3, 1], [3, 0]], dtype=float)
+
+    with pytest.raises(RegionsError, match="唯一 root"):
+        build_region_plan((first, second))
 
 
 def _install_fake_oft(monkeypatch, equilibrium) -> None:

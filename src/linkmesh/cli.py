@@ -235,6 +235,56 @@ def build_parser() -> argparse.ArgumentParser:
         help="打印详细日志（节点数、三角形数、写入状态、配置文件路径）",
     )
 
+    command_parsers = parser.add_subparsers(
+        dest="command",
+        metavar="COMMAND",
+    )
+    regions_parser = command_parsers.add_parser(
+        "regions",
+        help="多轮廓 Region 工作流",
+        description="LinkMesh 多轮廓 Region 工作流。",
+    )
+    regions_actions = regions_parser.add_subparsers(
+        dest="regions_action",
+        metavar="ACTION",
+        required=True,
+    )
+    inspect_parser = regions_actions.add_parser(
+        "inspect",
+        help="检查 multi_array_file 并输出 TOML map 与 PNG",
+    )
+    inspect_parser.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="只加载该 regions inspect TOML 配置",
+    )
+    inspect_parser.add_argument(
+        "--multi-array-file",
+        dest="multi_array_file",
+        default=UNSET,
+        metavar="PATH",
+        help="重复 counted R-Z blocks 输入路径",
+    )
+    inspect_parser.add_argument(
+        "--regions-map",
+        dest="regions_map",
+        default=UNSET,
+        metavar="PATH",
+        help="TOML regions map 输出路径",
+    )
+    inspect_parser.add_argument(
+        "--plot",
+        default=UNSET,
+        metavar="PATH",
+        help="inspection PNG 输出路径",
+    )
+    inspect_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="打印 inspect 过程信息",
+    )
+
     return parser
 
 
@@ -306,6 +356,9 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
 
 def _run(args: argparse.Namespace) -> None:
     """LinkMesh 主执行逻辑（由 main() 调用，异常由 main() 统一捕获）。"""
+    if getattr(args, "command", None) == "regions":
+        _run_regions_inspect(args)
+        return
 
     # ------------------------------------------------------------------ #
     # Step 1：收集显式 CLI 输入并合并配置                                   #
@@ -480,6 +533,55 @@ def _run(args: argparse.Namespace) -> None:
         )
         if verbose:
             print(f"[LinkMesh] PNG 路径：{plot_str}")
+
+
+def _run_regions_inspect(args: argparse.Namespace) -> None:
+    """Execute the first-batch inspect chain without Triangle generation."""
+    if args.regions_action != "inspect":
+        raise NotImplementedError(
+            f"regions action 尚未实现：{args.regions_action}"
+        )
+
+    overrides = config_mod.RegionsInspectOverrides(
+        multi_array_file=args.multi_array_file,
+        regions_map=args.regions_map,
+        plot=args.plot,
+        verbose=True if args.verbose else UNSET,
+    )
+    cfg = config_mod.load_regions_inspect_config(
+        overrides,
+        config_arg=args.config,
+    )
+
+    from linkmesh.mesher.oft_adapter import inspect_multi_region_ids
+    from linkmesh.readers.boundary_reader import read_multi_boundary_file
+    from linkmesh.regions import (
+        assign_final_region_ids,
+        build_region_plan,
+        region_map_entries,
+        write_regions_map,
+    )
+    from linkmesh.utils.plotter import plot_regions_inspection
+
+    blocks = read_multi_boundary_file(cfg.multi_array_file_path)
+    plan = build_region_plan(blocks)
+    region_ids = inspect_multi_region_ids(plan)
+    numbered_plan = assign_final_region_ids(plan, region_ids)
+    records = region_map_entries(numbered_plan)
+
+    # All parsing, tree, role, and OFT setup checks have succeeded before any
+    # ordinary success artifact is created.
+    plot_regions_inspection(
+        numbered_plan,
+        records,
+        str(cfg.plot_path),
+    )
+    write_regions_map(records, cfg.regions_map_path)
+
+    if cfg.verbose:
+        print(f"[LinkMesh] multi-array curves: {len(blocks)}")
+        print(f"[LinkMesh] regions map: {cfg.regions_map_path}")
+        print(f"[LinkMesh] inspection PNG: {cfg.plot_path}")
 
 
 if __name__ == "__main__":

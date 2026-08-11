@@ -365,6 +365,88 @@ def plot_mesh(
     print(f"Mesh validation plot saved: {filepath}")
 
 
+def plot_regions_inspection(
+    plan,
+    records,
+    filepath: str,
+) -> None:
+    """Plot the inspected curves, final Region IDs, and containment tree."""
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Patch
+    except ImportError as exc:
+        raise ImportError(
+            "无法导入 matplotlib。请运行：pip install matplotlib"
+        ) from exc
+
+    record_by_curve_id = {
+        record.curve_id: record
+        for record in records
+    }
+    if set(record_by_curve_id) != {
+        entry.curve_id for entry in plan.entries
+    }:
+        raise ValueError("inspection plan 与 regions map 的 curve_id 不一致")
+
+    figure, axis = plt.subplots(
+        figsize=(8, 7),
+        constrained_layout=True,
+    )
+    handles = []
+
+    for entry in sorted(plan.entries, key=lambda item: item.depth):
+        record = record_by_curve_id[entry.curve_id]
+        points = np.array(entry.points, dtype=np.float64, copy=True)
+        display = np.vstack((points, points[0]))
+        axis.fill(
+            display[:, 0],
+            display[:, 1],
+            color=record.color,
+            alpha=0.10,
+            zorder=entry.depth,
+        )
+        axis.plot(
+            display[:, 0],
+            display[:, 1],
+            color=record.color,
+            linewidth=1.8,
+            zorder=10 + entry.depth,
+        )
+        center = np.mean(points, axis=0)
+        children = ",".join(
+            str(child_id) for child_id in record.child_region_ids
+        ) or "-"
+        axis.text(
+            center[0],
+            center[1],
+            f"curve {record.curve_id}\nRegion {record.region_id}",
+            color=record.color,
+            fontsize=8,
+            ha="center",
+            va="center",
+            zorder=30,
+        )
+        handles.append(
+            Patch(
+                facecolor=record.color,
+                edgecolor=record.color,
+                alpha=0.35,
+                label=(
+                    f"Region {record.region_id}: curve {record.curve_id}, "
+                    f"parent {record.parent_region_id}, children {children}"
+                ),
+            )
+        )
+
+    axis.set_xlabel("R [m]")
+    axis.set_ylabel("Z [m]")
+    axis.set_title("LinkMesh Regions Inspection")
+    axis.set_aspect("equal", adjustable="box")
+    axis.legend(handles=handles, loc="best", fontsize=7)
+    figure.savefig(filepath, dpi=160, bbox_inches="tight")
+    plt.close(figure)
+
+
 def plot_lcfs_only(
     gfile_data: "GFileData",
     filepath: str,

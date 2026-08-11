@@ -160,6 +160,29 @@ UNSET = _Unset()
 
 
 @dataclass
+class RegionsInspectOverrides:
+    """Explicit CLI values for the isolated regions-inspect configuration."""
+
+    multi_array_file: Any = UNSET
+    regions_map: Any = UNSET
+    plot: Any = UNSET
+    verbose: Any = UNSET
+
+
+@dataclass(frozen=True)
+class RegionsInspectConfig:
+    """Resolved configuration for ``linkmesh regions inspect`` only."""
+
+    schema_version: int
+    config_path: Optional[Path]
+    mode: Literal["inspect"]
+    multi_array_file_path: Path
+    regions_map_path: Path
+    plot_path: Path
+    verbose: bool
+
+
+@dataclass
 class CliOverrides:
     """CLI 收集的用户显式输入（未提供者保持 UNSET）。
 
@@ -361,6 +384,137 @@ def _load_toml(config_path: Path) -> dict:
         )
 
     return out
+
+
+# --------------------------------------------------------------------------- #
+# regions inspect 独立配置模型                                                 #
+# --------------------------------------------------------------------------- #
+
+def _load_regions_inspect_toml(config_path: Path) -> dict[str, Any]:
+    try:
+        with config_path.open("rb") as file_object:
+            raw = tomllib.load(file_object)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(
+            f"[配置文件 {config_path}] TOML 语法错误：{exc}"
+        ) from exc
+    except OSError as exc:
+        raise ConfigError(
+            f"[配置文件 {config_path}] 无法读取：{exc}"
+        ) from exc
+
+    if set(raw) - {"schema_version", "regions", "runtime"}:
+        unknown = sorted(set(raw) - {"schema_version", "regions", "runtime"})
+        _fail(config_path, "顶层", f"未知 section 或键：{unknown}")
+    if raw.get("schema_version") != SCHEMA_VERSION or isinstance(
+        raw.get("schema_version"), bool
+    ):
+        _fail(config_path, "schema_version", "必须是整数 1")
+
+    regions = raw.get("regions", {})
+    runtime = raw.get("runtime", {})
+    if not isinstance(regions, dict):
+        _fail(config_path, "[regions]", "必须是 TOML table")
+    if not isinstance(runtime, dict):
+        _fail(config_path, "[runtime]", "必须是 TOML table")
+
+    allowed_regions = {"mode", "multi_array_file", "regions_map", "plot"}
+    unknown_regions = set(regions) - allowed_regions
+    if unknown_regions:
+        _fail(
+            config_path,
+            "[regions]",
+            f"未知键：{sorted(unknown_regions)}",
+        )
+    unknown_runtime = set(runtime) - {"verbose"}
+    if unknown_runtime:
+        _fail(
+            config_path,
+            "[runtime]",
+            f"未知键：{sorted(unknown_runtime)}",
+        )
+
+    values: dict[str, Any] = {}
+    if "mode" in regions:
+        if regions["mode"] != "inspect":
+            _fail(
+                config_path,
+                "[regions].mode",
+                "regions inspect 配置必须为字符串 \"inspect\"",
+            )
+        values["mode"] = "inspect"
+    for key in ("multi_array_file", "regions_map", "plot"):
+        if key in regions:
+            values[key] = _check_str_path(
+                regions[key],
+                f"[regions].{key}",
+                config_path,
+            )
+    if "verbose" in runtime:
+        values["verbose"] = _check_bool(
+            runtime["verbose"],
+            "[runtime].verbose",
+            config_path,
+        )
+    return values
+
+
+def load_regions_inspect_config(
+    overrides: RegionsInspectOverrides,
+    *,
+    config_arg: Optional[str] = None,
+    cwd: Optional[Path] = None,
+) -> RegionsInspectConfig:
+    """Resolve isolated inspect config using defaults < TOML < explicit CLI."""
+    base_cwd = Path(cwd) if cwd is not None else Path.cwd()
+    config_path: Optional[Path] = None
+    values: dict[str, Any] = {}
+
+    if config_arg is not None:
+        config_path = _resolve_path(config_arg, base_cwd)
+        if not config_path.is_file():
+            raise ConfigError(
+                f"--config 指定的 regions 配置文件不存在：{config_path}"
+            )
+        values = _load_regions_inspect_toml(config_path)
+
+    config_dir = config_path.parent if config_path is not None else base_cwd
+
+    def merged(name: str, default: Any = None) -> Any:
+        explicit = getattr(overrides, name)
+        if explicit is not UNSET:
+            return explicit
+        return values.get(name, default)
+
+    def required_path(name: str) -> Path:
+        explicit = getattr(overrides, name)
+        value = merged(name)
+        if value is None:
+            option_name = name.replace("_", "-")
+            raise ConfigError(
+                "regions inspect 缺少必需路径："
+                f"--{option_name} 或 [regions].{name}"
+            )
+        base = base_cwd if explicit is not UNSET else config_dir
+        return _resolve_path(
+            _check_str_path(value, name, config_path),
+            base,
+        )
+
+    verbose = _check_bool(
+        merged("verbose", False),
+        "verbose",
+        config_path,
+    )
+    return RegionsInspectConfig(
+        schema_version=SCHEMA_VERSION,
+        config_path=config_path,
+        mode="inspect",
+        multi_array_file_path=required_path("multi_array_file"),
+        regions_map_path=required_path("regions_map"),
+        plot_path=required_path("plot"),
+        verbose=verbose,
+    )
 
 
 # --------------------------------------------------------------------------- #

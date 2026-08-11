@@ -11,8 +11,10 @@ from linkmesh.mesher.oft_adapter import (
     _OUTER_REGION_ATTR,
     build_oft_domain_from_gfile,
     build_single_region_domain_from_boundary,
+    inspect_multi_region_ids,
     mesh_from_oft_domain,
 )
+from linkmesh.regions import build_region_plan
 
 
 def _mesh_arrays():
@@ -168,6 +170,69 @@ def test_single_region_boundary_strategy_creates_one_region(monkeypatch):
     assert len(domain.regions) == 1
     assert getattr(domain, _OUTER_REGION_ATTR) is domain.regions[0]
     domain.define_region.assert_called_once_with("plasma", 0.04, "plasma")
+
+
+class _InspectDomain:
+    last_instance = None
+
+    def __init__(self):
+        type(self).last_instance = self
+        self.regions = []
+        self.region_info = {}
+        self.setup_only = None
+
+    def define_region(self, name, _dx, role):
+        self.region_info[name.upper()] = {
+            "id": 99,
+            "type": role,
+        }
+
+    def add_polygon(self, points, name, parent_name=None):
+        self.regions.append(
+            SimpleNamespace(
+                points=np.array(points, copy=True),
+                name=name,
+                parent_name=parent_name,
+            )
+        )
+
+    def build_mesh(self, *, setup_only=False):
+        self.setup_only = setup_only
+        # Deliberately differ from curve IDs and definition order.
+        final_ids = {
+            "LM_CURVE_1": 2,
+            "LM_CURVE_2": 3,
+            "LM_CURVE_3": 1,
+        }
+        for name, region_id in final_ids.items():
+            if name in self.region_info:
+                self.region_info[name]["id"] = region_id
+        return None, None, None
+
+
+def test_multi_region_inspect_uses_setup_only_and_final_ids(monkeypatch):
+    root = np.array([[0, 0], [0, 4], [4, 4], [4, 0]], dtype=float)
+    left = np.array([[0.5, 0.5], [0.5, 1.5], [1.5, 1.5], [1.5, 0.5]])
+    right = np.array([[2.5, 0.5], [2.5, 1.5], [3.5, 1.5], [3.5, 0.5]])
+    plan = build_region_plan((root, left, right))
+    monkeypatch.setattr(
+        oft_adapter,
+        "_load_gs_domain_class",
+        lambda: _InspectDomain,
+    )
+
+    mapping = inspect_multi_region_ids(plan)
+
+    assert mapping == {1: 2, 2: 3, 3: 1}
+    domain = _InspectDomain.last_instance
+    assert domain.setup_only is True
+    roles = {
+        name: info["type"]
+        for name, info in domain.region_info.items()
+    }
+    assert roles["LM_CURVE_1"] == "boundary"
+    assert roles["LM_CURVE_2"] == "plasma"
+    assert roles["LM_CURVE_3"] == "vacuum"
 
 
 class _NestedDomain:

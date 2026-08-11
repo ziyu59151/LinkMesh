@@ -7,7 +7,9 @@ import pytest
 from linkmesh.config import (
     CliOverrides,
     ConfigError,
+    RegionsInspectOverrides,
     load_effective_config,
+    load_regions_inspect_config,
 )
 
 
@@ -17,6 +19,57 @@ def _load(tmp_path: Path, **overrides):
         no_config=True,
         cwd=tmp_path,
     )
+
+
+def test_regions_inspect_config_is_isolated_and_cli_overrides_toml(tmp_path):
+    config_dir = tmp_path / "regions-config"
+    config_dir.mkdir()
+    config_path = config_dir / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'input.rz'\n"
+        "regions_map = 'map.toml'\n"
+        "plot = 'toml.png'\n"
+        "[runtime]\nverbose = true\n",
+        encoding="utf-8",
+    )
+
+    config = load_regions_inspect_config(
+        RegionsInspectOverrides(plot="cli.png"),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+
+    assert config.mode == "inspect"
+    assert config.multi_array_file_path == (config_dir / "input.rz").resolve()
+    assert config.regions_map_path == (config_dir / "map.toml").resolve()
+    assert config.plot_path == (tmp_path / "cli.png").resolve()
+    assert config.verbose is True
+
+
+def test_regions_inspect_config_rejects_unknown_key_and_missing_required(
+    tmp_path,
+):
+    path = tmp_path / "regions.toml"
+    path.write_text(
+        "schema_version = 1\n"
+        "[regions]\nmode = 'inspect'\nunknown = true\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="未知键"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            config_arg=str(path),
+            cwd=tmp_path,
+        )
+
+    with pytest.raises(ConfigError, match="multi-array-file"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            cwd=tmp_path,
+        )
 
 
 def test_builtin_defaults_and_target_conditional_output(tmp_path):

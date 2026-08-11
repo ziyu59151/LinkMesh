@@ -74,6 +74,79 @@ def _install_boundaries(monkeypatch):
     return mocks
 
 
+def test_regions_help_hierarchy_and_old_parser_scope(capsys):
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as captured:
+        parser.parse_args(["regions", "inspect", "--help"])
+
+    assert captured.value.code == 0
+    assert "--multi-array-file" in capsys.readouterr().out
+    old = parser.parse_args(
+        [
+            "--no-config",
+            "--target",
+            "mesh_only",
+            "--profile",
+            "single_region",
+            "--boundary-source",
+            "lcfs",
+            "--gfile",
+            "eq.gfile",
+        ]
+    )
+    assert old.command is None
+
+
+def test_regions_inspect_runs_setup_only_map_and_plot(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    read = MagicMock(return_value=blocks)
+    setup = MagicMock(return_value={1: 2, 2: 1})
+    plot = MagicMock()
+    write_map = MagicMock()
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        read,
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        setup,
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_inspection",
+        plot,
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.write_regions_map",
+        write_map,
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "inspect",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "regions.png",
+        )
+    )
+
+    assert read.call_count == 1
+    assert setup.call_count == 1
+    assert plot.call_count == 1
+    assert write_map.call_count == 1
+
+
 def test_mesh_only_selects_mesher_without_writers(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     mocks = _install_boundaries(monkeypatch)

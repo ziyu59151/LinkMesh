@@ -447,6 +447,97 @@ def _capture_and_attach_outer_region(domain: Any, n_before: int) -> Any:
 
 
 # --------------------------------------------------------------------------- #
+# multi-array inspect：只执行 OFT setup_only 编号                              #
+# --------------------------------------------------------------------------- #
+
+def inspect_multi_region_ids(plan: Any) -> dict[int, int]:
+    """Build a fresh OFT Domain and return final IDs from setup_only.
+
+    This function never requests Triangle nodes, cells, or attributes.
+    Technical roles are consumed only as OFT adapter compatibility metadata.
+    """
+    entries = tuple(plan.entries)
+    if len(entries) < 2:
+        raise ValueError("multi-region inspect 至少需要两个 Region")
+
+    by_curve_id = {entry.curve_id: entry for entry in entries}
+    if len(by_curve_id) != len(entries):
+        raise ValueError("Region plan 含重复 curve_id")
+
+    role_counts = {
+        role: sum(entry.technical_role == role for entry in entries)
+        for role in ("boundary", "plasma", "vacuum")
+    }
+    if role_counts["boundary"] != 1 or role_counts["plasma"] != 1:
+        raise ValueError(
+            "Region plan 必须恰好包含一个 boundary 和一个 synthetic plasma "
+            "technical role"
+        )
+    if any(
+        entry.technical_role not in ("boundary", "plasma", "vacuum")
+        for entry in entries
+    ):
+        raise ValueError("Region plan 含未批准的 OFT technical role")
+
+    def region_name(curve_id: int) -> str:
+        return f"LM_CURVE_{curve_id}"
+
+    gs_domain = _load_gs_domain_class()
+    domain = gs_domain()
+
+    # setup-only 编号与 dx 数值无关；第一批使用固定正值，不开放网格尺度配置。
+    setup_dx = 1.0
+    for entry in sorted(entries, key=lambda item: item.curve_id):
+        domain.define_region(
+            region_name(entry.curve_id),
+            setup_dx,
+            entry.technical_role,
+        )
+
+    for entry in sorted(entries, key=lambda item: item.curve_id):
+        parent_name = (
+            None
+            if entry.parent_curve_id == 0
+            else region_name(entry.parent_curve_id)
+        )
+        domain.add_polygon(
+            np.array(entry.points, dtype=np.float64, copy=True),
+            region_name(entry.curve_id),
+            parent_name=parent_name,
+        )
+
+    result = domain.build_mesh(setup_only=True)
+    if result != (None, None, None):
+        raise ValueError(
+            "OFT build_mesh(setup_only=True) 返回了非预期结果；"
+            "inspect 禁止执行完整 Triangle 网格生成"
+        )
+
+    raw_info = getattr(domain, "region_info", None)
+    if not hasattr(raw_info, "items"):
+        raise ValueError("OFT setup_only 后缺少可读取的 region_info")
+
+    info_by_name = {
+        str(name).upper(): info
+        for name, info in raw_info.items()
+    }
+    mapping: dict[int, int] = {}
+    for entry in entries:
+        name = region_name(entry.curve_id).upper()
+        if name not in info_by_name:
+            raise ValueError(
+                f"OFT setup_only 后缺少 curve_id={entry.curve_id} 对应 Region"
+            )
+        mapping[entry.curve_id] = _coerce_region_id(info_by_name[name])
+
+    if len(set(mapping.values())) != len(mapping):
+        raise ValueError("OFT setup_only 返回重复最终 Region ID")
+    if set(mapping) != set(by_curve_id):
+        raise ValueError("OFT setup_only 的 curve/Region 对应不完整")
+    return mapping
+
+
+# --------------------------------------------------------------------------- #
 # 1. 通用 N 区域核心                                                            #
 # --------------------------------------------------------------------------- #
 

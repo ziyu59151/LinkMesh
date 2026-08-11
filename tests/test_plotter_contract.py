@@ -6,7 +6,12 @@ import pytest
 pytest.importorskip("matplotlib")
 
 from linkmesh.mesh import Mesh2D
-from linkmesh.utils.plotter import plot_mesh
+from linkmesh.regions import (
+    assign_final_region_ids,
+    build_region_plan,
+    region_map_entries,
+)
+from linkmesh.utils.plotter import plot_mesh, plot_regions_inspection
 
 
 def _mesh() -> Mesh2D:
@@ -31,6 +36,26 @@ def test_plotter_generates_nonempty_png_without_gfile(tmp_path):
 
     assert output.is_file()
     assert output.stat().st_size > 0
+
+
+def test_regions_inspection_generates_png_with_map_colors(tmp_path):
+    outer = np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float)
+    inner = np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float)
+    plan = build_region_plan((outer, inner))
+    numbered = assign_final_region_ids(plan, {1: 2, 2: 1})
+    records = region_map_entries(numbered)
+    snapshots = [entry.points.copy() for entry in numbered.entries]
+    output = tmp_path / "regions.png"
+
+    plot_regions_inspection(numbered, records, str(output))
+
+    assert output.is_file()
+    assert output.stat().st_size > 0
+    assert {record.color for record in records} == {
+        entry.color for entry in numbered.entries
+    }
+    for entry, snapshot in zip(numbered.entries, snapshots):
+        np.testing.assert_array_equal(entry.points, snapshot)
 
 
 def test_reference_only_mode_selects_lcfs_and_preserves_inputs(
