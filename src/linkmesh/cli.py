@@ -67,10 +67,19 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="linkmesh",
-        description=(
-            "LinkMesh：从 GFile/EQDSK 平衡文件生成二维三角网格，"
-            "并导出为 TRIMEG HDF5 或 M3DC1 PUMI .smb 静态网格文件。"
+        usage=(
+            "%(prog)s [standard mesh options]\n"
+            "       %(prog)s regions {inspect,generate} ..."
         ),
+        description=(
+            "LinkMesh：生成二维非结构三角网格。\n\n"
+            "可用工作流：\n"
+            "  标准网格工作流\n"
+            "    通过无子命令入口读取 GFile 或单轮廓边界，生成网格及目标格式。\n"
+            "  多区域工作流\n"
+            "    通过 regions inspect/generate 检查多轮廓并生成多区域网格。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     configuration_group = parser.add_argument_group("Configuration")
@@ -119,14 +128,6 @@ def build_parser() -> argparse.ArgumentParser:
         choices=list(config_mod.BOUNDARY_SOURCES),
         help="计算域外边界来源；覆盖配置文件",
     )
-    input_group.add_argument(
-        "--array-file",
-        dest="array_file",
-        default=UNSET,
-        metavar="PATH",
-        help="counted R-Z boundary text 路径（boundary_source=array_file 时使用）",
-    )
-
     # ------------------------------------------------------------------ #
     # 既有：GFile 输入                                                     #
     # ------------------------------------------------------------------ #
@@ -139,6 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
             "array_file + --plot-lcfs 时仅提供 LCFS reference"
         ),
     )
+    input_group.add_argument(
+        "--array-file",
+        dest="array_file",
+        default=UNSET,
+        metavar="PATH",
+        help="counted R-Z boundary text 路径（boundary_source=array_file 时使用）",
+    )
 
     # ------------------------------------------------------------------ #
     # 既有：输出路径参数（default=UNSET 交给 config 合并）                  #
@@ -150,18 +158,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="PATH",
         help="TRIMEG HDF5 输出路径（默认：mesh.h5，target=trimeg 时生效）",
-    )
-    output_group.add_argument(
-        "--smb",
-        default=UNSET,
-        metavar="PATH",
-        help="PUMI .smb 输出路径（M4；默认无可执行路径）",
-    )
-    output_group.add_argument(
-        "--plot",
-        default=UNSET,
-        metavar="PATH",
-        help="可视化自检图输出路径（默认：不生成）",
     )
     input_group.add_argument(
         "--plot-lcfs",
@@ -176,6 +172,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="PATH",
         help="M3DC1 TXT model 输出路径（M4；默认无可执行路径）",
+    )
+    output_group.add_argument(
+        "--smb",
+        default=UNSET,
+        metavar="PATH",
+        help="PUMI .smb 输出路径（M4；默认无可执行路径）",
+    )
+    output_group.add_argument(
+        "--plot",
+        default=UNSET,
+        metavar="PATH",
+        help="可视化自检图输出路径（默认：不生成）",
     )
 
     # ------------------------------------------------------------------ #
@@ -218,14 +226,14 @@ def build_parser() -> argparse.ArgumentParser:
     # 既有：跳过开关（保持旧行为）                                          #
     # ------------------------------------------------------------------ #
     output_group.add_argument(
-        "--no-smb",
-        action="store_true",
-        help="跳过 .smb 文件生成",
-    )
-    output_group.add_argument(
         "--no-hdf5",
         action="store_true",
         help="跳过 HDF5 文件生成",
+    )
+    output_group.add_argument(
+        "--no-smb",
+        action="store_true",
+        help="跳过 .smb 文件生成",
     )
 
     # ------------------------------------------------------------------ #
@@ -240,11 +248,25 @@ def build_parser() -> argparse.ArgumentParser:
     command_parsers = parser.add_subparsers(
         dest="command",
         metavar="COMMAND",
+        title="Multi-region workflow",
+        description=(
+            "多轮廓 Region 工作流入口；使用 regions -h 查看 inspect 和 generate。"
+        ),
     )
     regions_parser = command_parsers.add_parser(
         "regions",
-        help="多轮廓 Region 工作流",
-        description="LinkMesh 多轮廓 Region 工作流。",
+        help="检查多轮廓 Region 或生成完整多区域网格",
+        description=(
+            "多轮廓 Region 工作流分为两个递进阶段：\n\n"
+            "  inspect   读取 multi_array_file，推导 Region 并通过 OFT "
+            "setup-only\n"
+            "            取得最终编号，输出 TOML regions map 和 inspection PNG；\n"
+            "            不生成完整 Triangle 网格。\n"
+            "  generate  读取同一 multi_array_file 和 inspect 生成的 regions map，\n"
+            "            应用 mesh_dx/region_dx，生成完整多区域 Triangle 网格和 "
+            "mesh PNG。"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     regions_actions = regions_parser.add_subparsers(
         dest="regions_action",
@@ -253,35 +275,47 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_parser = regions_actions.add_parser(
         "inspect",
-        help="检查 multi_array_file 并输出 TOML map 与 PNG",
+        help="推导 Region、取得 setup-only 编号并输出 TOML map 与 inspection PNG",
+        description=(
+            "读取 multi_array_file，推导 Region 包含关系并通过 OFT setup-only "
+            "取得最终编号；输出正式 TOML regions map 和 inspection PNG，"
+            "不生成完整 Triangle 网格。"
+        ),
     )
-    inspect_parser.add_argument(
+    inspect_configuration_group = inspect_parser.add_argument_group(
+        "Configuration"
+    )
+    inspect_input_group = inspect_parser.add_argument_group("Input")
+    inspect_output_group = inspect_parser.add_argument_group("Output")
+    inspect_runtime_group = inspect_parser.add_argument_group("Runtime")
+
+    inspect_configuration_group.add_argument(
         "--config",
         default=None,
         metavar="PATH",
         help="只加载该 regions inspect TOML 配置",
     )
-    inspect_parser.add_argument(
+    inspect_input_group.add_argument(
         "--multi-array-file",
         dest="multi_array_file",
         default=UNSET,
         metavar="PATH",
-        help="重复 counted R-Z blocks 输入路径",
+        help="原始重复 counted R-Z blocks 输入路径",
     )
-    inspect_parser.add_argument(
+    inspect_output_group.add_argument(
         "--regions-map",
         dest="regions_map",
         default=UNSET,
         metavar="PATH",
-        help="TOML regions map 输出路径",
+        help="inspect 生成的正式 TOML regions map 输出路径",
     )
-    inspect_parser.add_argument(
+    inspect_output_group.add_argument(
         "--plot",
         default=UNSET,
         metavar="PATH",
-        help="inspection PNG 输出路径",
+        help="Region 包含关系与最终编号的 inspection PNG 输出路径",
     )
-    inspect_parser.add_argument(
+    inspect_runtime_group.add_argument(
         "--verbose",
         action="store_true",
         help="打印 inspect 过程信息",
@@ -289,35 +323,48 @@ def build_parser() -> argparse.ArgumentParser:
 
     generate_parser = regions_actions.add_parser(
         "generate",
-        help="按 regions map 和分区域尺度生成多区域网格",
+        help="读取 regions map、应用分区域尺度并生成完整多区域网格",
+        description=(
+            "读取原始 multi_array_file 和 inspect 生成的 TOML regions map，"
+            "应用最终 Region ID 对应的网格尺度，生成完整多区域 Triangle 网格。"
+        ),
+        epilog=(
+            "尺度规则：--mesh-dx 为全部最终 Region 提供默认尺度；"
+            "--region-dx ID=DX 可重复提供并按最终 Region ID 局部覆盖。"
+            "未提供 --mesh-dx 时，--region-dx 必须完整覆盖全部 Region。单位均为 m。"
+        ),
     )
-    generate_parser.add_argument(
+    generate_configuration_group = generate_parser.add_argument_group(
+        "Configuration"
+    )
+    generate_input_group = generate_parser.add_argument_group("Input")
+    generate_mesh_group = generate_parser.add_argument_group(
+        "Mesh Resolution"
+    )
+    generate_output_group = generate_parser.add_argument_group("Output")
+    generate_runtime_group = generate_parser.add_argument_group("Runtime")
+
+    generate_configuration_group.add_argument(
         "--config",
         default=None,
         metavar="PATH",
         help="只加载该 regions generate TOML 配置",
     )
-    generate_parser.add_argument(
+    generate_input_group.add_argument(
         "--multi-array-file",
         dest="multi_array_file",
         default=UNSET,
         metavar="PATH",
-        help="重复 counted R-Z blocks 输入路径",
+        help="原始重复 counted R-Z blocks 输入路径",
     )
-    generate_parser.add_argument(
+    generate_input_group.add_argument(
         "--regions-map",
         dest="regions_map",
         default=UNSET,
         metavar="PATH",
-        help="inspect 生成的 TOML regions map 输入路径",
+        help="inspect 生成且 generate 必须读取的 TOML regions map",
     )
-    generate_parser.add_argument(
-        "--plot",
-        default=UNSET,
-        metavar="PATH",
-        help="最终多区域 mesh PNG 输出路径",
-    )
-    generate_parser.add_argument(
+    generate_mesh_group.add_argument(
         "--mesh-dx",
         dest="mesh_dx",
         type=float,
@@ -325,15 +372,21 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help="全部最终 Region 的默认目标网格尺度，单位 m",
     )
-    generate_parser.add_argument(
+    generate_mesh_group.add_argument(
         "--region-dx",
         dest="region_dx",
         action="append",
         default=None,
         metavar="ID=DX",
-        help="按最终 Region ID 覆盖网格尺度，可重复提供",
+        help="按最终 Region ID 局部覆盖尺度，可重复提供，单位 m",
     )
-    generate_parser.add_argument(
+    generate_output_group.add_argument(
+        "--plot",
+        default=UNSET,
+        metavar="PATH",
+        help="最终多区域 Triangle mesh PNG 输出路径",
+    )
+    generate_runtime_group.add_argument(
         "--verbose",
         action="store_true",
         help="打印每个 Region 的三角形统计",
@@ -358,6 +411,8 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    from linkmesh.regions import RegionsError
+
     try:
         _run(args)
     except NotImplementedError as e:
@@ -365,6 +420,9 @@ def main() -> None:
         sys.exit(1)
     except ConfigError as e:
         print(f"[LinkMesh] 配置错误：{e}", file=sys.stderr)
+        sys.exit(1)
+    except RegionsError as e:
+        print(f"[LinkMesh] Region 工作流错误：\n  {e}", file=sys.stderr)
         sys.exit(1)
     except FileNotFoundError as e:
         print(f"[LinkMesh] 文件未找到：{e}", file=sys.stderr)

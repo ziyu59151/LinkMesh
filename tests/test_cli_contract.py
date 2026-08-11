@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -8,6 +9,7 @@ import pytest
 
 from linkmesh import cli
 from linkmesh.config import ConfigError
+from linkmesh.regions import RegionsError
 
 
 def _parse(*arguments):
@@ -74,14 +76,73 @@ def _install_boundaries(monkeypatch):
     return mocks
 
 
+def _assert_group_order(help_text, *titles):
+    positions = [help_text.index(f"{title}:") for title in titles]
+    assert positions == sorted(positions)
+
+
+def test_top_level_help_describes_both_workflows_and_group_order(capsys):
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as captured:
+        parser.parse_args(["--help"])
+
+    assert captured.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "标准网格工作流" in help_text
+    assert "多区域工作流" in help_text
+    assert "regions {inspect,generate}" in help_text
+    assert "linkmesh mesh" not in help_text
+    for option in (
+        "--config",
+        "--no-config",
+        "--target",
+        "--profile",
+        "--boundary-source",
+        "--gfile",
+        "--array-file",
+        "--plot-lcfs",
+        "--mesh-dx",
+        "--plasma-dx",
+        "--vacuum-dx",
+        "--outer-dx",
+        "--hdf5",
+        "--h5",
+        "--model",
+        "--smb",
+        "--plot",
+        "--no-hdf5",
+        "--no-smb",
+        "--verbose",
+    ):
+        assert option in help_text
+    _assert_group_order(
+        help_text,
+        "Configuration",
+        "Task",
+        "Input",
+        "Mesh Resolution",
+        "Output",
+        "Runtime",
+    )
+
+
 def test_regions_help_hierarchy_and_old_parser_scope(capsys):
     parser = cli.build_parser()
 
     with pytest.raises(SystemExit) as captured:
-        parser.parse_args(["regions", "inspect", "--help"])
+        parser.parse_args(["regions", "--help"])
 
     assert captured.value.code == 0
-    assert "--multi-array-file" in capsys.readouterr().out
+    help_text = capsys.readouterr().out
+    assert "inspect" in help_text
+    assert "generate" in help_text
+    assert "setup-only" in help_text
+    assert "完整多区域 Triangle 网格" in help_text
+    assert "--gfile" not in help_text
+    assert "--hdf5" not in help_text
+    assert "--smb" not in help_text
+
     old = parser.parse_args(
         [
             "--no-config",
@@ -96,6 +157,36 @@ def test_regions_help_hierarchy_and_old_parser_scope(capsys):
         ]
     )
     assert old.command is None
+
+
+def test_regions_inspect_help_is_scoped_and_grouped(capsys):
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as captured:
+        parser.parse_args(["regions", "inspect", "--help"])
+
+    assert captured.value.code == 0
+    help_text = capsys.readouterr().out
+    for option in (
+        "--config",
+        "--multi-array-file",
+        "--regions-map",
+        "--plot",
+        "--verbose",
+    ):
+        assert option in help_text
+    assert "正式 TOML regions map" in help_text
+    assert "inspection PNG" in help_text
+    assert "--region-dx" not in help_text
+    assert "--hdf5" not in help_text
+    assert "--smb" not in help_text
+    _assert_group_order(
+        help_text,
+        "Configuration",
+        "Input",
+        "Output",
+        "Runtime",
+    )
 
 
 def test_regions_inspect_runs_setup_only_map_and_plot(
@@ -155,11 +246,84 @@ def test_regions_generate_help_is_scoped(capsys):
 
     assert captured.value.code == 0
     help_text = capsys.readouterr().out
-    assert "--region-dx" in help_text
-    assert "--mesh-dx" in help_text
+    for option in (
+        "--config",
+        "--multi-array-file",
+        "--regions-map",
+        "--mesh-dx",
+        "--region-dx",
+        "--plot",
+        "--verbose",
+    ):
+        assert option in help_text
+    assert "最终 Region ID" in help_text
+    assert "可重复提供" in help_text
+    assert "完整覆盖全部 Region" in help_text
     assert "--gfile" not in help_text
     assert "--hdf5" not in help_text
     assert "--smb" not in help_text
+    _assert_group_order(
+        help_text,
+        "Configuration",
+        "Input",
+        "Mesh Resolution",
+        "Output",
+        "Runtime",
+    )
+
+
+def test_regions_error_is_reported_without_traceback(
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["linkmesh", "regions", "generate", "--help"],
+    )
+    monkeypatch.setattr(
+        cli,
+        "_run",
+        MagicMock(side_effect=RegionsError("请重新执行 linkmesh regions inspect")),
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_parser",
+        MagicMock(
+            return_value=SimpleNamespace(
+                parse_args=MagicMock(return_value=SimpleNamespace())
+            )
+        ),
+    )
+
+    with pytest.raises(SystemExit) as captured:
+        cli.main()
+
+    assert captured.value.code != 0
+    stderr = capsys.readouterr().err
+    assert "[LinkMesh] Region 工作流错误：" in stderr
+    assert "请重新执行 linkmesh regions inspect" in stderr
+    assert "Traceback" not in stderr
+
+
+def test_unknown_internal_exception_is_not_swallowed(monkeypatch):
+    monkeypatch.setattr(
+        cli,
+        "_run",
+        MagicMock(side_effect=RuntimeError("internal failure")),
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_parser",
+        MagicMock(
+            return_value=SimpleNamespace(
+                parse_args=MagicMock(return_value=SimpleNamespace())
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="internal failure"):
+        cli.main()
 
 
 def test_regions_generate_rebuilds_validates_and_plots(
