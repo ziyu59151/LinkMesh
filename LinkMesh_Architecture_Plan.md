@@ -1454,7 +1454,7 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 | 任意 | `single_region` | `flux_surface` | 实现候选，未实现，待 OFT 26.6 只读侦察 |
 | `regions generate --target mesh_only` | 多区域 | `multi_array_file` | IMPLEMENTED；N-region Mesh2D STRUCTURALLY CHECKED，PNG GENERATED 并人工复核 |
 | `regions generate --target trimeg` | 多区域 | `multi_array_file` | IMPLEMENTED；真实 HDF5 GENERATED，User 确认自动测试和实际检测通过；标准 MATLAB/TRIMEG 加载 PENDING |
-| `regions generate --target m3dc1` | 多区域 | `multi_array_file` | CANDIDATE / NOT OPEN；model、smb 与 schema v2 均未批准实施 |
+| `regions generate --target m3dc1` | 多区域 | `multi_array_file` | DESIGNED / NOT IMPLEMENTED；要求 model、smb，禁止 hdf5；内部 tags 自动生成 |
 | 旧无子命令入口 | 任意 | `multi_array_file` | 当前未开放；不得回退旧 `array_file` 或 nested |
 | `m3dc1` | `single_region` | `first_wall` / `flux_surface` | 未开放 |
 | `m3dc1` | `nested_three_region` | 任意 | 禁止 |
