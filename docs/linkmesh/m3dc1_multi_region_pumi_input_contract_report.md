@@ -13,11 +13,11 @@
 
 ```text
 N-region Mesh2D
-  + RegionPlan
-  + regions map
-  → multi-face M3DC1ModelSpec
-  → analytic model TXT
-  → LinkMesh exchange
+  → 从最终全局 mesh topology 自动派生外边界与 Region interfaces
+  → 自动构造 geometric model、tags 与 classification
+  → 不可变 M3DC1BuildResult
+      ├── validated M3DC1ModelSpec → analytic model TXT
+      └── classifications + 同一 ModelSpec → LinkMesh exchange
   → native helper
   → SCOREC/PUMI acceptChanges()
   → verify()
@@ -25,6 +25,9 @@ N-region Mesh2D
   → 非空 rank-0 SMB
   → 配套 TXT+SMB 交付
 ```
+
+`RegionPlan` 和 regions map 继续用于输入一致性、Region 身份与可追踪记录，但
+classification 不再依赖原始 curve corners 与最终 mesh nodes 的坐标匹配。
 
 本文不调查：
 
@@ -133,63 +136,72 @@ TXT face records 分别为 `1 1 1`、`2 2 1 2`、`3 2 2 3`。证据：
 
 教程中的 plasma、wall、vacuum 名称来自案例语境，不是 face tag 自带的物理语义。
 
-## 5. RegionPlan、Curves 和 Mesh2D 到 ModelSpec 的输入契约
+## 5. 最终 Mesh2D 到目标模型的输入契约
 
-### 5.1 明确裁决：`Mesh2D` 单独不足
+### 5.1 明确裁决：最终 `Mesh2D` 足以驱动 topology 与 classification
 
-`Mesh2D` 只提供：
+`Mesh2D.nodes`、`Mesh2D.triangles` 和逐 triangle 的
+`Mesh2D.region_ids` 已包含多区域转换所需的核心数学事实：
 
-- 全局 nodes；
-- 全局 triangles；
-- 每个 triangle 的 OFT final `region_id`；
-- 最外层 `outer_boundary`。
-
-它不提供：
-
-- 每条原始输入曲线的有序点；
-- `curve_id`；
-- parent/children 包含树；
-- 内部共享界面的原始几何；
-- `curve_id -> region_id`；
-- `curve_id -> loop_tag`；
-- `region_id -> face_tag`。
+- 一套全局 0-based nodes；
+- 一套全局 0-based triangles；
+- 每个 triangle 所属的原始 OFT final Region ID；
+- 可由 triangles 唯一派生的全局无向 mesh edges 与 triangle incidence。
 
 直接证据：
 
 - `src/linkmesh/mesh.py:127-139`
-- `src/linkmesh/regions.py:45-65`
-- `src/linkmesh/regions.py:70-80`
+- `src/linkmesh/writers/smb_writer.py:147-178`
+- `scripts/probe_m3dc1_interface_mapping.py:_build_edge_incidence`
+- `scripts/probe_m3dc1_interface_mapping.py:_candidate_edges`
 
-因此，多区域 builder 的最小输入应为：
-
-```text
-mesh: Mesh2D
-plan: RegionPlan
-region_map: Sequence[RegionMapEntry]
-```
-
-候选签名：
+由此可以自动确定：
 
 ```text
-build_multi_face_model_spec(
-    mesh: Mesh2D,
-    plan: RegionPlan,
-    region_map: Sequence[RegionMapEntry],
-) -> M3DC1ModelSpec
+incidence = 1
+  → 计算域外边界 mesh edge
+
+incidence = 2 且两侧 triangle region_id 不同
+  → Region interface mesh edge
+
+incidence = 2 且两侧 triangle region_id 相同
+  → face interior mesh edge
 ```
 
-这是实施裁决，不是当前公开接口。
+原始 curves、`RegionPlan` 和 regions map 仍用于输入重建核对、Region 身份追踪和
+可审计记录，但不再作为 geometric classification 的坐标匹配输入。尤其不要求原始
+curve corner 在最终 `Mesh2D.nodes` 中逐分量精确保留。
 
-### 5.2 输入对象职责
+### 5.2 直接 probe 对旧候选算法的否证
 
-| 输入 | 提供内容 | 不负责 |
+`probe_m3dc1_interface_mapping.py` 已成功进入正式 regions generate/OFT/Triangle
+数据流并生成 6283 points、12480 cells、3 regions，随后因为原始 curve corner
+`(2.8955259996, 0.1294981959)` 在最终 nodes 中不存在逐分量完全相等节点而按设计
+失败。
+
+该结果直接否证：
+
+```text
+原始 curve corner
+  → exact floating-point tuple
+  → 最终 mesh node
+```
+
+作为正式 classification 前提的候选算法。它不否定多区域 `Mesh2D`，也不否定从最终
+triangle incidence 提取 interface cycles。正式实现不得把该算法改为最近邻、投影、
+吸附或任意容差 fallback；应完全移除该坐标匹配前提。
+
+### 5.3 输入对象职责
+
+| 输入 | 正式职责 | 不负责 |
 |---|---|---|
-| `Mesh2D` | 全局节点、三角形、逐 triangle Region ID | 不保存 PUMI 对象，不提供内部 analytic geometry |
-| `RegionPlan` | 每条 curve 的坐标、`curve_id`、parent/children | 不把 technical role 解释为物理类型 |
-| `RegionMapEntry` | `curve_id` 与 OFT final `region_id` 的已确认对应 | `physical_label` 和 color 不驱动 topology |
-| builder | 分配 model tags、构造 loops/faces、生成显式映射 | 不重新剖分，不猜测物理语义 |
+| `Mesh2D` | 驱动最终 topology、cycles、model entities 与全部 classification | 不保存 PUMI 对象，不修改 Region ID |
+| `RegionPlan` | 输入曲线、parent/children 和重建一致性记录 | 不参与 corner-to-node 匹配 |
+| `RegionMapEntry` | `curve_id` 与 OFT final `region_id` 的审计对应 | `physical_label`、color 不驱动 topology |
+| target Adapter | 自动分配 tags、构造 model 和 classifications | 不重新剖分，不要求用户配置内部 tags |
 
-`physical_label` 是可编辑 metadata；OFT technical role 是 OFT 建域兼容输入。二者均不得自动决定 face、face tag 或 classification。直接证据见：
+`physical_label` 是可编辑 metadata；OFT technical role 是 OFT 建域兼容输入。二者均
+不得自动决定 face、interface、model tag 或 classification。直接证据见：
 
 - `src/linkmesh/regions.py:45-80`
 - `src/linkmesh/regions.py:491-496`
@@ -216,64 +228,83 @@ face_tag = region_id
 face_tag = region_id + 1
 ```
 
-### 6.2 明确裁决：必须显式生成映射
+### 6.2 正式自动映射规则
 
-builder 必须生成并验证：
+普通用户无需逐项确认或配置 Region-to-face、loop、edge 或 vertex tags。
 
-```text
-region_id_to_face_tag: dict[int, int]
-curve_id_to_loop_tag: dict[int, int]
-```
-
-候选确定性规则：
-
-- `curve_id_to_loop_tag`：按 `curve_id` 升序分配连续 `1..C`；
-- `region_id_to_face_tag`：按对应 `curve_id` 升序分配连续 `1..R`；
-- 两个映射均一对一并完整覆盖；
-- mesh 中 `region_id` 集合必须与 regions map 完全一致；
-- 每个 triangle 通过 `region_id_to_face_tag` 得到 `(2, face_tag)`；
-- 映射不依据 Region ID 数值大小、颜色、`physical_label` 或 technical role。
-
-是否把两个映射作为 ModelSpec 的持久字段仍待蓝图裁决。最低实现可以由 builder 返回不可变构建结果对象，或由调用链显式传递映射；不得在 Writer 中重新独立编号。
-
-## 7. Boundary Loops、共享 Loop 和 Geometric Edge
-
-每条输入 curve 只创建一次：
+target Adapter 必须自动生成：
 
 ```text
-curve
-  → 一组 geometric vertices
-  → 一组 directed geometric edges
-  → 一个 geometric loop
+sorted_region_ids = sorted(unique(Mesh2D.region_ids))
+region_id_to_face_tag = {
+    region_id: position + 1
+}
 ```
 
-一个 Region 对应 curve `C`，其 face boundary loops 为：
+规则：
+
+- `Mesh2D.region_ids` 原值保持不变；
+- 不排序写回、不压缩 `Mesh2D`、不执行 `+1`；
+- face tags 按 Region ID 升序确定性分配连续正整数 `1..N`；
+- `region_id_to_face_tag` 是不可变 target build result 的内部字段，不是用户配置；
+- 每个 triangle 只通过这同一映射得到 `(2, face_tag)`；
+- model tag 是目标对象标识，不是 `Mesh2D` 数组下标。
+
+loop、geometric vertex 和 geometric edge tags 从规范化 topology cycles 自动分配，
+不再需要 `curve_id_to_loop_tag` 作为 classification 前提。若为了审计保留
+`curve_id` 与 topology cycle 的关联，它只能是可选追踪 metadata，不能由坐标近似
+决定，也不能影响 mesh classification。
+
+## 7. Topology Cycles、共享 Loop 和 Geometric Edge
+
+### 7.1 Cycle 提取
+
+从全局 triangles 构造一次唯一无向 mesh edge table，edge key 固定为：
 
 ```text
-direct_child_loops(C) + own_loop(C)
+(min(node0, node1), max(node0, node1))
 ```
 
-其中 direct children 按 `curve_id` 升序，own loop 放在最后，作为 LinkMesh 的确定性序列化规则。
+分别对计算域外边界和每个排序后的 Region pair
+`(min_region_id, max_region_id)` 建立 edge graph。每个合法 connected component
+必须是闭合 cycle：
 
-该规则适用于：
+- 每个 cycle node 的 graph degree 必须为 2；
+- 一次遍历必须恰好覆盖 component 的全部 edges；
+- 开放 chain、分叉、重复 edge、non-manifold 或歧义 component 必须拒绝；
+- 不使用坐标、viewport、颜色、物理标签、最近邻或容差决定连接关系。
 
-| 树形 | face boundary loops |
-|---|---|
-| leaf | `[own_loop]` |
-| 严格嵌套中间层 | `[direct_child_loop, own_loop]` |
-| sibling 的 parent | `[child_loop_1, child_loop_2, ..., own_loop]` |
-| mixed tree | 每个 Region 独立使用直接 children，不包含孙代 loop |
+cycle 规范化规则：
 
-不得把全部 descendants 都加入当前 face，因为孙代边界不是该 Region 的直接边界。
+1. cycle 起点取 component 中最小全局 node index；
+2. 从起点存在两个遍历方向；
+3. 分别生成完整 node-index 序列；
+4. 选择字典序较小的序列作为规范方向。
 
-一个内部 loop 被恰好两个相邻 faces 引用；root 的 outer loop 只被 root face 引用。不得为相邻 Region 复制坐标相同但 tag 不同的 loops 或 edges。
+该规则只定义 LinkMesh 的确定性 tag/序列化方向，不宣称为 M3D-C1 outer/hole
+物理方向语义。
 
-教程共享证据：
+### 7.2 Topology-derived geometric model
+
+首版正式方向是：
+
+- cycle 上每个 mesh node 定义一个 geometric vertex；
+- cycle 上每条 mesh edge 定义一条 `LIN(1)` directed geometric edge；
+- 每个规范 cycle 定义一个 geometric loop；
+- 每个 interface cycle 只定义一次，供两侧 faces 共享；
+- 每个 Region 定义一个 geometric face；
+- face 引用其 triangle closure 中出现的全部 boundary/interface cycles；
+- face 的 loop tag list 按 loop tag 升序写出；
+- 不拟合 B-spline，不压缩为原始 polygon segments。
+
+教程已确认共享关系，TXT loader 按 face loop tags 展开同一 `loopContainer` 中的
+edges：
 
 - `external_references\m3dc1_multi_region_input_contract_snapshot_20260812\tutorial\diiid.txt:15-17`
-- `external_references\m3dc1_multi_region_input_contract_snapshot_20260812\generation-source\projects\m3dc1\M3DC1\m3dc1_scorec\src\m3dc1_model.cc:352-357`
+- `external_references\m3dc1_multi_region_input_contract_snapshot_20260812\generation-source\projects\m3dc1\M3DC1\m3dc1_scorec\src\m3dc1_model.cc:344-357`
 
-待确认：face 中 child loops 与 own loop 的顺序是否具有目标格式 orientation 语义。当前只能把上述顺序定义为 LinkMesh 确定性输出约定。
+现有读取和构造源码未给出 geometric entity 数量上限。后续若目标环境暴露明确上限，
+必须以直接失败证据返回蓝图，不得预先通过坐标拟合规避。
 
 ## 8. Triangle、Mesh Edge 和 Vertex Classification
 
@@ -313,7 +344,9 @@ helper 已按每条 triangle record 的 `(dimension, tag)` 调用 `findModelEnti
 - incidence 2 且两侧 triangles 属于同一 face：分类到该 face；
 - incidence 不是 1 或 2：拒绝为 non-manifold。
 
-Region interface 必须能唯一对应一条输入 curve 的 geometric loop/edge chain。无法由现有 curve identity 和 mesh topology 无歧义对应时必须停止，不能使用最近距离、投影或容差吸附猜测。
+Region interface identity 由该 mesh edge 两侧 triangles 的排序 Region ID pair 唯一
+确定。它不需要先映射回原始 curve polygon segments；无法形成合法闭合 cycle 时必须
+停止，不能使用最近距离、投影或容差吸附猜测。
 
 当前 edge table 和 incidence 逻辑见：
 
@@ -335,7 +368,9 @@ Region interface 必须能唯一对应一条输入 curve 的 geometric loop/edge
 - `src/linkmesh/writers/smb_writer.py:293-329`
 - `src/linkmesh/writers/smb_writer.py:331-364`
 
-多区域路径能否继续仅靠逐分量精确坐标匹配所有内部 curve corners，必须由真实 OFT 网格验证。在证据不足时不得降级为最近距离猜测。
+该规则只保留给既有 schema v1 single-face 兼容路径。schema v2 多区域路径的
+geometric vertices 直接来自 topology cycle nodes，因此 vertex identity 使用全局
+node index，无需任何浮点坐标匹配。
 
 ## 9. 全局索引与 Entity 唯一性
 
@@ -363,29 +398,43 @@ helper 必须：
 - `native/linkmesh_scorec_helper/main.cc:952-984`
 - `native/linkmesh_scorec_helper/main.cc:986-1057`
 
-## 10. ModelSpec 最小扩展
+## 10. ModelSpec 与不可变目标构建结果
 
 ### 10.1 当前表达能力裁决
 
-当前字段容器在类型层面已经可以保存：
-
-- 多个 vertices；
-- 多个 edges；
-- 多个 loops；
-- 多个 faces；
-- 一个 loop 的多个 edge tags；
-- 一个 face 的多个 loop tags。
-
-证据：
+当前字段容器在类型层面已经可以保存多个 vertices、edges、loops 和 faces，一个
+loop 可引用多条 edges，一个 face 可引用多个 loops：
 
 - `src/linkmesh/m3dc1_model.py:236-292`
 - `src/linkmesh/m3dc1_model.py:301-312`
 
-但当前 validation 写死 single-loop/single-face。因此明确裁决是：
+当前 validation 仍写死 single-loop/single-face。因此字段形状足以承载
+topology-derived multi-face model，但 validated contract 尚未实现。
 
-> 当前 ModelSpec 的数据形状原则上足以承载 sibling 和 mixed tree，但当前 validated contract 不足以表达它们。
+### 10.2 `M3DC1BuildResult`
 
-### 10.2 最小校验扩展
+正式设计批准新增不可变目标专用构建结果 `M3DC1BuildResult`。其职责是统一持有：
+
+- validated `M3DC1ModelSpec`；
+- 不可变 `region_id_to_face_tag`；
+- 规范化 topology cycle/loop identity；
+- 全局唯一 mesh edge table；
+- 逐 mesh vertex classification；
+- 逐 mesh edge classification；
+- 逐 triangle classification。
+
+约束：
+
+- TXT Writer 与 SMB Writer 接收同一个 build result；
+- 两个 Writers 不得分别提取 cycles、重新编号或重新推导 classification；
+- build result 不保存 PUMI/GMI/APF/MDS handle；
+- 不保存 SMB 字节；
+- 不修改或拥有可变 `Mesh2D`；
+- 不要求普通用户填写内部 tags；
+- 现有 `M3DC1ModelSpec` 继续只表达 geometric model；
+- 既有 `build_single_face_model_spec(mesh)` 公开行为保持兼容。
+
+### 10.3 最小校验扩展
 
 后续蓝图应批准：
 
@@ -411,15 +460,59 @@ helper 必须：
 - 唯一 face 引用唯一 loop；
 - special loop 固定为 `(-1, unique_loop, -1, -1)`。
 
-待确认：
+源码裁决：
 
-- 一般 N-region 情况下四个 special loop tags 的业务赋值来源；
-- `numLoops == numFaces` 是否为目标路径硬约束；
-- periodic single-edge B-spline 是否需要进入本轮范围。
+- TXT loader 显式读取 `numLoops` 和四个 special loop tags；
+- face topology 创建只使用 face record 的 loop tags，并不使用四个 special tags；
+- 完整 `m3dc1_model.cc` 仅用 `innerWallLoop` 和计算出的 outermost loop 填充
+  `innerLoop`/`outerLoop` 语义集合；
+- `-1` 是已存在且被教程与 single-face LinkMesh 使用的合法“未指定”值；
+- 当前没有一般 N-region 必须给任一 special loop 非 `-1` 的源码证据。
 
-本轮最小多区域实现应继续使用每条 curve 的 linear polygon edges，不扩大到新的曲线类型。
+因此 topology-derived multi-region 首版采用保守默认：
 
-## 11. TXT Writer 最小扩展
+```text
+separatrix_loop = -1
+inner_wall_loop = -1
+outer_wall_loop = -1
+vacuum_loop = -1
+```
+
+这些字段是 M3D-C1 专用 metadata，不参与 PUMI geometric topology 创建，不从
+`physical_label` 或 OFT technical role 猜测，也不复制教程
+`3 -1 1 2 3`。若后续消费侧确实要求业务语义值，应作为独立 metadata 契约调查，
+不得阻塞本轮生成侧 topology 实现。
+
+本轮最小多区域实现使用 topology cycle 的 `LIN(1)` polygon edges，不引入 periodic
+single-edge B-spline。`numLoops == numFaces` 在部分后续 M3D-C1 源码中存在断言，
+因此首版仅接受 cycle 数等于 Region/face 数的输入；不满足时明确失败并返回最小源码
+侦察，不通过复制或丢弃 loops 绕过。
+
+## 11. TXT 字段源码裁决与 Writer 最小扩展
+
+### 11.1 字段裁决
+
+| 字段 | 源码行为 | 自动规则 |
+|---|---|---|
+| `numLoops` | loader 控制 loop 段读取次数 | `len(spec.loops)` |
+| 四个 special loop tags | header 读取；不参与 face topology 创建 | multi-region 首版全部 `-1` |
+| loop tag | `loopContainer[tag]` 的对象标识 | 按规范 cycle 顺序连续 `1..L` |
+| loop edge count | 控制 vertex/edge record 数 | cycle edge 数 |
+| edge record order | 按读取顺序追加到 loop | 规范 cycle 遍历顺序 |
+| face tag | `gmi_add_analytic(..., faceNumber, ...)` | `region_id_to_face_tag` |
+| face loop count/list | 展开对应 loops 的全部 edges | 该 Region closure cycles，按 loop tag 升序 |
+| loop tag list 顺序 | loader 仅按序展开，未赋予 outer/hole 符号语义 | LinkMesh 确定性升序，不宣称物理方向 |
+| curve type | `LIN=1` 无 payload；`POLY/BSPLINE` 有 payload | 首版固定 `LIN(1)` |
+| begin/end vertex tags | 定义 directed edge topology | 规范 cycle 相邻 node 顺序 |
+
+直接证据：
+
+- header/loops：`M3DC1/m3dc1_scorec/src/m3dc1_model.cc:237-319`
+- faces：`M3DC1/m3dc1_scorec/src/m3dc1_model.cc:331-357`
+- curve enum：`M3DC1/m3dc1_scorec/include/m3dc1_model.h`
+- 当前 Writer：`src/linkmesh/writers/m3dc1_model_writer.py:45-118`
+
+### 11.2 Writer 最小扩展
 
 当前 TXT Writer 已：
 
@@ -468,7 +561,7 @@ TXT 字段顺序的直接证据：
 
 因此多 face 不缺少必要引用字段。
 
-### 12.2 明确裁决：升级为 schema v2
+### 12.2 正式设计裁决：multi-region 使用 schema v2
 
 虽然无需增加字段，但 schema v1 已被代码和蓝图定义为 single-loop/single-face。为避免同一 version 隐式改变合法输入集合，采用：
 
@@ -505,9 +598,35 @@ EOF
 - `src/linkmesh/writers/smb_writer.py:592-603`
 - `native/linkmesh_scorec_helper/main.cc:226-247`
 
-v2 不新增 Region ID，因为 helper 不应理解 OFT Region 语义；Python Writer 在写 exchange 前已将 Region ID 映射为 model face tag。
+v2 不新增 Region ID，因为 helper 不应理解 OFT Region 语义；Python Writer 在写
+exchange 前已将 Region ID 映射为 model face tag。schema v2 当前状态为
+**DESIGNED / APPROVED / NOT IMPLEMENTED**。
 
-## 13. Helper 多 Face 修改
+PUMI exchange 各 records 的职责保持：
+
+| records | 内容 |
+|---|---|
+| geometric vertices | topology cycle nodes 对应的 model vertices |
+| geometric edges | topology cycle mesh edges 对应的 `LIN` model edges |
+| loops | 有序 geometric edge tag lists |
+| faces | 每个 Region 的 boundary loop tag lists |
+| vertex classifications | 已声明 model vertex/edge/face |
+| mesh edges | 全局唯一 0-based node pair 与 model classification |
+| triangle classifications | 已声明 `(2, face_tag)` |
+
+helper 只验证这些 tags、引用、dimensions、计数和 topology 一致性，不重新理解
+Region ID 或猜测 classification。
+
+## 13. Helper 多 Face 正式扩展边界
+
+正式 helper 是已经通过 single-face 生成侧验证的组件；MPI/PCU/GMI/APF/MDS
+生命周期和 ownership 不重新设计。multi-face 只扩展 schema validation 和 model
+face 创建循环，不创建第二个 helper，也不继续维护独立 multi-face probe。
+
+独立 probe 的 CMake 配置和 C++ 编译成功，但链接因系统默认 PIE executable 与静态
+`libmds.a` relocation 不兼容而失败；未生成 executable，也未运行 multi-face
+runtime。该结果没有形成 PUMI API 或 multi-face topology 的成功/失败结论，不能
+解释为正式 helper 缺陷。
 
 最小修改：
 
@@ -634,11 +753,11 @@ gmi model 创建
 
 可以在内部复用低层构造或校验辅助函数，但不得迫使旧调用方制造虚假的多区域 metadata。
 
-## 16. `regions generate --target=m3dc1` 候选 CLI/Config
+## 16. `regions generate --target=m3dc1` CLI/Config 方向
 
-这是蓝图修订候选，当前不得直接实现。
+该接口设计已批准但尚未实现。
 
-### 16.1 候选参数
+### 16.1 参数
 
 在现有 `regions generate` 作用域内扩展：
 
@@ -646,8 +765,11 @@ gmi model 创建
 --target {mesh_only,trimeg,m3dc1}
 --model PATH
 --smb PATH
---no-smb
 ```
+
+不增加 Region-to-face、loop tag、face tag、classification 或 PUMI 安装路径参数。
+`--no-smb` 在旧顶层入口是执行期开关，但此前未获批准进入 regions generate；首版
+multi-region 接口不增加该参数。
 
 保留现有：
 
@@ -691,7 +813,10 @@ smb = "mesh.smb"
 | `trimeg` | `hdf5` | `model`、`smb` |
 | `m3dc1` | `model`、`smb` | `hdf5` |
 
-`--no-smb` 可作为执行期开关，但不取消 `smb` required field，与旧顶层 M3D-C1 入口保持一致。
+`target=m3dc1` 必须同时提供 `model` 和 SMB base path，并禁止 `hdf5`；
+`mesh_only` 禁止 `hdf5/model/smb`；`trimeg` 要求 `hdf5` 且禁止
+`model/smb`。这些参数只属于 `regions generate`，不影响 `regions inspect` 或旧
+无子命令入口。
 
 ### 16.3 编排候选
 
@@ -701,15 +826,16 @@ read multi-array
 → read/validate regions map
 → resolve Region dx
 → generate one N-region Mesh2D
-→ build one multi-face M3DC1ModelSpec
-→ write TXT from that exact spec
-→ write SMB exchange from same mesh/spec/mappings
+→ build one immutable M3DC1BuildResult
+→ write TXT from build_result.spec
+→ write SMB exchange from the same build result
 → invoke helper
 → verify non-empty rank-0 SMB
 → write plot/report paths
 ```
 
-TXT 和 SMB 必须使用同一个 ModelSpec 和同一套 tag mappings，不得各自编号。
+TXT 和 SMB 必须使用同一个 `M3DC1BuildResult`，不得各自提取 cycles、编号或推导
+classification。
 
 ## 17. 逐文件修改清单
 
@@ -835,26 +961,33 @@ GENERATED
 
 ## 21. 仍待确认事项
 
-1. `agm.h` 中 adjacency API 的目标版本完整签名、失败约定和 ownership。
-2. 同一 analytic edge 作为两个 face uses 时是否需要显式方向。
-3. 多 loop face 的 outer/hole orientation 由 edge direction、use direction还是插入顺序表达。
-4. face record 的 loop tag 顺序是否具有目标格式语义。
-5. sibling 和 mixed tree 的 multi-loop face 是否在目标 PUMI 2.2.9 环境通过 `verify()`。
-6. 统一 `(R,Z)` analytic face parameterization 对有内部边界 face 是否充分。
-7. 一般 N-region 模型的 special loop tags 如何从业务输入获得。
-8. `numLoops == numFaces` 是硬约束还是教程/后续源码路径假设。
-9. OFT 生成的内部 interface corner coordinates 是否与原始 curves 保持逐分量精确匹配。
-10. 多条 interfaces 相交时 model vertex 和 mesh vertex classification 如何唯一对应。
-11. 是否只支持 linear polygon loops，还是未来需要 periodic B-spline；本轮建议保持 linear。
-12. 目标环境 `verify()` 和 `writeNative()` 成功后，M3D-C1 是否接受产物，必须由同门独立验证。
+以下事项不再阻塞开始正式 multi-face 业务实现，但必须在实现和生成侧验收中分层记录：
+
+1. `numLoops == numFaces` 的后续 M3D-C1 断言是否限制所有目标案例；首版不满足即停。
+2. topology canonical direction 是否足以满足 AGM use direction；若正式 helper
+   `verify()` 失败，只调查 `agm.h`、`gmi_analytic` 和当前 helper 调用边界，不扩大到
+   M3D-C1 consumer。
+3. multi-loop face 的 outer/hole orientation 是否需要当前 records 之外的信息。
+4. 统一 `(R,Z)` analytic face parameterization 对含内部边界 face 是否充分。
+5. 多个 disconnected cycles 对同一 Region pair 是否属于合法目标输入；首版每个
+   component 独立成 loop，但出现无法唯一归属的分叉或开放 graph 时拒绝。
+6. 目标环境正式 helper 的 v2 `acceptChanges()`、`verify()` 和 `writeNative()`。
+7. 生成产物能否被 M3D-C1 接受，必须由同门独立验证。
+
+已裁决、不再待确认：
+
+- 原始 curve corner exact-match 不是 classification 前提；
+- special loop tags 首版全部使用 `-1`；
+- tags 与 Region-to-face mapping 自动生成，不由用户配置；
+- 两个独立 probes 均停止维护。
 
 ## 22. 蓝图修订建议
 
 编码前，蓝图至少应新增或修改以下正式契约：
 
 1. 将 LinkMesh 多区域 M3D-C1 从禁止项升级为经批准的独立阶段。
-2. 定义 `build_multi_face_model_spec(mesh, plan, region_map)`。
-3. 定义 `curve_id_to_loop_tag` 和 `region_id_to_face_tag` 的确定性规则。
+2. 定义 topology-driven `M3DC1BuildResult` 构建入口。
+3. 定义自动 `region_id_to_face_tag`、规范 cycles 和全部 classifications。
 4. 明确 Region ID 不等于 face tag且不执行 `+1`。
 5. 定义 direct-child loops 加 own loop 的 face topology。
 6. 定义共享 loop/edge 不复制。
@@ -864,7 +997,8 @@ GENERATED
 10. 定义 Python Writer 是 classification 唯一责任层。
 11. 定义 helper 只验证和应用 classification。
 12. 定义全局 APF/MDS entities 不按 Region 重建。
-13. 在 `regions generate` 中批准 `target=m3dc1`、`model`、`smb`、`no-smb`。
+13. 在 `regions generate` 中批准 `target=m3dc1`、`model`、`smb`；首版不增加
+    `--no-smb`。
 14. 定义 LinkMesh 生成侧和同门消费侧的分层验收。
 15. 保留 single-region v1、公开 API和输出兼容要求。
 16. 纳入第 23 节停止条件。
@@ -875,16 +1009,16 @@ GENERATED
 
 遇到以下任一情况必须停止实现并返回蓝图或证据阶段：
 
-1. 无法从 RegionPlan/regions map 无歧义建立 `curve_id -> region_id`。
-2. mesh Region ID 集合与 map 不一致。
-3. 需要直接使用 Region ID 作为 face tag或对其执行 `+1` 才能继续。
-4. 无法确定性建立 `curve_id_to_loop_tag` 或 `region_id_to_face_tag`。
-5. 内部 mesh interface 无法唯一对应输入 curve。
-6. classification 需要最近距离、容差吸附、投影或物理标签猜测。
+1. `Mesh2D.region_ids` 非正、非整数语义或与 triangles 数量不一致。
+2. mesh Region ID 集合与经验证的 regions map 不一致。
+3. 需要修改、压缩 Region ID 或对其执行 `+1` 才能继续。
+4. 无法从最终 triangle incidence 确定性建立 face mapping 或 topology cycles。
+5. boundary/interface graph 出现 non-manifold、开放 chain、分叉或歧义 component。
+6. classification 需要原始 corner exact-match、最近距离、容差吸附、投影或物理标签猜测。
 7. 需要由 helper 根据坐标、Region 或邻接重新推导 classification。
-8. 同一 analytic edge 邻接两个 faces 无法通过目标 PUMI 2.2.9 `verify()`。
-9. multi-loop face 需要当前 exchange 不具备的 orientation/use 信息。
-10. sibling 或 mixed tree 不能用当前 ModelSpec records 无歧义表达。
+8. 正式 helper v2 的共享 analytic edge 无法通过目标 PUMI 2.2.9 `verify()`。
+9. multi-loop face 明确需要当前 exchange 不具备的 orientation/use 信息。
+10. topology-derived polygon model 与直接源码出现明确冲突。
 11. 必须修改 `Mesh2D` 保存 PUMI/GMI/APF/MDS 私有对象。
 12. 必须按 Region 复制全局 nodes、mesh edges 或 triangles。
 13. 必须引入第二剖分引擎、三维、并行分区、pybind11 或 ctypes 新路线。

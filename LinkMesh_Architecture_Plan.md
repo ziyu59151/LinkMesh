@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.0**（M3D-C1 多区域 PUMI 输入契约调查已完成；教程三 face 拓扑与 exchange 多 face record 表达能力已确认；multi-face ModelSpec、classification、schema v2、helper 多 face 支持及 `regions generate target=m3dc1` 仍是待 User 批准或待 native probe 的候选，尚未实现或开放；多区域 TRIMEG HDF5 已按 User 最新直接证据生成并通过自动测试和实际检测，标准 MATLAB/TRIMEG consumer 加载仍待验收）
+- 文档状态：正式版 **5.1**（M3D-C1 多区域输入契约源码调查完成；原始 curve corner exact-match 候选已被直接 probe 否证；正式设计批准改为从最终 N-region `Mesh2D` 全局 triangle incidence 自动派生 cycles、model tags 与 classifications，并由不可变 `M3DC1BuildResult` 统一驱动 TXT/SMB；schema v2、multi-face build result、helper 与 `regions generate target=m3dc1` 均尚未实现；多区域 TRIMEG HDF5 已生成并由 User 确认自动测试和实际检测通过，标准 MATLAB/TRIMEG consumer 加载仍待验收）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -148,11 +148,12 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | M3D-C1 多区域输入契约调查 | **COMPLETED** |
 | 教程三 face 拓扑 | **CONFIRMED** |
 | exchange 多 face record 表达能力 | **CONFIRMED** |
-| exchange schema v2 | **DESIGNED / USER APPROVAL PENDING** |
-| multi-face ModelSpec | **DESIGNED / NOT IMPLEMENTED** |
-| 多区域 classification | **DESIGNED / NOT IMPLEMENTED** |
-| helper 多 face 支持 | **DESIGNED / NATIVE PROBE PENDING** |
-| `regions generate target=m3dc1` | **CANDIDATE / NOT OPEN** |
+| 原始 curve corner exact-match 候选 | **REJECTED BY DIRECT PROBE** |
+| topology-driven classification | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
+| exchange schema v2 | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
+| multi-face ModelSpec / build result | **DESIGNED / NOT IMPLEMENTED** |
+| helper 多 face 支持 | **NOT IMPLEMENTED** |
+| `regions generate target=m3dc1` | **DESIGNED / NOT IMPLEMENTED** |
 | LinkMesh 多区域 TXT+SMB | **NOT GENERATED** |
 | LinkMesh 多区域 TXT+SMB 同门消费验证 | **PENDING** |
 | 三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
@@ -394,22 +395,22 @@ faces，`GeometricFace.loop_tags` 也可表示一个 face 引用多个 loops；�
 均包含 single-face invariants。因此当前 validated contract 尚不能表达或输出
 multi-face model。
 
-多区域候选 builder 需要同时消费 `Mesh2D`、`RegionPlan` 和正式 regions map，并
-确定性生成 `curve_id_to_loop_tag` 与 `region_id_to_face_tag`。但仅返回
-`M3DC1ModelSpec` 不足以保证 SMB Writer 唯一获得：
+多区域正式设计从最终 `Mesh2D.nodes/triangles/region_ids` 自动派生全局无向 mesh
+edges、triangle incidence、计算域外边界、Region interfaces 和闭合 topology cycles。
+`RegionPlan` 与 regions map 只承担输入一致性、Region 身份和审计记录，不用于原始
+curve corner 到最终 mesh node 的坐标匹配。
 
-- `region_id_to_face_tag`；
-- `curve_id_to_loop_tag`；
-- interface curve 到 geometric edge chain 的对应。
+正式设计批准新增不可变 `M3DC1BuildResult`，统一携带：
 
-后续蓝图必须由 User 在以下方向中正式裁决，当前不得自行选择最终对象名或公开签名：
+- validated `M3DC1ModelSpec`；
+- 自动生成的 `region_id_to_face_tag`；
+- 规范化 cycle/loop identity；
+- 全局唯一 mesh edge table；
+- vertex、mesh edge 和 triangle classifications。
 
-1. 扩展 `M3DC1ModelSpec`，保存不可变 mappings 与 interface identity；
-2. 新增一个不可变的多区域构建结果对象，统一携带 spec、mappings 和 classification
-   所需身份。
-
-无论采用哪种方向，TXT Writer 与 SMB Writer 都必须接收同一个目标专用构建结果及
-同一套 tag mappings，不得分别重新编号或重新猜测映射。
+TXT Writer 与 SMB Writer 必须接收同一个 build result，不得分别提取 cycles、
+重新编号或猜测 mappings。该对象不保存 PUMI/GMI/APF/MDS handles、不保存 SMB
+字节、不修改 `Mesh2D`，也不要求普通用户填写内部 tags。
 
 ---
 
@@ -2049,44 +2050,50 @@ validator 或 M3D-C1 消费端。
 11. SCOREC/PUMI 生成侧成功只达到生成侧证据，不等于 M3D-C1 已消费；多区域消费
     验证由同门负责。
 
-#### 7.11.2 待 User 批准的候选设计
+#### 7.11.2 已批准、尚未实现的自动转换设计
 
-以下内容是候选，不是已开放接口：
+1. 从 triangles 构造一次全局唯一无向 mesh edge table。
+2. incidence=1 自动形成计算域外边界；incidence=2 且两侧 Region ID 不同自动形成
+   Region interface；同 Region 的 incidence=2 edge 属于 face interior。
+3. boundary/interface graph 必须组成 degree=2 的闭合 cycles；开放、分叉、重复或
+   non-manifold component 拒绝。
+4. cycle 起点取最小全局 node index；两个方向选择字典序较小的完整 node-index
+   序列。
+5. face tags 按 `sorted(unique(region_ids))` 自动分配连续 `1..N`，不修改
+   `Mesh2D.region_ids`，不执行 `+1`。
+6. cycle nodes 自动成为 geometric vertices，cycle mesh edges 自动成为
+   `LIN(1)` geometric edges，每个 cycle 自动成为一个 loop。
+7. interface loop 只定义一次并由两侧 faces 共享；每个 Region face 引用其全部
+   closure cycles，loop tags 按升序写出。
+8. schema v1 保持 single-face；schema v2 使用相同布局和 multi-face invariants。
+9. helper 同时接受 v1/v2；v2 创建全部 faces并应用 Python 给出的 classifications。
+10. `regions generate` 增加 `target=m3dc1`、`model` 和 `smb`；不增加手工 tag、
+    mapping、classification 或 PUMI 路径参数，首版不增加 `--no-smb`。
 
-1. multi-face builder 消费 `Mesh2D`、`RegionPlan` 和 regions map。
-2. builder 确定性生成 `curve_id_to_loop_tag` 与
-   `region_id_to_face_tag`。
-3. 每条 input curve 只建立一个 geometric loop 和一套 geometric edges；相邻
-   faces 通过同一 loop tag 共享界面，不复制 geometry。
-4. Region face 的候选 boundary loops 为按确定顺序排列的 direct-child loops 加
-   own loop；该顺序目前只可作为 LinkMesh 确定性约定，不能宣称为目标 orientation
-   语义。
-5. triangle classification 由显式 `region_id_to_face_tag` 生成。
-6. schema v1 保持现有 single-face invariants；multi-region 候选使用字段布局相同、
-   语义 invariants 不同的 schema v2。
-7. helper 候选同时读取 v1/v2，保持 v1 回归，并为 v2 创建多个 faces、共享
-   geometric edges 和应用任意已声明 face classification。
-8. `regions generate` 候选增加 `target=m3dc1`、`model` 和 `smb`。是否增加
-   `--no-smb` 尚未经 User 裁决，本蓝图不批准该参数。
+原始 curve corner exact-match 不再是合法候选，也不得改用最近邻、投影、吸附或容差
+fallback。两个独立 probes 停止维护；正式 helper 的目标环境构建、
+`acceptChanges()`、`verify()` 和 `writeNative()` 构成 multi-face 生成侧验收。
 
-候选接口存在第 3.5 节所述构建结果缺口。在该缺口完成正式裁决前，不得让 TXT Writer
-和 SMB Writer 分别重建 mappings。
+#### 7.11.3 字段裁决与待确认事项
 
-#### 7.11.3 待确认事项
+源码已裁决：
 
-以下事项继续为 `PENDING`：
+- TXT face record 的多个 loop tags 只被按序展开，未见 outer/hole 符号语义；
+  LinkMesh 按 loop tag 升序写出。
+- topology cycle 每个 node/edge 可分别写为 geometric vertex 与 `LIN(1)` edge；
+  当前源码未给出 entity 数量上限。
+- 四个 special loop tags 不参与 face topology 创建。multi-region 首版全部使用
+  `-1`，不从 `physical_label`、OFT role 或教程编号猜测。
+- model tags 自动连续编号，不由用户配置。
 
-- 同一个 analytic edge 被两个 face boundaries 使用是否通过目标 PUMI
-  `verify()`；
-- AGM 是否需要显式 use direction；
-- multi-loop face 的 outer/hole orientation；
-- face 中 loop tags 的顺序语义；
-- sibling/mixed tree 的目标环境 native 验证；
-- special loop tags 的通用来源；
-- OFT 内部 interface corner 和 edge chain 与原始 curve 的确定性对应；
-- multi-face analytic model 的统一 `(R,Z)` parameterization 是否充分；
-- 任意 N-region M3D-C1 输出是否可以开放；
-- 新多区域 TXT+SMB 的生成、加载、初始化、时间推进及物理结果。
+以下继续为 `PENDING`，但不阻塞开始业务实现：
+
+- 正式 helper v2 的共享 analytic edge 和 multi-loop face `verify()`；
+- AGM use direction 与 topology canonical direction 的相容性；
+- multi-loop face 的 outer/hole orientation 是否需要额外 records；
+- 统一 `(R,Z)` face parameterization 是否充分；
+- `numLoops == numFaces` 后续断言对目标输入的限制；
+- 新多区域 TXT+SMB 的生成及同门消费验证。
 
 不得通过解析 SMB、调查 M3D-C1 loader、最近距离、容差吸附、投影、
 `physical_label` 或 synthetic OFT technical role 补足这些证据。
@@ -2111,11 +2118,12 @@ validator 或 M3D-C1 消费端。
 | M3D-C1 多区域输入契约调查 | **COMPLETED** |
 | 教程三 face 拓扑 | **CONFIRMED** |
 | exchange 多 face record 表达能力 | **CONFIRMED** |
-| schema v2 | **DESIGNED / USER APPROVAL PENDING** |
-| multi-face ModelSpec | **DESIGNED / NOT IMPLEMENTED** |
-| 多区域 classification | **DESIGNED / NOT IMPLEMENTED** |
-| helper 多 face 支持 | **DESIGNED / NATIVE PROBE PENDING** |
-| `regions generate target=m3dc1` | **CANDIDATE / NOT OPEN** |
+| 原始 curve corner exact-match | **REJECTED BY DIRECT PROBE** |
+| topology-driven classification | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
+| schema v2 | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
+| multi-face ModelSpec / build result | **DESIGNED / NOT IMPLEMENTED** |
+| helper 多 face 支持 | **NOT IMPLEMENTED** |
+| `regions generate target=m3dc1` | **DESIGNED / NOT IMPLEMENTED** |
 | 多区域 TXT+SMB | **NOT GENERATED** |
 | 同门消费验证 | **PENDING** |
 
@@ -2974,9 +2982,9 @@ Aider 执行依据或第二份技术契约。
   默认保持 mesh-only；TRIMEG 分支复用既有 complete-11 Writer；
 - 多区域 HDF5 已由 User 确认生成，自动测试和实际检测通过；标准 MATLAB/TRIMEG
   consumer 加载仍为 PENDING；
-- M3D-C1 多区域输入契约调查已完成。下一步不是直接开放任意 N-region，而是由 User
-  裁决构建结果/mappings 接口和 schema v2，并用严格嵌套最小 fixture 验证共享
-  analytic edge、orientation、special loop tags 与 interface classification；
+- M3D-C1 多区域输入契约调查已完成；不可变 build result、topology-driven
+  classification 和 schema v2 设计已批准。下一步进入正式 ModelSpec/Writer/helper
+  实现，不再维护两个独立 probes；
 - 在 Linux 基于本轮 master 生成外部三文件 Release，验证内部 manifest、外部
   tar.gz.sha256、可移动入口和干净环境运行；
 - 将通过结构与运行验证的发布候选交付普通用户并取得初期 M3D-C1/TRIMEG 使用报告；
@@ -3077,11 +3085,11 @@ multi-array 业务状态为 **IMPLEMENTED**。OFT 五类合成案例及其 dx va
 结构检查字段或标准 consumer 日志，因此标准 MATLAB/TRIMEG consumer 加载仍为
 **PENDING**。
 
-M3D-C1 多区域输入契约调查为 **COMPLETED**，教程三 face 拓扑与 exchange 多 face
-record 表达能力为 **CONFIRMED**。schema v2、multi-face ModelSpec、多区域
-classification、helper 多 face 支持和 `regions generate target=m3dc1` 分别保持
-`DESIGNED / USER APPROVAL PENDING`、`DESIGNED / NOT IMPLEMENTED`、
-`DESIGNED / NOT IMPLEMENTED`、`DESIGNED / NATIVE PROBE PENDING` 和
-`CANDIDATE / NOT OPEN`。多区域 TXT+SMB 为 **NOT GENERATED**，同门消费验证为
-**PENDING**。不得从共形 Triangle topology、`Mesh2D.region_ids` 或 single-face
-ModelSpec 自动推导 multi-face classification 或 C1 兼容性。
+M3D-C1 多区域输入契约源码调查为 **COMPLETED**，教程三 face 拓扑与 exchange
+multi-face records 为 **CONFIRMED**。原始 curve corner exact-match 候选为
+**REJECTED BY DIRECT PROBE**；topology-driven classification 和 schema v2 为
+**DESIGNED / APPROVED / NOT IMPLEMENTED**；multi-face ModelSpec/build result 为
+**DESIGNED / NOT IMPLEMENTED**；helper multi-face 与
+`regions generate target=m3dc1` 均为 **NOT IMPLEMENTED**。多区域 TXT+SMB 为
+**NOT GENERATED**，同门消费验证为 **PENDING**。classification 必须从最终全局
+triangle incidence 自动派生，不从物理标签或浮点坐标近似猜测。
