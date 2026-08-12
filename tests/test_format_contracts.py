@@ -223,6 +223,54 @@ def test_exchange_schema_layout_and_classification(tmp_path):
 
 
 def _two_region_mesh() -> Mesh2D:
+    """Return one outer Region enclosing one conforming inner Region."""
+    nodes = np.array(
+        [
+            [0.0, 0.0],
+            [0.0, 4.0],
+            [4.0, 4.0],
+            [4.0, 0.0],
+            [1.0, 1.0],
+            [1.0, 3.0],
+            [3.0, 3.0],
+            [3.0, 1.0],
+            [2.0, 2.0],
+        ],
+        dtype=np.float64,
+    )
+    triangles = np.array(
+        [
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
+            [4, 5, 8],
+            [5, 6, 8],
+            [6, 7, 8],
+            [7, 4, 8],
+        ],
+        dtype=np.int32,
+    )
+    return Mesh2D(
+        nodes=nodes,
+        triangles=triangles,
+        region_ids=np.array(
+            [20, 20, 20, 20, 20, 20, 20, 20, 10, 10, 10, 10],
+            dtype=np.int32,
+        ),
+        outer_boundary=np.array(
+            [[0.0, 0.0], [0.0, 4.0], [4.0, 4.0], [4.0, 0.0]],
+            dtype=np.float64,
+        ),
+    )
+
+
+def _shared_outer_boundary_mesh() -> Mesh2D:
+    """Return the rejected topology where two Regions touch one outer loop."""
     nodes = np.array(
         [
             [0.0, 0.0],
@@ -266,47 +314,152 @@ def test_multi_face_build_result_is_topology_driven_and_schema_v2(tmp_path):
 
     assert dict(result.region_id_to_face_tag) == {10: 1, 20: 2}
     assert len(result.spec.faces) == 2
+    assert len(result.spec.loops) == 2
+    assert len(result.spec.vertices) == 8
+    assert len(result.spec.edges) == 8
     assert result.spec.separatrix_loop == -1
     assert result.spec.inner_wall_loop == -1
     assert result.spec.outer_wall_loop == -1
     assert result.spec.vacuum_loop == -1
+
+    outer_cycle, interface_cycle = result.cycles
+    assert outer_cycle.loop_tag == 1
+    assert outer_cycle.node_indices == (0, 1, 2, 3)
+    assert outer_cycle.adjacent_region_ids == (20,)
+    assert interface_cycle.loop_tag == 2
+    assert interface_cycle.node_indices == (4, 5, 6, 7)
+    assert interface_cycle.adjacent_region_ids == (10, 20)
+
+    face_by_tag = {face.tag: face for face in result.spec.faces}
+    assert face_by_tag[1].loop_tags == (2,)
+    assert face_by_tag[2].loop_tags == (1, 2)
+    assert sum(
+        interface_cycle.loop_tag in face.loop_tags
+        for face in result.spec.faces
+    ) == 2
+    assert len(set(interface_cycle.geometric_edge_tags)) == 4
+
+    assert [
+        classification.tag
+        for classification in result.triangle_classifications
+    ] == [2] * 8 + [1] * 4
     assert {
         classification.dimension
         for classification in result.triangle_classifications
     } == {2}
-    assert [
-        classification.tag
-        for classification in result.triangle_classifications
-    ] == [2, 2, 1, 1, 1, 1]
+    assert len(result.vertex_classifications) == mesh.n_nodes
+    assert result.vertex_classifications[8].dimension == 2
+    assert result.vertex_classifications[8].tag == 1
+
+    assert len(result.mesh_edges) == 20
     assert len(result.mesh_edges) == len(set(result.mesh_edges))
+    outer_edges = {(0, 1), (1, 2), (2, 3), (0, 3)}
+    interface_edges = {(4, 5), (5, 6), (6, 7), (4, 7)}
+    cycle_edges = outer_edges | interface_edges
+    edge_class_by_nodes = dict(
+        zip(
+            result.mesh_edges,
+            result.edge_classifications,
+            strict=True,
+        )
+    )
+    assert all(
+        edge_class_by_nodes[edge].dimension == 1
+        for edge in cycle_edges
+    )
+    assert all(
+        classification.dimension == 2
+        for edge, classification in edge_class_by_nodes.items()
+        if edge not in cycle_edges
+    )
+    assert {
+        edge_class_by_nodes[edge].tag for edge in outer_edges
+    } == set(outer_cycle.geometric_edge_tags)
+    assert {
+        edge_class_by_nodes[edge].tag for edge in interface_edges
+    } == set(interface_cycle.geometric_edge_tags)
 
     prepared = smb_writer._prepare_build_result_exchange(
         mesh,
         result,
         tmp_path / "multi.smb",
     )
+    assert prepared.spec is result.spec
+    assert len(prepared.nodes) == mesh.n_nodes
+    assert len(prepared.triangles) == mesh.n_triangles
+    assert len(prepared.mesh_edges) == len(result.mesh_edges)
+
     exchange = tmp_path / "multi.bin"
     _write_exchange(prepared, exchange)
     header = struct.Struct("<8sII7Q4i").unpack_from(exchange.read_bytes())
     assert header[1] == 2
+    assert header[3:10] == (9, 12, 20, 8, 8, 2, 2)
     assert header[10:14] == (-1, -1, -1, -1)
 
     text = serialize_m3dc1_model(result)
-    assert text.splitlines()[0].startswith(
-        f"{len(result.spec.loops)} -1 -1 -1 -1"
-    )
+    assert text.splitlines()[0] == "2 -1 -1 -1 -1"
     assert text.splitlines()[-3] == "2"
+    assert text.splitlines()[-2:] == ["1 1 2", "2 2 1 2"]
 
     np.testing.assert_array_equal(mesh.nodes, nodes_before)
     np.testing.assert_array_equal(mesh.triangles, triangles_before)
     np.testing.assert_array_equal(mesh.region_ids, regions_before)
 
 
+def _disconnected_region_mesh() -> Mesh2D:
+    """Return two disjoint interior triangle components with Region ID 10."""
+    columns = 6
+    rows = 4
+    nodes = np.array(
+        [
+            [float(column), float(row)]
+            for row in range(rows)
+            for column in range(columns)
+        ],
+        dtype=np.float64,
+    )
+    triangles: list[list[int]] = []
+    for row in range(rows - 1):
+        for column in range(columns - 1):
+            lower_left = row * columns + column
+            lower_right = lower_left + 1
+            upper_left = (row + 1) * columns + column
+            upper_right = upper_left + 1
+            triangles.extend(
+                [
+                    [lower_left, upper_left, upper_right],
+                    [lower_left, upper_right, lower_right],
+                ]
+            )
+
+    region_ids = np.full(len(triangles), 20, dtype=np.int32)
+    region_ids[12] = 10
+    region_ids[16] = 10
+    return Mesh2D(
+        nodes=nodes,
+        triangles=np.asarray(triangles, dtype=np.int32),
+        region_ids=region_ids,
+        outer_boundary=np.array(
+            [[0.0, 0.0], [0.0, 3.0], [5.0, 3.0], [5.0, 0.0]],
+            dtype=np.float64,
+        ),
+    )
+
+
 def test_multi_face_rejects_disconnected_region():
-    mesh = _two_region_mesh()
-    mesh.region_ids = np.array([20, 10, 10, 10, 10, 20], dtype=np.int32)
+    mesh = _disconnected_region_mesh()
 
     with pytest.raises(ValueError, match="不连通"):
+        build_multi_face_model(mesh)
+
+
+def test_multi_face_rejects_multiple_regions_on_one_outer_boundary_cycle():
+    mesh = _shared_outer_boundary_mesh()
+
+    with pytest.raises(
+        ValueError,
+        match="outer-boundary cycle 邻接多个 Regions",
+    ):
         build_multi_face_model(mesh)
 
 
