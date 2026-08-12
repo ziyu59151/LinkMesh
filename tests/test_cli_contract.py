@@ -254,6 +254,8 @@ def test_regions_generate_help_is_scoped(capsys):
         "--mesh-dx",
         "--region-dx",
         "--hdf5",
+        "--model",
+        "--smb",
         "--plot",
         "--verbose",
     ):
@@ -261,12 +263,10 @@ def test_regions_generate_help_is_scoped(capsys):
     assert "最终 Region ID" in help_text
     assert "可重复提供" in help_text
     assert "完整覆盖全部 Region" in help_text
-    assert "{mesh_only,trimeg}" in help_text
-    assert "m3dc1" not in help_text
+    assert "{mesh_only,trimeg,m3dc1}" in help_text
     assert "--gfile" not in help_text
-    assert "--model" not in help_text
-    assert "--smb" not in help_text
     assert "--no-hdf5" not in help_text
+    assert "--no-smb" not in help_text
     _assert_group_order(
         help_text,
         "Configuration",

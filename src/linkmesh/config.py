@@ -192,6 +192,8 @@ class RegionsGenerateOverrides:
     regions_map: Any = UNSET
     plot: Any = UNSET
     hdf5: Any = UNSET
+    model: Any = UNSET
+    smb: Any = UNSET
     mesh_dx: Any = UNSET
     region_dx: Any = UNSET
     verbose: Any = UNSET
@@ -204,11 +206,13 @@ class RegionsGenerateConfig:
     schema_version: int
     config_path: Optional[Path]
     mode: Literal["generate"]
-    target: Literal["mesh_only", "trimeg"]
+    target: Literal["mesh_only", "trimeg", "m3dc1"]
     multi_array_file_path: Path
     regions_map_path: Path
     plot_path: Path
     hdf5_path: Optional[Path]
+    model_path: Optional[Path]
+    smb_path: Optional[Path]
     mesh_dx: Optional[float]
     region_dx: Mapping[int, float]
     verbose: bool
@@ -595,6 +599,8 @@ def _load_regions_generate_toml(
         "regions_map",
         "plot",
         "hdf5",
+        "model",
+        "smb",
         "mesh",
     }
     unknown_regions = set(regions) - allowed_regions
@@ -623,11 +629,18 @@ def _load_regions_generate_toml(
     if "target" in regions:
         values["target"] = _check_enum(
             regions["target"],
-            ("mesh_only", "trimeg"),
+            ("mesh_only", "trimeg", "m3dc1"),
             "[regions].target",
             config_path,
         )
-    for key in ("multi_array_file", "regions_map", "plot", "hdf5"):
+    for key in (
+        "multi_array_file",
+        "regions_map",
+        "plot",
+        "hdf5",
+        "model",
+        "smb",
+    ):
         if key in regions:
             values[key] = _check_str_path(
                 regions[key],
@@ -809,7 +822,7 @@ def load_regions_generate_config(
 
     target = _check_enum(
         merged("target", "mesh_only"),
-        ("mesh_only", "trimeg"),
+        ("mesh_only", "trimeg", "m3dc1"),
         "regions target",
         config_path,
     )
@@ -817,37 +830,64 @@ def load_regions_generate_config(
     regions_map_path = required_path("regions_map")
     plot_path = required_path("plot")
 
-    raw_hdf5 = merged("hdf5")
-    hdf5_path: Optional[Path] = None
-    if raw_hdf5 is not None:
-        hdf5_base = (
+    def optional_output_path(name: str) -> Optional[Path]:
+        raw_value = merged(name)
+        if raw_value is None:
+            return None
+        base = (
             base_cwd
-            if overrides.hdf5 is not UNSET
+            if getattr(overrides, name) is not UNSET
             else config_dir
         )
-        hdf5_path = _resolve_path(
-            _check_str_path(raw_hdf5, "hdf5", config_path),
-            hdf5_base,
+        return _resolve_path(
+            _check_str_path(raw_value, name, config_path),
+            base,
         )
 
-    if target == "trimeg" and hdf5_path is None:
-        raise ConfigError(
-            "regions generate target=trimeg 需要 hdf5，"
-            "必须提供 --hdf5 或 [regions].hdf5"
-        )
-    if target == "mesh_only" and hdf5_path is not None:
-        raise ConfigError(
-            "regions generate target=mesh_only 禁止提供 hdf5；"
-            "不允许使用 --hdf5 或 [regions].hdf5"
-        )
+    hdf5_path = optional_output_path("hdf5")
+    model_path = optional_output_path("model")
+    smb_path = optional_output_path("smb")
+
+    if target == "mesh_only":
+        if any(
+            value is not None
+            for value in (hdf5_path, model_path, smb_path)
+        ):
+            raise ConfigError(
+                "regions generate target=mesh_only 禁止提供 hdf5、model 或 smb"
+            )
+    elif target == "trimeg":
+        if hdf5_path is None:
+            raise ConfigError(
+                "regions generate target=trimeg 需要 hdf5，"
+                "必须提供 --hdf5 或 [regions].hdf5"
+            )
+        if model_path is not None or smb_path is not None:
+            raise ConfigError(
+                "regions generate target=trimeg 禁止提供 model 或 smb"
+            )
+    else:
+        if hdf5_path is not None:
+            raise ConfigError(
+                "regions generate target=m3dc1 禁止提供 hdf5"
+            )
+        if model_path is None or smb_path is None:
+            raise ConfigError(
+                "regions generate target=m3dc1 需要同时提供 model 和 smb"
+            )
 
     resolved_paths = [
         ("multi_array_file", multi_array_file_path),
         ("regions_map", regions_map_path),
         ("plot", plot_path),
     ]
-    if hdf5_path is not None:
-        resolved_paths.append(("hdf5", hdf5_path))
+    for name, path in (
+        ("hdf5", hdf5_path),
+        ("model", model_path),
+        ("smb", smb_path),
+    ):
+        if path is not None:
+            resolved_paths.append((name, path))
 
     for index, (first_name, first_path) in enumerate(resolved_paths):
         for second_name, second_path in resolved_paths[index + 1:]:
@@ -895,6 +935,8 @@ def load_regions_generate_config(
         regions_map_path=regions_map_path,
         plot_path=plot_path,
         hdf5_path=hdf5_path,
+        model_path=model_path,
+        smb_path=smb_path,
         mesh_dx=mesh_dx,
         region_dx=MappingProxyType(dict(sorted(region_dx.items()))),
         verbose=verbose,

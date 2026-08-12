@@ -22,7 +22,11 @@ from urllib.parse import unquote
 
 import numpy as np
 
-from linkmesh.m3dc1_model import CurveType, M3DC1ModelSpec
+from linkmesh.m3dc1_model import (
+    CurveType,
+    M3DC1BuildResult,
+    M3DC1ModelSpec,
+)
 from linkmesh.mesh import Mesh2D
 
 if TYPE_CHECKING:
@@ -31,6 +35,7 @@ if TYPE_CHECKING:
 
 _MAGIC = b"LM4XCHG\x00"
 _SCHEMA_VERSION = 1
+_MULTI_FACE_SCHEMA_VERSION = 2
 _ENDIAN_MARKER = 0x01020304
 _HELPER_NAME = "linkmesh-scorec-helper"
 _HELPER_ENV = "LINKMESH_SCOREC_HELPER"
@@ -54,6 +59,7 @@ class SMBWriterError(RuntimeError):
 
 @dataclass(frozen=True)
 class _PreparedExchange:
+    schema_version: int
     nodes: np.ndarray
     triangles: np.ndarray
     region_ids: np.ndarray
@@ -541,6 +547,7 @@ def _prepare_exchange(
     output_base = _validate_output_base(filepath)
 
     return _PreparedExchange(
+        schema_version=_SCHEMA_VERSION,
         nodes=nodes,
         triangles=triangles,
         region_ids=region_ids,
@@ -549,6 +556,82 @@ def _prepare_exchange(
         triangle_classes=triangle_classes,
         spec=spec,
         output_base=output_base,
+    )
+
+
+def _prepare_build_result_exchange(
+    mesh: Mesh2D,
+    result: M3DC1BuildResult,
+    filepath: str | os.PathLike[str],
+) -> _PreparedExchange:
+    if not isinstance(mesh, Mesh2D):
+        raise TypeError(f"mesh 必须是 Mesh2D，实际={type(mesh).__name__}")
+    if not isinstance(result, M3DC1BuildResult):
+        raise TypeError(
+            f"result 必须是 M3DC1BuildResult，实际={type(result).__name__}"
+        )
+
+    nodes = _as_nodes(mesh.nodes)
+    triangles = _as_triangles(mesh.triangles, nodes.shape[0])
+    region_values = np.asarray(mesh.region_ids, dtype=np.float64)
+    if (
+        region_values.ndim != 1
+        or region_values.shape[0] != triangles.shape[0]
+        or not np.all(np.isfinite(region_values))
+        or not np.all(region_values == np.round(region_values))
+        or np.any(region_values <= 0)
+    ):
+        raise ValueError("Mesh2D.region_ids 不满足 multi-face exchange 契约")
+    region_ids = region_values.astype(np.int64)
+    if set(int(value) for value in np.unique(region_ids)) != set(
+        result.region_id_to_face_tag
+    ):
+        raise ValueError(
+            "M3DC1BuildResult 的 Region ID mapping 与 Mesh2D 不一致"
+        )
+    _validate_triangle_geometry(nodes, triangles)
+
+    edge_counts = _build_edge_counts(triangles)
+    if tuple(sorted(edge_counts)) != result.mesh_edges:
+        raise ValueError(
+            "M3DC1BuildResult mesh edge table 与 Mesh2D topology 不一致"
+        )
+    if len(result.vertex_classifications) != nodes.shape[0]:
+        raise ValueError("vertex classifications 数量与 Mesh2D.nodes 不一致")
+    if len(result.triangle_classifications) != triangles.shape[0]:
+        raise ValueError("triangle classifications 数量与 triangles 不一致")
+
+    mesh_edges = tuple(
+        (
+            first,
+            second,
+            classification.dimension,
+            classification.tag,
+        )
+        for (first, second), classification in zip(
+            result.mesh_edges,
+            result.edge_classifications,
+            strict=True,
+        )
+    )
+    vertex_classes = tuple(
+        (value.dimension, value.tag)
+        for value in result.vertex_classifications
+    )
+    triangle_classes = tuple(
+        (value.dimension, value.tag)
+        for value in result.triangle_classifications
+    )
+    return _PreparedExchange(
+        schema_version=_MULTI_FACE_SCHEMA_VERSION,
+        nodes=nodes,
+        triangles=triangles,
+        region_ids=np.array(region_ids, copy=True),
+        mesh_edges=mesh_edges,
+        vertex_classes=vertex_classes,
+        triangle_classes=triangle_classes,
+        spec=result.spec,
+        output_base=_validate_output_base(filepath),
     )
 
 
@@ -571,7 +654,7 @@ def _write_exchange(
 
     with exchange_path.open("wb") as stream:
         stream.write(_MAGIC)
-        stream.write(_U32.pack(_SCHEMA_VERSION))
+        stream.write(_U32.pack(prepared.schema_version))
         stream.write(_U32.pack(_ENDIAN_MARKER))
         stream.write(
             _COUNTS.pack(
@@ -741,7 +824,7 @@ def _parse_success_marker(stdout: str) -> tuple[Path, Path]:
 
 def write_smb(
     mesh: Mesh2D,
-    spec: M3DC1ModelSpec,
+    spec: M3DC1ModelSpec | M3DC1BuildResult,
     filepath: str | os.PathLike[str],
     *,
     helper_path: str | os.PathLike[str] | None = None,
@@ -762,7 +845,11 @@ def write_smb(
     successful rank-0 output verification. It is retained on every failure
     after creation, and its path is included in the raised exception.
     """
-    prepared = _prepare_exchange(mesh, spec, filepath)
+    prepared = (
+        _prepare_build_result_exchange(mesh, spec, filepath)
+        if isinstance(spec, M3DC1BuildResult)
+        else _prepare_exchange(mesh, spec, filepath)
+    )
     helper = _resolve_helper(helper_path)
 
     temporary_file = tempfile.NamedTemporaryFile(

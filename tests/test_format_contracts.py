@@ -14,6 +14,7 @@ import pytest
 from linkmesh.m3dc1_model import (
     GeometricEdge,
     M3DC1ModelSpec,
+    build_multi_face_model,
     build_single_face_model_spec,
 )
 from linkmesh.mesh import Mesh2D
@@ -219,6 +220,94 @@ def test_exchange_schema_layout_and_classification(tmp_path):
     assert [
         (edge[0], edge[1]) for edge in prepared.mesh_edges
     ] == sorted((edge[0], edge[1]) for edge in prepared.mesh_edges)
+
+
+def _two_region_mesh() -> Mesh2D:
+    nodes = np.array(
+        [
+            [0.0, 0.0],
+            [0.0, 2.0],
+            [2.0, 2.0],
+            [2.0, 0.0],
+            [1.0, 0.5],
+            [1.0, 1.5],
+        ],
+        dtype=np.float64,
+    )
+    triangles = np.array(
+        [
+            [0, 4, 3],
+            [3, 4, 2],
+            [2, 4, 5],
+            [2, 5, 1],
+            [1, 5, 0],
+            [0, 5, 4],
+        ],
+        dtype=np.int32,
+    )
+    return Mesh2D(
+        nodes=nodes,
+        triangles=triangles,
+        region_ids=np.array([20, 20, 10, 10, 10, 10], dtype=np.int32),
+        outer_boundary=np.array(
+            [[0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0]],
+            dtype=np.float64,
+        ),
+    )
+
+
+def test_multi_face_build_result_is_topology_driven_and_schema_v2(tmp_path):
+    mesh = _two_region_mesh()
+    nodes_before = mesh.nodes.copy()
+    triangles_before = mesh.triangles.copy()
+    regions_before = mesh.region_ids.copy()
+
+    result = build_multi_face_model(mesh)
+
+    assert dict(result.region_id_to_face_tag) == {10: 1, 20: 2}
+    assert len(result.spec.faces) == 2
+    assert result.spec.separatrix_loop == -1
+    assert result.spec.inner_wall_loop == -1
+    assert result.spec.outer_wall_loop == -1
+    assert result.spec.vacuum_loop == -1
+    assert {
+        classification.dimension
+        for classification in result.triangle_classifications
+    } == {2}
+    assert [
+        classification.tag
+        for classification in result.triangle_classifications
+    ] == [2, 2, 1, 1, 1, 1]
+    assert len(result.mesh_edges) == len(set(result.mesh_edges))
+
+    prepared = smb_writer._prepare_build_result_exchange(
+        mesh,
+        result,
+        tmp_path / "multi.smb",
+    )
+    exchange = tmp_path / "multi.bin"
+    _write_exchange(prepared, exchange)
+    header = struct.Struct("<8sII7Q4i").unpack_from(exchange.read_bytes())
+    assert header[1] == 2
+    assert header[10:14] == (-1, -1, -1, -1)
+
+    text = serialize_m3dc1_model(result)
+    assert text.splitlines()[0].startswith(
+        f"{len(result.spec.loops)} -1 -1 -1 -1"
+    )
+    assert text.splitlines()[-3] == "2"
+
+    np.testing.assert_array_equal(mesh.nodes, nodes_before)
+    np.testing.assert_array_equal(mesh.triangles, triangles_before)
+    np.testing.assert_array_equal(mesh.region_ids, regions_before)
+
+
+def test_multi_face_rejects_disconnected_region():
+    mesh = _two_region_mesh()
+    mesh.region_ids = np.array([20, 10, 10, 10, 10, 20], dtype=np.int32)
+
+    with pytest.raises(ValueError, match="不连通"):
+        build_multi_face_model(mesh)
 
 
 def _executable(path: Path) -> Path:

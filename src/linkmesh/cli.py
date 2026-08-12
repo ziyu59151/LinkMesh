@@ -354,7 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
     generate_task_group.add_argument(
         "--target",
         default=UNSET,
-        choices=("mesh_only", "trimeg"),
+        choices=("mesh_only", "trimeg", "m3dc1"),
         help="输出目标（默认：mesh_only）；仅作用于 regions generate",
     )
     generate_input_group.add_argument(
@@ -392,6 +392,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="PATH",
         help="TRIMEG HDF5 输出路径；target=trimeg 时必需",
+    )
+    generate_output_group.add_argument(
+        "--model",
+        default=UNSET,
+        metavar="PATH",
+        help="M3D-C1 multi-face analytic model TXT；target=m3dc1 时必需",
+    )
+    generate_output_group.add_argument(
+        "--smb",
+        default=UNSET,
+        metavar="PATH",
+        help="PUMI SMB 基础输出路径；target=m3dc1 时必需",
     )
     generate_output_group.add_argument(
         "--plot",
@@ -719,6 +731,8 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         regions_map=args.regions_map,
         plot=args.plot,
         hdf5=args.hdf5,
+        model=args.model,
+        smb=args.smb,
         mesh_dx=args.mesh_dx,
         region_dx=(
             args.region_dx
@@ -770,6 +784,14 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         from linkmesh.writers.hdf5_writer import write_hdf5
 
         write_hdf5(mesh, str(cfg.hdf5_path), verbose=False)
+    elif cfg.target == "m3dc1":
+        from linkmesh.m3dc1_model import build_multi_face_model
+        from linkmesh.writers.m3dc1_model_writer import write_m3dc1_model
+        from linkmesh.writers.smb_writer import write_smb
+
+        build_result = build_multi_face_model(mesh)
+        write_m3dc1_model(build_result, str(cfg.model_path))
+        write_smb(mesh, build_result, str(cfg.smb_path))
 
     plot_regions_mesh(mesh, records, str(cfg.plot_path))
 
@@ -796,6 +818,10 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
             )
         if cfg.hdf5_path is not None:
             print(f"[LinkMesh] TRIMEG HDF5: {cfg.hdf5_path}")
+        if cfg.model_path is not None:
+            print(f"[LinkMesh] M3D-C1 model TXT: {cfg.model_path}")
+        if cfg.smb_path is not None:
+            print(f"[LinkMesh] PUMI SMB base: {cfg.smb_path}")
         print(f"[LinkMesh] mesh PNG: {cfg.plot_path}")
     else:
         print(

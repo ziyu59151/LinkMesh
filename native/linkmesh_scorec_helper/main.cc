@@ -34,7 +34,8 @@ namespace {
 constexpr std::array<char, 8> kMagic{
     'L', 'M', '4', 'X', 'C', 'H', 'G', '\0'
 };
-constexpr std::uint32_t kSchemaVersion = 1;
+constexpr std::uint32_t kSchemaVersionV1 = 1;
+constexpr std::uint32_t kSchemaVersionV2 = 2;
 constexpr std::uint32_t kEndianMarker = 0x01020304;
 constexpr std::int32_t kLinearCurve = 1;
 
@@ -93,6 +94,7 @@ struct MeshEdge {
 };
 
 struct Exchange {
+  std::uint32_t schema_version = 0;
   Counts counts;
   std::array<std::int32_t, 4> special_loop_tags{};
   std::filesystem::path output_base;
@@ -227,7 +229,8 @@ Exchange read_exchange(const std::filesystem::path& path) {
       read_scalar<std::uint32_t>(stream, "endian_marker");
 
   require(
-      schema_version == kSchemaVersion,
+      schema_version == kSchemaVersionV1 ||
+          schema_version == kSchemaVersionV2,
       "exchange_validate",
       "unsupported schema_version=" + std::to_string(schema_version));
   require(
@@ -236,6 +239,7 @@ Exchange read_exchange(const std::filesystem::path& path) {
       "invalid endian marker or non-little-endian exchange");
 
   Exchange exchange;
+  exchange.schema_version = schema_version;
   exchange.counts.nodes = read_scalar<std::uint64_t>(stream, "N");
   exchange.counts.triangles = read_scalar<std::uint64_t>(stream, "T");
   exchange.counts.mesh_edges = read_scalar<std::uint64_t>(stream, "E");
@@ -465,17 +469,31 @@ void validate_exchange(const Exchange& exchange) {
       "exchange_validate",
       "GV must be >= 3");
   require(
-      counts.geometric_edges == counts.geometric_vertices,
+      counts.geometric_edges >= 3,
       "exchange_validate",
-      "single-loop GE must equal GV");
+      "GE must be >= 3");
   require(
-      counts.geometric_loops == 1,
+      counts.geometric_loops >= 1,
       "exchange_validate",
-      "schema v1 requires GL=1");
+      "GL must be >= 1");
   require(
-      counts.geometric_faces == 1,
+      counts.geometric_faces >= 1,
       "exchange_validate",
-      "schema v1 requires GF=1");
+      "GF must be >= 1");
+  if (exchange.schema_version == kSchemaVersionV1) {
+    require(
+        counts.geometric_edges == counts.geometric_vertices,
+        "exchange_validate",
+        "schema v1 single-loop GE must equal GV");
+    require(
+        counts.geometric_loops == 1,
+        "exchange_validate",
+        "schema v1 requires GL=1");
+    require(
+        counts.geometric_faces == 1,
+        "exchange_validate",
+        "schema v1 requires GF=1");
+  }
 
   require(
       exchange.output_base.extension() == ".smb",
@@ -520,7 +538,7 @@ void validate_exchange(const Exchange& exchange) {
     require(
         item.second->y == 0.0,
         "exchange_validate",
-        "schema v1 geometric vertex y must be zero");
+        "geometric vertex y must be zero");
   }
   for (const auto& item : edge_by_tag) {
     edge_tags.insert(item.first);
@@ -528,7 +546,7 @@ void validate_exchange(const Exchange& exchange) {
     require(
         edge->curve_type == kLinearCurve,
         "exchange_validate",
-        "schema v1 only accepts LIN geometric edges");
+        "LinkMesh exchange only accepts LIN geometric edges");
     require(
         edge->begin_vertex_tag != edge->end_vertex_tag,
         "exchange_validate",
@@ -543,50 +561,94 @@ void validate_exchange(const Exchange& exchange) {
     face_tags.insert(item.first);
   }
 
-  const auto& loop = exchange.geometric_loops.front();
-  require(
-      loop.edge_tags.size() == exchange.geometric_edges.size(),
-      "exchange_validate",
-      "the unique loop must reference every geometric edge once");
-  require(
-      std::set<std::int32_t>(
-          loop.edge_tags.begin(), loop.edge_tags.end()) == edge_tags,
-      "exchange_validate",
-      "loop edge tags do not exactly match geometric edge tags");
-
-  for (std::size_t index = 0; index < loop.edge_tags.size(); ++index) {
-    const auto* current = edge_by_tag.at(loop.edge_tags[index]);
-    const auto* next = edge_by_tag.at(
-        loop.edge_tags[(index + 1) % loop.edge_tags.size()]);
+  std::map<std::int32_t, int> edge_loop_uses;
+  std::map<std::int32_t, int> loop_face_uses;
+  for (const auto& loop : exchange.geometric_loops) {
     require(
-        current->end_vertex_tag == next->begin_vertex_tag,
+        loop.edge_tags.size() >= 3,
         "exchange_validate",
-        "geometric loop is not directed and continuous");
+        "geometric loop must contain at least three edges");
+    require(
+        std::set<std::int32_t>(
+            loop.edge_tags.begin(), loop.edge_tags.end()).size() ==
+            loop.edge_tags.size(),
+        "exchange_validate",
+        "geometric loop contains duplicate edge tags");
+    for (std::size_t index = 0; index < loop.edge_tags.size(); ++index) {
+      require(
+          edge_by_tag.count(loop.edge_tags[index]) == 1,
+          "exchange_validate",
+          "geometric loop has dangling edge reference");
+      ++edge_loop_uses[loop.edge_tags[index]];
+      const auto* current = edge_by_tag.at(loop.edge_tags[index]);
+      const auto* next = edge_by_tag.at(
+          loop.edge_tags[(index + 1) % loop.edge_tags.size()]);
+      require(
+          current->end_vertex_tag == next->begin_vertex_tag,
+          "exchange_validate",
+          "geometric loop is not directed and continuous");
+    }
+  }
+  for (const auto edge_tag : edge_tags) {
+    require(
+        edge_loop_uses[edge_tag] == 1,
+        "exchange_validate",
+        "each geometric edge must belong to exactly one loop");
   }
 
-  const auto& face = exchange.geometric_faces.front();
-  require(
-      face.loop_tags.size() == 1 &&
-          face.loop_tags.front() == loop.tag,
-      "exchange_validate",
-      "the unique face must reference the unique loop");
+  for (const auto& face : exchange.geometric_faces) {
+    require(
+        !face.loop_tags.empty(),
+        "exchange_validate",
+        "geometric face must reference at least one loop");
+    require(
+        std::set<std::int32_t>(
+            face.loop_tags.begin(), face.loop_tags.end()).size() ==
+            face.loop_tags.size(),
+        "exchange_validate",
+        "geometric face contains duplicate loop tags");
+    for (const auto loop_tag : face.loop_tags) {
+      require(
+          loop_by_tag.count(loop_tag) == 1,
+          "exchange_validate",
+          "geometric face has dangling loop reference");
+      ++loop_face_uses[loop_tag];
+    }
+  }
+  for (const auto& item : loop_by_tag) {
+    require(
+        loop_face_uses[item.first] == 1 ||
+            loop_face_uses[item.first] == 2,
+        "exchange_validate",
+        "each geometric loop must be referenced by one or two faces");
+  }
 
-  require(
-      exchange.special_loop_tags[0] == -1,
-      "exchange_validate",
-      "schema v1 separatrix_loop must be -1");
-  require(
-      exchange.special_loop_tags[1] == loop.tag,
-      "exchange_validate",
-      "schema v1 inner_wall_loop must reference the unique loop");
-  require(
-      exchange.special_loop_tags[2] == -1,
-      "exchange_validate",
-      "schema v1 outer_wall_loop must be -1");
-  require(
-      exchange.special_loop_tags[3] == -1,
-      "exchange_validate",
-      "schema v1 vacuum_loop must be -1");
+  if (exchange.schema_version == kSchemaVersionV1) {
+    const auto& loop = exchange.geometric_loops.front();
+    const auto& face = exchange.geometric_faces.front();
+    require(
+        loop.edge_tags.size() == exchange.geometric_edges.size() &&
+            std::set<std::int32_t>(
+                loop.edge_tags.begin(), loop.edge_tags.end()) == edge_tags,
+        "exchange_validate",
+        "schema v1 unique loop must reference every edge once");
+    require(
+        face.loop_tags.size() == 1 &&
+            face.loop_tags.front() == loop.tag,
+        "exchange_validate",
+        "schema v1 unique face must reference unique loop");
+    require(
+        exchange.special_loop_tags ==
+            std::array<std::int32_t, 4>{-1, loop.tag, -1, -1},
+        "exchange_validate",
+        "schema v1 special loop tags are invalid");
+  } else {
+    require(
+        exchange.special_loop_tags ==
+            std::array<std::int32_t, 4>{-1, -1, -1, -1},
+        "exchange_validate",
+        "schema v2 special loop tags must all be -1");
+  }
 
   std::map<std::pair<std::uint64_t, std::uint64_t>, std::size_t>
       mesh_edge_indices;
@@ -680,10 +742,9 @@ void validate_exchange(const Exchange& exchange) {
         "triangle",
         false);
     require(
-        classification.dimension == 2 &&
-            classification.tag == face.tag,
+        classification.dimension == 2,
         "exchange_validate",
-        "every triangle must classify on the unique geometric face");
+        "every triangle must classify on a geometric face");
   }
 
   require(
@@ -706,6 +767,13 @@ void validate_exchange(const Exchange& exchange) {
         face_tags,
         "mesh vertex",
         true);
+    if (exchange.schema_version == kSchemaVersionV2) {
+      require(
+          classification.dimension == 0 ||
+              classification.dimension == 2,
+          "exchange_validate",
+          "schema v2 mesh vertex classification dimension must be 0 or 2");
+    }
   }
 }
 
@@ -968,27 +1036,40 @@ void create_model(
       {z_min, z_max},
   };
 
-  const auto& face = exchange.geometric_faces.front();
-  gmi_ent* face_entity = gmi_add_analytic(
-      native.model,
-      2,
-      face.tag,
-      face_function,
-      face_periodic,
-      face_ranges,
-      nullptr);
-  require(
-      face_entity != nullptr,
-      "model_create",
-      "failed to create geometric face tag=" +
-          std::to_string(face.tag));
+  std::map<std::int32_t, const GeometricLoop*> loop_by_tag;
+  for (const auto& loop : exchange.geometric_loops) {
+    loop_by_tag.emplace(loop.tag, &loop);
+  }
 
-  const auto& loop = exchange.geometric_loops.front();
-  add_face_topology(
-      native.model,
-      face_entity,
-      loop.edge_tags,
-      line_data_by_tag);
+  for (const auto& face : exchange.geometric_faces) {
+    gmi_ent* face_entity = gmi_add_analytic(
+        native.model,
+        2,
+        face.tag,
+        face_function,
+        face_periodic,
+        face_ranges,
+        nullptr);
+    require(
+        face_entity != nullptr,
+        "model_create",
+        "failed to create geometric face tag=" +
+            std::to_string(face.tag));
+
+    std::vector<std::int32_t> face_edge_tags;
+    for (const auto loop_tag : face.loop_tags) {
+      const auto* loop = loop_by_tag.at(loop_tag);
+      face_edge_tags.insert(
+          face_edge_tags.end(),
+          loop->edge_tags.begin(),
+          loop->edge_tags.end());
+    }
+    add_face_topology(
+        native.model,
+        face_entity,
+        face_edge_tags,
+        line_data_by_tag);
+  }
 }
 
 apf::ModelEntity* find_model_entity(

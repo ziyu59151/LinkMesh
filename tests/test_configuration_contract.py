@@ -232,7 +232,7 @@ def test_regions_generate_target_defaults_and_hdf5_contract(tmp_path):
     assert trimeg.hdf5_path == (tmp_path / "mesh.h5").resolve()
 
 
-@pytest.mark.parametrize("target", ["m3dc1", "invalid", 1])
+@pytest.mark.parametrize("target", ["invalid", 1])
 def test_regions_generate_rejects_unsupported_target(tmp_path, target):
     with pytest.raises(ConfigError, match="target"):
         load_regions_generate_config(
@@ -242,6 +242,46 @@ def test_regions_generate_rejects_unsupported_target(tmp_path, target):
                 regions_map="regions.toml",
                 plot="mesh.png",
                 mesh_dx=0.08,
+            ),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_generate_m3dc1_requires_model_and_smb(tmp_path):
+    base = {
+        "target": "m3dc1",
+        "multi_array_file": "multi.rz",
+        "regions_map": "regions.toml",
+        "plot": "mesh.png",
+        "mesh_dx": 0.08,
+    }
+
+    with pytest.raises(ConfigError, match="model.*smb"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(**base),
+            cwd=tmp_path,
+        )
+
+    config = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            **base,
+            model="model.txt",
+            smb="mesh.smb",
+        ),
+        cwd=tmp_path,
+    )
+    assert config.target == "m3dc1"
+    assert config.model_path == (tmp_path / "model.txt").resolve()
+    assert config.smb_path == (tmp_path / "mesh.smb").resolve()
+    assert config.hdf5_path is None
+
+    with pytest.raises(ConfigError, match="禁止.*hdf5"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                **base,
+                model="model.txt",
+                smb="mesh.smb",
+                hdf5="mesh.h5",
             ),
             cwd=tmp_path,
         )

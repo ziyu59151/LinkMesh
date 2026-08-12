@@ -17,8 +17,22 @@ from pathlib import Path
 
 from linkmesh.m3dc1_model import (
     CurveType,
+    M3DC1BuildResult,
     M3DC1ModelSpec,
 )
+
+
+def _model_spec(
+    model: M3DC1ModelSpec | M3DC1BuildResult,
+) -> M3DC1ModelSpec:
+    if isinstance(model, M3DC1BuildResult):
+        return model.spec
+    if isinstance(model, M3DC1ModelSpec):
+        return model
+    raise TypeError(
+        "Writer 只接受 M3DC1ModelSpec 或 M3DC1BuildResult，"
+        f"实际={type(model).__name__}"
+    )
 
 
 def _format_float(value: float) -> str:
@@ -26,7 +40,9 @@ def _format_float(value: float) -> str:
     return f"{float(value):.6f}"
 
 
-def serialize_m3dc1_model(spec: M3DC1ModelSpec) -> str:
+def serialize_m3dc1_model(
+    spec: M3DC1ModelSpec | M3DC1BuildResult,
+) -> str:
     """Serialize a validated model to deterministic M3D-C1 TXT content.
 
     Layout:
@@ -40,12 +56,7 @@ def serialize_m3dc1_model(spec: M3DC1ModelSpec) -> str:
     3. numFaces
     4. face ID, number of loops, and ordered loop references
     """
-    if not isinstance(spec, M3DC1ModelSpec):
-        raise TypeError(
-            "Writer 只接受 M3DC1ModelSpec，"
-            f"实际={type(spec).__name__}"
-        )
-
+    spec = _model_spec(spec)
     spec.validate()
 
     vertex_by_tag = {vertex.tag: vertex for vertex in spec.vertices}
@@ -112,7 +123,7 @@ def serialize_m3dc1_model(spec: M3DC1ModelSpec) -> str:
 
 
 def write_m3dc1_model(
-    spec: M3DC1ModelSpec,
+    spec: M3DC1ModelSpec | M3DC1BuildResult,
     filepath: str | os.PathLike[str],
 ) -> None:
     """Write an M3D-C1 analytic geometric model TXT file atomically.
