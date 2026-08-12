@@ -683,7 +683,11 @@ def _validated_multi_mesh_arrays(
             raise ValueError(f"检测到重复 triangle：{key}")
         canonical_triangles.add(key)
         p0, p1, p2 = nodes[triangle]
-        area2 = float(np.cross(p1 - p0, p2 - p0))
+        edge1 = p1 - p0
+        edge2 = p2 - p0
+        area2 = float(
+            edge1[0] * edge2[1] - edge1[1] * edge2[0]
+        )
         if not np.isfinite(area2) or abs(area2) <= 2.0e-12:
             raise ValueError(f"triangle {index} 面积退化或不大于 1e-12")
 
