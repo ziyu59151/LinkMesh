@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **4.9**（`regions inspect/generate`、TOML regions map、分 Region dx 与 N-region `Mesh2D` 已实现并完成真实 OFT/Triangle 结构验收；本版新增 `regions generate --target {mesh_only,trimeg}` 与 `--hdf5`，将合法多区域 `Mesh2D` 接入既有 TRIMEG complete-11 Writer；真实多区域 HDF5 生成、h5py 回读和 MATLAB/TRIMEG 加载仍待分层验收）
+- 文档状态：正式版 **5.0**（M3D-C1 多区域 PUMI 输入契约调查已完成；教程三 face 拓扑与 exchange 多 face record 表达能力已确认；multi-face ModelSpec、classification、schema v2、helper 多 face 支持及 `regions generate target=m3dc1` 仍是待 User 批准或待 native probe 的候选，尚未实现或开放；多区域 TRIMEG HDF5 已按 User 最新直接证据生成并通过自动测试和实际检测，标准 MATLAB/TRIMEG consumer 加载仍待验收）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -141,12 +141,21 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | OFT 五类合成多区域案例 | **全部 PASS；GENERATED / STRUCTURALLY CHECKED** |
 | LinkMesh 生产 N-region `Mesh2D` | **GENERATED / STRUCTURALLY CHECKED；含 nodes、triangles、region_ids 和 root outer_boundary** |
 | LinkMesh 多区域 mesh PNG | **GENERATED；已由 User 人工复核** |
-| LinkMesh 多区域 TRIMEG 接线 | **IMPLEMENTED；真实 HDF5 尚未生成** |
-| 多区域 TRIMEG HDF5 h5py 回读 | **PENDING** |
+| LinkMesh 多区域 TRIMEG 接线 | **IMPLEMENTED** |
+| 多区域 TRIMEG HDF5 | **GENERATED；User 确认自动测试和实际检测通过，未提供精确 passed 数或完整检测明细** |
 | 多区域 TRIMEG 标准 MATLAB/TRIMEG consumer 加载 | **PENDING** |
 | M3D-C1 求解器多区域模拟能力 | **User 根据同门实际展示确认** |
-| LinkMesh 新多区域网格的 M3D-C1 输出与兼容性 | **PENDING / NOT OPEN** |
-| 多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
+| M3D-C1 多区域输入契约调查 | **COMPLETED** |
+| 教程三 face 拓扑 | **CONFIRMED** |
+| exchange 多 face record 表达能力 | **CONFIRMED** |
+| exchange schema v2 | **DESIGNED / USER APPROVAL PENDING** |
+| multi-face ModelSpec | **DESIGNED / NOT IMPLEMENTED** |
+| 多区域 classification | **DESIGNED / NOT IMPLEMENTED** |
+| helper 多 face 支持 | **DESIGNED / NATIVE PROBE PENDING** |
+| `regions generate target=m3dc1` | **CANDIDATE / NOT OPEN** |
+| LinkMesh 多区域 TXT+SMB | **NOT GENERATED** |
+| LinkMesh 多区域 TXT+SMB 同门消费验证 | **PENDING** |
+| 三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
 ### 1.6 v4.1 当前主线与优先级
 
@@ -365,7 +374,8 @@ TOML 或 CLI 显式提供只在配置合并期间以局部布尔值判断，绝�
 
 ### 3.5 `M3DC1ModelSpec`
 
-`M3DC1ModelSpec` 表达 P0 single-region、single-face、single-loop analytic model：
+当前 `M3DC1ModelSpec` 的正式实现仍表达 P0 single-region、single-face、
+single-loop analytic model：
 
 - geometric vertices：唯一 tag 和 `[R,Z,0]`；
 - directed geometric edges：唯一 tag、begin/end vertex tag、`LIN=1`；
@@ -377,6 +387,29 @@ TOML 或 CLI 显式提供只在配置合并期间以局部布尔值判断，绝�
 Adapter 从 `Mesh2D.outer_boundary` 动态构造全部实体。不得固定点数，不得把
 `region_ids` 自动当作 geometric face tag，不得保存 PUMI/SCOREC 句柄。
 
+多区域调查已确认：现有字段容器在数据形状上可保存多个 vertices、edges、loops 和
+faces，`GeometricFace.loop_tags` 也可表示一个 face 引用多个 loops；但当前
+`GeometricFace`、`M3DC1ModelSpec.validate()`、Python SMB Writer 和 native helper
+均包含 single-face invariants。因此当前 validated contract 尚不能表达或输出
+multi-face model。
+
+多区域候选 builder 需要同时消费 `Mesh2D`、`RegionPlan` 和正式 regions map，并
+确定性生成 `curve_id_to_loop_tag` 与 `region_id_to_face_tag`。但仅返回
+`M3DC1ModelSpec` 不足以保证 SMB Writer 唯一获得：
+
+- `region_id_to_face_tag`；
+- `curve_id_to_loop_tag`；
+- interface curve 到 geometric edge chain 的对应。
+
+后续蓝图必须由 User 在以下方向中正式裁决，当前不得自行选择最终对象名或公开签名：
+
+1. 扩展 `M3DC1ModelSpec`，保存不可变 mappings 与 interface identity；
+2. 新增一个不可变的多区域构建结果对象，统一携带 spec、mappings 和 classification
+   所需身份。
+
+无论采用哪种方向，TXT Writer 与 SMB Writer 都必须接收同一个目标专用构建结果及
+同一套 tag mappings，不得分别重新编号或重新猜测映射。
+
 ---
 
 ## 4. 网格生成与物理约定
@@ -387,6 +420,11 @@ Adapter 从 `Mesh2D.outer_boundary` 动态构造全部实体。不得固定点�
 - `Mesh2D.triangles` 内部为 0-based。
 - 目标格式偏置由 Writer 完成。
 - `region_id` 与节点索引无关，任何 Writer 都不得对 `region_id` 执行 `+1`。
+- M3D-C1 多区域候选中，`Mesh2D.region_ids` 不是 face tags，不得直接充当 face
+  tag，也不得为此压缩、排序或执行 `+1`；必须通过显式
+  `region_id_to_face_tag` 映射分类。
+- nodes、triangles 和由 triangles 确定性派生的唯一 mesh edges 使用一套全局
+  0-based topology。Region 不拥有局部节点编号；共享界面节点和 mesh edge 不复制。
 - 三角形不得有重复顶点、越界索引或绝对面积不大于 `1e-12`。
 
 ### 4.2 OFT/Triangle 与区域语义
@@ -1356,8 +1394,11 @@ TRIMEG 分派必须延迟导入并只调用一次既有 Writer，不重新生成
 - 标准 MATLAB/TRIMEG consumer 成功读取后为 `LOADED`；
 - PNG 或 mock Writer 调用不能证明 HDF5 已生成、结构已检查或 TRIMEG 已消费。
 
-当前源码接线状态为 `IMPLEMENTED`；User 尚未运行本轮真实 HDF5，因此
-`GENERATED`、`STRUCTURALLY CHECKED` 和 `LOADED` 均为 `PENDING`。
+当前源码接线状态为 `IMPLEMENTED`。User 最新直接证据确认多区域 HDF5 已在服务器
+生成，自动测试和实际检测均通过，因此文件状态更新为 `GENERATED`。由于未提供精确
+passed 数、实际检测的完整字段清单或标准 consumer 日志，本蓝图不虚构测试数量、
+dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG consumer
+`LOADED`；该消费层级继续为 `PENDING`。
 
 - `nested_three_region` 暂不修改、删除或优化。
 - 当前不修改 `Mesh2D` 字段、regions map schema、dx 规则、OFT technical role、
@@ -1410,7 +1451,8 @@ TRIMEG 分派必须延迟导入并只调用一次既有 Writer，不重新生成
 | 任意非 `array_file` | 任意 | `plot_lcfs=True` | 禁止，使用 `ConfigError` |
 | 任意 | `single_region` | `flux_surface` | 实现候选，未实现，待 OFT 26.6 只读侦察 |
 | `regions generate --target mesh_only` | 多区域 | `multi_array_file` | IMPLEMENTED；N-region Mesh2D STRUCTURALLY CHECKED，PNG GENERATED 并人工复核 |
-| `regions generate --target trimeg` | 多区域 | `multi_array_file` | IMPLEMENTED；真实 HDF5 生成、h5py 回读和 MATLAB/TRIMEG 加载 PENDING |
+| `regions generate --target trimeg` | 多区域 | `multi_array_file` | IMPLEMENTED；真实 HDF5 GENERATED，User 确认自动测试和实际检测通过；标准 MATLAB/TRIMEG 加载 PENDING |
+| `regions generate --target m3dc1` | 多区域 | `multi_array_file` | CANDIDATE / NOT OPEN；model、smb 与 schema v2 均未批准实施 |
 | 旧无子命令入口 | 任意 | `multi_array_file` | 当前未开放；不得回退旧 `array_file` 或 nested |
 | `m3dc1` | `single_region` | `first_wall` / `flux_surface` | 未开放 |
 | `m3dc1` | `nested_three_region` | 任意 | 禁止 |
@@ -1542,7 +1584,7 @@ OFT 26.6 的磁通场数据、归一化磁通定义、轮廓提取接口、多�
 | 多区域调查 II | OFT setup、两层、四层、sibling、混合树、编号、dx 和 no-plasma 对照探针 | **COMPLETED；五类案例 GENERATED / STRUCTURALLY CHECKED** |
 | 多区域实现 I | Reader、空行与至少双 block 检查、基础检查、轻量包含、synthetic role plan、setup-only 编号、`regions inspect`、TOML regions map 与 inspection PNG | **IMPLEMENTED / PASSED** |
 | 多区域实现 II | `regions generate`、map/结构重验、Region dx、N-region OFT Adapter、Mesh2D 与 mesh PNG | **IMPLEMENTED；真实 two-level/four-level GENERATED，Mesh2D STRUCTURALLY CHECKED，PNG 人工复核 PASSED** |
-| 多区域实现 III | `regions generate --target trimeg` 复用 complete-11 Writer | **IMPLEMENTED；真实 HDF5、h5py 和 MATLAB/TRIMEG 验收 PENDING** |
+| 多区域实现 III | `regions generate --target trimeg` 复用 complete-11 Writer | **IMPLEMENTED；真实 HDF5 GENERATED，User 确认自动测试和实际检测通过；标准 MATLAB/TRIMEG consumer 加载 PENDING** |
 | 初期交付 I | `array_file + 可选 GFile LCFS PNG reference` | **IMPLEMENTED** |
 | 初期交付 II | 初版 Release | **DELIVERED；已发送同门和老师，当前反馈可正常使用** |
 | M5 第一条 | M3D-C1 TXT+SMB+PNG CLI | **PASSED；时间推进 PENDING** |
@@ -1964,14 +2006,117 @@ CMake 配置摘要、编译命令和链接命令。把 helper 安装到 Conda `b
 
 - M4-1A TXT/Level 1：**PASSED**；
 - M4-1B probe：**COMPLETED / PASSED**；
-- M4-2 LinkMesh 生成侧：**IMPLEMENTED / PASSED**；
-- 正式 TXT+SMB 外部加载：**PASSED**；
-- M3D-C1 初始化：**PASSED**；
+- M4-2 LinkMesh single-face 生成侧：**IMPLEMENTED / PASSED**；
+- 正式 single-face TXT+SMB 外部加载：**PASSED**；
+- M3D-C1 single-face 初始化：**PASSED**；
 - 时间推进、稳定性和物理正确性：**PENDING**。
 
 319 字节 probe、955 bytes synthetic SMB、173 bytes TXT、真实运行文件大小和
 SHA-256 只用于运行追踪，不是格式常量或测试期望。LinkMesh 不建设 SMB loader、
 validator 或 M3D-C1 消费端。
+
+### 7.11 M3D-C1 多区域输入契约调查与候选边界
+
+三份字段级调查已经完成：
+
+- `docs/linkmesh/m3dc1_multi_region_model_topology_evidence.md`
+- `docs/linkmesh/m3dc1_multi_region_pumi_api_evidence.md`
+- `docs/linkmesh/m3dc1_multi_region_pumi_input_contract_report.md`
+
+#### 7.11.1 已确认事实
+
+1. 教程三层案例定义 3 个 loops 和 3 个 geometric faces；相邻 faces 引用同一个
+   loop，并共享该 loop 的 geometric edges。
+2. TXT face record 已能表达一个 face 引用一个或多个 loops。
+3. 当前 exchange v1 wire layout 已包含多个 loop records、多个 face records、
+   face-to-loop 引用和逐 triangle classification。多 face 阻塞来自当前 ModelSpec、
+   Python Writer 和 helper 的 single-face invariants，不是 wire layout 缺少 face
+   records。
+4. LinkMesh mesh topology 使用全局 0-based nodes、triangles 和唯一 mesh edges。
+   Region 不拥有局部节点编号；共享界面节点和 mesh edge 不复制。
+5. PUMI 只录入已有 `Mesh2D` topology、应用 classification 并调用
+   `writeNative()`，不重新剖分。
+6. `Mesh2D.region_ids` 是 OFT 最终 Region 标签，不是 model face tags，不得直接
+   使用、压缩、排序或执行 `+1`。
+7. Python Writer 继续是 classification 唯一责任层；helper 只验证并应用 exchange
+   中的 classification，不根据坐标、Region 名称、颜色或邻接关系重新猜测。
+8. `Mesh2D` 单独不足以构造多区域 analytic model；还需要输入 curves、
+   `RegionPlan` 及正式 curve/Region 对应。
+9. `physical_label`、color 和 OFT technical role 不得自动驱动 face topology、
+   face tag 或 classification。
+10. TXT 与 SMB 必须由同一个目标专用构建结果及同一套 tag mappings 驱动。
+11. SCOREC/PUMI 生成侧成功只达到生成侧证据，不等于 M3D-C1 已消费；多区域消费
+    验证由同门负责。
+
+#### 7.11.2 待 User 批准的候选设计
+
+以下内容是候选，不是已开放接口：
+
+1. multi-face builder 消费 `Mesh2D`、`RegionPlan` 和 regions map。
+2. builder 确定性生成 `curve_id_to_loop_tag` 与
+   `region_id_to_face_tag`。
+3. 每条 input curve 只建立一个 geometric loop 和一套 geometric edges；相邻
+   faces 通过同一 loop tag 共享界面，不复制 geometry。
+4. Region face 的候选 boundary loops 为按确定顺序排列的 direct-child loops 加
+   own loop；该顺序目前只可作为 LinkMesh 确定性约定，不能宣称为目标 orientation
+   语义。
+5. triangle classification 由显式 `region_id_to_face_tag` 生成。
+6. schema v1 保持现有 single-face invariants；multi-region 候选使用字段布局相同、
+   语义 invariants 不同的 schema v2。
+7. helper 候选同时读取 v1/v2，保持 v1 回归，并为 v2 创建多个 faces、共享
+   geometric edges 和应用任意已声明 face classification。
+8. `regions generate` 候选增加 `target=m3dc1`、`model` 和 `smb`。是否增加
+   `--no-smb` 尚未经 User 裁决，本蓝图不批准该参数。
+
+候选接口存在第 3.5 节所述构建结果缺口。在该缺口完成正式裁决前，不得让 TXT Writer
+和 SMB Writer 分别重建 mappings。
+
+#### 7.11.3 待确认事项
+
+以下事项继续为 `PENDING`：
+
+- 同一个 analytic edge 被两个 face boundaries 使用是否通过目标 PUMI
+  `verify()`；
+- AGM 是否需要显式 use direction；
+- multi-loop face 的 outer/hole orientation；
+- face 中 loop tags 的顺序语义；
+- sibling/mixed tree 的目标环境 native 验证；
+- special loop tags 的通用来源；
+- OFT 内部 interface corner 和 edge chain 与原始 curve 的确定性对应；
+- multi-face analytic model 的统一 `(R,Z)` parameterization 是否充分；
+- 任意 N-region M3D-C1 输出是否可以开放；
+- 新多区域 TXT+SMB 的生成、加载、初始化、时间推进及物理结果。
+
+不得通过解析 SMB、调查 M3D-C1 loader、最近距离、容差吸附、投影、
+`physical_label` 或 synthetic OFT technical role 补足这些证据。
+
+#### 7.11.4 建议的首版实施顺序
+
+**Agent 建议，尚未获 User 批准：** 优先实施老师教程直接覆盖的严格嵌套三层模型；
+任意 sibling/mixed N-region 输出等待目标 PUMI native fixture 通过后再开放。
+
+即使仅实施严格嵌套三层，也必须先解决：
+
+- special loop tags；
+- face/loop orientation；
+- 共享 analytic edge 的 native `verify()`；
+- OFT 内部 interface 到 geometric edge chain 的确定性 classification 对应；
+- 第 3.5 节的不可变构建结果与 mappings 传递方式。
+
+当前分层状态：
+
+| 层级 | 状态 |
+|---|---|
+| M3D-C1 多区域输入契约调查 | **COMPLETED** |
+| 教程三 face 拓扑 | **CONFIRMED** |
+| exchange 多 face record 表达能力 | **CONFIRMED** |
+| schema v2 | **DESIGNED / USER APPROVAL PENDING** |
+| multi-face ModelSpec | **DESIGNED / NOT IMPLEMENTED** |
+| 多区域 classification | **DESIGNED / NOT IMPLEMENTED** |
+| helper 多 face 支持 | **DESIGNED / NATIVE PROBE PENDING** |
+| `regions generate target=m3dc1` | **CANDIDATE / NOT OPEN** |
+| 多区域 TXT+SMB | **NOT GENERATED** |
+| 同门消费验证 | **PENDING** |
 
 ---
 
@@ -2749,7 +2894,7 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 - 未经调查和蓝图批准的局部加密、动态自适应或磁面对齐；
 - 未经生成侧探针和后续 C1/classification 调查批准的 LinkMesh M3D-C1 多区域或多
   geometric face；M3D-C1 求解器本身具备多区域模拟能力不自动开放 LinkMesh 输出；
-- 在调查完成前修改 helper exchange schema；
+- 在 schema v2 获 User 批准且 native probe 前修改 helper exchange schema；
 - 把 conforming triangle topology 等同于 C1 有限元连续性；
 - 把网格密度分区自动解释为物理区域；
 - 仅凭 Region 数量判断 M3D-C1 C1 是否冲突；
@@ -2771,9 +2916,10 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 当前用户反馈层级，不自动证明时间推进、长期稳定性或物理正确性。
 
 multi-array OFT 能力、编号和 no-plasma 调查已经完成，inspect/generate 与生产
-N-region `Mesh2D` 已实现。当前 P2 主线完成多区域 TRIMEG 接线，等待真实 HDF5、
-h5py 和 MATLAB/TRIMEG 分层验收。以下更高级 OFT 能力调查契约继续保留，但不阻塞
-上述真实验收：
+N-region `Mesh2D` 已实现。多区域 TRIMEG 接线已完成，User 最新直接证据确认真实
+HDF5 已生成且自动测试和实际检测通过；标准 MATLAB/TRIMEG consumer 加载仍待验收。
+M3D-C1 多区域输入契约调查已经完成，但实现仍未开放。以下更高级 OFT 能力调查契约
+继续保留：
 
 必须区分：
 
@@ -2823,10 +2969,13 @@ Aider 执行依据或第二份技术契约。
 - 第二批 generate 业务已经实现并通过真实 two-level/four-level 验证：map/结构重验、
   `--mesh-dx`、`--region-dx`、独立配置合并、N-region OFT/Triangle、`Mesh2D`、
   Region triangle count、基本结构检查和 mesh PNG；
-- 当前第三批新增 `regions generate --target {mesh_only,trimeg}` 与 `--hdf5`，
+- 当前第三批已实现 `regions generate --target {mesh_only,trimeg}` 与 `--hdf5`，
   默认保持 mesh-only；TRIMEG 分支复用既有 complete-11 Writer；
-- 下一步执行真实多区域 HDF5 生成、h5py complete-11 回读、标准 MATLAB/TRIMEG
-  consumer 加载，并继续保持 M3D-C1 多区域输出为 PENDING / NOT OPEN；
+- 多区域 HDF5 已由 User 确认生成，自动测试和实际检测通过；标准 MATLAB/TRIMEG
+  consumer 加载仍为 PENDING；
+- M3D-C1 多区域输入契约调查已完成。下一步不是直接开放任意 N-region，而是由 User
+  裁决构建结果/mappings 接口和 schema v2，并用严格嵌套最小 fixture 验证共享
+  analytic edge、orientation、special loop tags 与 interface classification；
 - 在 Linux 基于本轮 master 生成外部三文件 Release，验证内部 manifest、外部
   tar.gz.sha256、可移动入口和干净环境运行；
 - 将通过结构与运行验证的发布候选交付普通用户并取得初期 M3D-C1/TRIMEG 使用报告；
@@ -2922,8 +3071,16 @@ multi-array 业务状态为 **IMPLEMENTED**。OFT 五类合成案例及其 dx va
 分 Region dx 和 N-region `Mesh2D` 已实现；真实 two-level/four-level 多区域网格已
 生成并完成结构检查，PNG 已生成并由 User 人工复核。
 
-`regions generate` 的多区域 TRIMEG 接线为 **IMPLEMENTED**，但本轮真实多区域
-HDF5 尚未生成，h5py complete-11 回读和标准 MATLAB/TRIMEG consumer 加载均为
-**PENDING**。M3D-C1 求解器本身的多区域能力与 LinkMesh 多区域 M3D-C1 输出仍未开放
-及兼容性 PENDING 必须分别记录；不得从共形 Triangle 拓扑、`Mesh2D.region_ids` 或
-single-face ModelSpec 自动推导多 face classification 或 C1 兼容性。
+`regions generate` 的多区域 TRIMEG 接线为 **IMPLEMENTED**，真实多区域 HDF5 为
+**GENERATED**；User 确认自动测试和实际检测均通过，但未提供精确 passed 数、完整
+结构检查字段或标准 consumer 日志，因此标准 MATLAB/TRIMEG consumer 加载仍为
+**PENDING**。
+
+M3D-C1 多区域输入契约调查为 **COMPLETED**，教程三 face 拓扑与 exchange 多 face
+record 表达能力为 **CONFIRMED**。schema v2、multi-face ModelSpec、多区域
+classification、helper 多 face 支持和 `regions generate target=m3dc1` 分别保持
+`DESIGNED / USER APPROVAL PENDING`、`DESIGNED / NOT IMPLEMENTED`、
+`DESIGNED / NOT IMPLEMENTED`、`DESIGNED / NATIVE PROBE PENDING` 和
+`CANDIDATE / NOT OPEN`。多区域 TXT+SMB 为 **NOT GENERATED**，同门消费验证为
+**PENDING**。不得从共形 Triangle topology、`Mesh2D.region_ids` 或 single-face
+ModelSpec 自动推导 multi-face classification 或 C1 兼容性。
