@@ -227,7 +227,8 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
 
 既有 OFT 调查事实、问题列表和停止条件继续有效，仅降低当前执行优先级。在直接证据
 明确并先更新蓝图前，不开放空间变密度、局部 refinement、M3D-C1 多区域、多
-geometric face、动态自适应或磁面对齐。
+geometric face、动态自适应或磁面对齐。M3D-C1 多区域输入契约调查虽已完成，但
+schema v2、构建结果接口、classification 与 helper native 能力仍未获完整批准或验证。
 
 `array_file + GFile LCFS reference` 工作流已经实现。初版 Release 已发送给同门和
 老师，当前反馈为可以正常使用；该交付事实不得降级为 PENDING，也不得外推为
