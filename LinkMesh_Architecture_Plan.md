@@ -2032,7 +2032,7 @@ profile 维度已从产品契约删除。根命令天然单区域：
 
 1. 调用 `read_boundary_file()` 获取经验证和方向规范化的唯一 `(N,2)` 计算边界。
 2. v1 不读取 GFile；边界物理语义保持“外部提供的计算边界”。
-3. 使用现有单区域尺度 `plasma_dx`，不新增同义尺度字段。
+3. 使用根命令唯一单区域尺度 `mesh_dx`，不新增同义尺度字段。
 4. 复用统一 single-region OFT Domain 构造，调用一次
    `add_polygon(boundary, "plasma")` 创建唯一 Region。
 5. 不创建 LCFS interface、first-wall interface、vacuum annulus 或
