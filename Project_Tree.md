@@ -2,7 +2,11 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.1；M3D-C1 多区域输入契约调查完成，正式设计改为从最终 N-region `Mesh2D` 全局 topology 自动派生 cycles、内部 tags 与 classifications；原始 curve corner exact-match 已被直接 probe 否证；schema v2 和 topology-driven classification 已批准设计但尚未实现，正式 helper 当前仍为 single-face；多区域 TRIMEG HDF5 已生成并由 User 确认自动测试和实际检测通过，标准 MATLAB/TRIMEG consumer 加载仍待验收）
+- 文档状态：当前有效（对应技术蓝图 v5.3；OFT/Triangle transition refinement、
+  自动 interface/粗细侧、指数 profile、逐 triangle `Amax` 和真实 `rpqazQ` 已实现；
+  全局单一 `transition_width` 设计已收口，复杂合成几何 PNG 已由 User 人工检查通过；
+  现有 `--verbose` final `Mesh2D` 数值质量报告已批准但尚未实现，refined mesh 的
+  M3D-C1 消费仍待验收）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -91,6 +95,11 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | `regions generate target=m3dc1` | DESIGNED / NOT IMPLEMENTED |
 | LinkMesh 多区域 TXT+SMB | NOT GENERATED |
 | LinkMesh 多区域 M3D-C1 消费验证 | PENDING |
+| OFT/Triangle transition refinement | IMPLEMENTED；真实 `rpqazQ` 已在目标服务器运行 |
+| 全局单一 `transition_width` 产品设计 | FINALIZED；所有不同 dx interfaces 自动共享同一 W |
+| 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
+| final `Mesh2D` verbose 数值质量报告 | APPROVED / NOT IMPLEMENTED |
+| refined mesh 的 M3D-C1 消费 | PENDING |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
 | OFT 多区域拓扑 | 生成与共享 mesh topology 已调查；M3D-C1 interface classification 对应仍待确认 |
 | M3D-C1 多区域、多 geometric face 与 C1 兼容性 | 输入契约调查完成；实现与 native/消费验证未开放 |
@@ -197,6 +206,7 @@ LinkMesh/
 │       ├── cli.py
 │       ├── config.py
 │       ├── mesh.py
+│       ├── mesh_quality.py（计划模块，尚不存在）
 │       ├── m3dc1_model.py
 │       │
 │       ├── readers/
@@ -206,7 +216,8 @@ LinkMesh/
 │       │
 │       ├── mesher/
 │       │   ├── __init__.py
-│       │   └── oft_adapter.py
+│       │   ├── oft_adapter.py
+│       │   └── triangle_refinement.py
 │       │
 │       ├── writers/
 │       │   ├── __init__.py
@@ -289,6 +300,9 @@ LinkMesh/
   完成，无需继续扩展当前探针。
 - `docs/linkmesh/multi_array_regions_investigation_report.md` 记录多轮廓、多 Region、
   包含树、分区域常数 dx、OFT/Triangle 能力和 `regions` 工作流的调查依据。
+- `docs/linkmesh/oft_triangle_transition_refinement_investigation.md` 记录 transition
+  refinement 的 Triangle 1.6 源码、ABI、ownership、真实 `rpqazQ` 运行和当前实现
+  收口证据；详细质量指标与失败边界以根蓝图为准。
 - `docs/linkmesh/m3dc1_multi_region_model_topology_evidence.md` 记录教程和生成侧
   vertices、edges、loops、faces、tags、共享界面与 orientation 的字段级证据。
 - `docs/linkmesh/m3dc1_multi_region_pumi_api_evidence.md` 记录当前 exchange、
@@ -511,6 +525,24 @@ boundary_source=lcfs 或 array_file
 - **职责**：定义唯一正式统一网格对象 `Mesh2D`，供所有下游 Writer 和 Plotter 使用。
 - **输出**：求解器无关的内存网格表示。
 - **不负责**：调用 OFT、PUMI、h5py、CLI 或任何 Writer。
+
+### `src/linkmesh/mesher/triangle_refinement.py`
+
+- **状态**：IMPLEMENTED；真实 `rpqazQ` 已在目标服务器运行。
+- **职责**：自动提取 transition interfaces、判断粗细侧、计算指数 profile 和逐
+  triangle 面积约束、管理 native ownership、执行有限 refinement并返回 final
+  `Mesh2D`。
+- **产品语义**：一次 regions generate 使用一个全局 W；多个变化层重叠时采用最严格
+  尺寸。
+- **不负责**：CLI 打印、Writer、Plotter、PUMI 或把诊断保存到 `Mesh2D`。
+
+### `src/linkmesh/mesh_quality.py`（计划模块，尚不存在）
+
+- **状态**：APPROVED / NOT IMPLEMENTED。
+- **计划职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 refinement 的最小诊断
+  形成现有 `--verbose` 人类可读摘要。
+- **不负责**：修改 mesh、调用 Triangle、定义新 CLI/TOML 参数或新增质量失败阈值。
+- 详细指标、单位、数据流和失败边界统一查阅当前技术蓝图。
 
 ### `src/linkmesh/m3dc1_model.py`
 
@@ -756,6 +788,11 @@ M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
 
 当前记录需要保留以下边界：
 
+- 删除服务器副本中的 `test_release_packaging.py` 后，当前剩余 pytest 集合为
+  123 passed；该结果不包含 release packaging 测试。
+- transition refinement、自动 interface/粗细侧和真实 `rpqazQ` 已实现并运行。
+- `case_002` 与复杂合成压力案例 PNG 已由 User 人工检查通过，但定量数值质量报告
+  尚未实现，refined mesh 的 M3D-C1 消费仍为 PENDING。
 - 真实 DIII-D GFile 的单区域 M3D-C1 CLI 最小闭环已经成功。
 - TXT、rank-0 SMB 和 PNG 已实际生成。
 - PNG 已由 User 人工检查通过。

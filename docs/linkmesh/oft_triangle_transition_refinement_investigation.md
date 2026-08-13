@@ -2,26 +2,64 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项只读源码调查
-- 调查状态：**COMPLETED**；静态源码契约、native ABI、ownership、
-  `triangulate`/`trifree` 运行时导出与动态依赖均已确认
+- 调查状态：**COMPLETED / IMPLEMENTATION CLOSED**；静态源码契约、native ABI、
+  ownership、`triangulate`/`trifree` 运行时导出与动态依赖均已确认，低层 Adapter
+  已实现并完成目标服务器真实运行
 - 静态源码契约：**CONFIRMED**
 - native ABI 和 ownership：**CONFIRMED**
 - `triangulate` 运行时导出：**CONFIRMED**
 - `trifree` 运行时导出：**CONFIRMED**
 - 动态依赖：**CHECKED / COMPLETE**
 - 最终裁决：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**
-- 业务实现：**NOT IMPLEMENTED**
-- 真实 `rpqazQ` 调用：**NOT RUN**
+- 业务实现：**IMPLEMENTED**
+- 真实 `rpqazQ` 调用：**RUN / GENERATED**
 - 调查对象：LinkMesh、OpenFUSIONToolkit/TokaMaker 26.6、随附 Triangle
 - 修改范围：仅生成本报告；未修改业务源码、蓝图、测试、配置、CLI、OFT/Triangle
   参考源码、外部库或求解器接口
-- 运行状态：已完成目标服务器实际动态库的路径、文件类型、动态符号和依赖核验；
-  未运行真实 `rpqazQ` refinement、LinkMesh 业务实现或消费端验证
-- 事实边界：本文严格区分当前源码直接事实、服务器动态库直接证据、既有探针事实、
-  Triangle 一般原理、已获 User 批准但尚未实现的正式设计和待确认事项。
-  refinement 业务仍未实现，`rpqazQ` 仍未运行
+- 运行状态：已完成目标服务器动态库核验和真实 `rpqazQ` refinement；
+  `case_002` 的 `W=0.20/0.30 m` 及复杂合成压力案例均已生成网格 PNG 并由 User
+  完成人工检查
+- 事实边界：本文严格区分源码事实、服务器直接证据、User 人工 PNG 检查、尚未实现的
+  定量质量报告和仍待完成的 M3D-C1 消费验证。PNG 不能证明数值质量、求解稳定性或
+  物理正确性
 
 ---
+
+## 0. 实现与产品设计收口
+
+低层可行性问题已经关闭。当前实现包含：
+
+- regions generate 的全局 `transition_width` CLI/TOML；
+- 自动发现 effective dx 不同的内部 Region interfaces；
+- 每条 interface 独立判断细侧与粗侧，并只在粗侧构造 transition；
+- centroid-to-segment 距离、指数 profile、多个 interfaces 取最小候选尺寸；
+- 逐 triangle `Amax=h_target^2/2`；
+- `rpqazQ`、Region attributes、PSLG、native ownership、最多 3 轮迭代和 final
+  `Mesh2D` 验证。
+
+User 已正式收口单一全局 W 产品设计：一次 regions generate 使用一个物理厚度 W，
+所有不同 dx interfaces 自动使用它；不开放 Region/interface 级 W、profile、
+minimum angle、max iterations 或 quality-report 专用参数。粗 Region 局部厚度不足、
+近邻 sibling 或多个变化层相遇时允许重叠，重叠 triangle 使用最严格的候选尺寸。
+粗 Region 大部分或全部细化是几何、effective dx 和 W 共同决定的合法结果。
+
+服务器证据：
+
+- 删除服务器副本中的 `test_release_packaging.py` 后，当前剩余 pytest 集合为
+  **123 passed in 1.70s**；该结果不包含 release packaging 测试；
+- `case_002` 的 `W=0.20 m` 和 `W=0.30 m` 均成功生成并通过 User PNG 人工检查；
+- 复杂凸/凹边界、锐角与尖点、三层 dx 单调增减、中间层最粗/最细、近邻 sibling、
+  transition 重叠、薄层与大 W、粗侧方向反转和复杂 PSLG 均成功生成，User 人工检查
+  结论为总体效果良好。
+
+这些结果达到 **GENERATED / PNG USER-CHECKED PASSED**，不等价于 minimum angle、
+shape quality、面积误差或 transition thickness 已定量通过。通过现有 `--verbose`
+输出 final `Mesh2D` 数值质量摘要的设计已获批准，但尚未实现；refined mesh 的
+M3D-C1 加载、初始化、时间推进、稳定性和物理正确性仍为 PENDING。
+
+下文第 1 至第 24 节保留实施前的源码调查、设计推导和 ABI 证据。其
+`NOT IMPLEMENTED`、`NOT RUN` 或“候选”措辞描述调查发生时的阶段状态；本节和当前
+根蓝图承载最新状态，不得用旧阶段标签覆盖当前实现事实。
 
 ## 1. 调查目标与边界
 
@@ -1507,7 +1545,7 @@ max(hK1, hK2) / min(hK1, hK2)
 
 ---
 
-## 18. CLI/config 候选
+## 18. CLI/config 收口
 
 ### 18.1 当前作用域
 
@@ -1528,9 +1566,9 @@ max(hK1, hK2) / min(hK1, hK2)
 
 regions 配置使用独立 `RegionsGenerateConfig`，不污染旧 `EffectiveConfig`。
 
-### 18.2 已批准的最小用户表面
+### 18.2 已实现并正式收口的最小用户表面
 
-User 已批准只公开一个新参数：
+User 已批准并已实现只公开一个参数：
 
 ```text
 --transition-width FLOAT
@@ -1722,21 +1760,18 @@ W 超过粗 Region 局部厚度
 
 ---
 
-## 22. 未确认事项
+## 22. 剩余待确认事项
 
-native 静态源码、ABI、运行时导出和动态依赖均已确认。当前只剩以下尚未执行的
-refinement 运行与消费证据：
+native 静态源码、ABI、运行时导出、动态依赖、低层 Adapter、真实 `rpqazQ`、
+attributes/PSLG、ownership 和有限迭代业务链均已实现或运行。当前剩余事项为：
 
-1. 候选 `rpqazQ` 是否在目标服务器成功运行。
-2. 实际输出 attributes 是否保持整数 Region IDs。
-3. 拆分后的外边界和内部 interface segments 是否完整输出。
-4. 成功和故意失败调用后的运行时内存行为是否符合 ownership 契约。
-5. 一次 refinement 对 W 的实际逼近误差。
-6. 有限迭代是否稳定终止。
-7. M3D-C1 加载、时间推进、数值稳定性和物理正确性。
+1. final `Mesh2D` 的 minimum angle、shape quality、equivalent size、相邻尺寸比和
+   面积上界误差等定量质量摘要；
+2. 实际 transition thickness 的离散 centroid 估计是否能在不扩展 `Mesh2D` 或保存
+   持久化状态的前提下提供；
+3. refined mesh 的 M3D-C1 加载、初始化、时间推进、数值稳定性和物理正确性。
 
-这些事项属于后续最小业务实现与服务器验证，不改变本文的静态和动态库可行性结论，
-也不得在未运行前写成已验证能力。
+PNG 人工检查只能证明可视几何结果获得 User 接受，不能替代上述定量或消费证据。
 
 ---
 
@@ -1842,10 +1877,13 @@ refinement 运行与消费证据：
 ### 24.2 最终状态
 
 ```text
-FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
+IMPLEMENTED / RPQAZQ RUN / GENERATED
+GLOBAL SINGLE-W DESIGN FINALIZED
+VERBOSE NUMERICAL QUALITY REPORT APPROVED / NOT IMPLEMENTED
+M3D-C1 REFINED-MESH CONSUMPTION PENDING
 ```
 
-最终静态裁决：
+最终实现裁决：
 
 - LinkMesh 能构造 `rpqazQ` refinement 所需的 contiguous、typed、0-based 输入；
 - `trianglearealist` 原生支持逐输入 triangle 的面积上界；
@@ -1859,6 +1897,11 @@ FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
   wrapper；
 -静态源码不要求修改或重新编译 OFT/Triangle；
 -服务器实际库已确认导出 `triangulate` 和 `trifree` 且依赖完整，源码和动态导出
-  阻塞均已解除，具备进入 LinkMesh 业务实现的技术条件；
--该结论不等于 `rpqazQ` 已运行。refinement 仍为 **NOT IMPLEMENTED**，attributes、
-  PSLG、W 效果、有限迭代和 M3D-C1 消费验证仍为 PENDING。
+  阻塞均已解除；
+-LinkMesh-side 低层 Adapter、自动 interface/粗细侧、指数 profile、逐 triangle
+  `Amax`、attributes/PSLG、ownership 和有限迭代均已实现；
+-真实 `rpqazQ` 已在目标服务器运行，`case_002` 和复杂合成压力案例均已生成；
+-User 已完成 PNG 人工检查并正式收口全局单一 W 产品设计；
+-final `Mesh2D` verbose 定量质量报告仍为 **APPROVED / NOT IMPLEMENTED**；
+-refined mesh 的 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性仍为
+  **PENDING**。

@@ -3,12 +3,13 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.2**（正式批准 multi-region `transition_width` 与
-  LinkMesh-side Triangle `rpqazQ` refinement 契约；源码、native ABI、ownership、
-  `triangulate`/`trifree` 运行时导出和动态依赖均已确认，业务实现与真实 refinement
-  运行尚未开始；M3D-C1 multi-face build result、schema v2、helper v1/v2 和
-  `regions generate target=m3dc1` 已实现，`case_002` TXT/SMB/PNG 已生成且 TXT+SMB
-  已交付同门，M3D-C1 加载仍待验收）
+- 文档状态：正式版 **5.3**（multi-region `transition_width`、自动 interface
+  发现、自动粗细侧判定、指数 profile、逐 triangle 面积约束和 LinkMesh-side
+  Triangle `rpqazQ` refinement 已实现并完成真实服务器运行；`case_002` 的
+  `W=0.20/0.30 m` 及复杂合成压力案例已生成并由 User 完成 PNG 人工检查。全局单一
+  `transition_width` 产品设计正式收口。下一阶段已批准通过现有 `--verbose` 输出
+  final `Mesh2D` 数值质量摘要，但该质量报告尚未实现；refined mesh 的 M3D-C1
+  消费验证仍为 PENDING）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -183,9 +184,15 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `case_002` TXT+SMB 同门交付 | **DELIVERED；LOADED PENDING** |
 | OFT/Triangle transition refinement 调查 | **COMPLETED** |
 | native ABI / ownership / runtime exports | **CONFIRMED** |
-| `transition_width` 与低层 Adapter | **APPROVED / NOT IMPLEMENTED** |
-| `rpqazQ` 真实调用 | **NOT RUN** |
-| attributes / PSLG / W 效果 | **PENDING** |
+| `transition_width` CLI/TOML 与低层 Adapter | **IMPLEMENTED** |
+| 自动 interface 发现与粗细侧 refinement | **IMPLEMENTED** |
+| 指数 profile 与逐 triangle `Amax` | **IMPLEMENTED** |
+| `rpqazQ` 目标服务器真实调用 | **RUN / GENERATED** |
+| `case_002`，`W=0.20/0.30 m` | **GENERATED / PNG USER-CHECKED PASSED** |
+| 复杂合成 transition 压力案例 | **GENERATED / PNG USER-CHECKED PASSED** |
+| 全局单一 `transition_width` 产品设计 | **FINALIZED** |
+| final `Mesh2D` verbose 数值质量报告 | **APPROVED / NOT IMPLEMENTED** |
+| refined mesh 的 M3D-C1 消费 | **PENDING** |
 | 三维、动态自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
 ### 1.6 v4.1 当前主线与优先级
@@ -282,6 +289,7 @@ cli
 
 mesher.oft_adapter → mesh
 mesher.triangle_refinement → mesh
+mesh_quality → mesh
 writers → mesh
 utils.plotter → mesh
 readers.boundary_reader → mesh
@@ -302,7 +310,8 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/readers/boundary_reader.py` | 独立 Boundary Reader：实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化。未来 multi-array Reader 必须作为独立候选职责处理，不得放宽旧单 block 契约 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；调用 `gfile_reader`；返回 `GFileData`；组合参考几何；调用 Plotter；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
 | `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座生成 initial Mesh2D；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary；multi-array 路径只接收完成基础检查、轻量包含推导和显式 ID/dx 解析的 Region plan | 配置解析；transition profile 或低层 refinement ownership；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；自行猜测包含树、Region ID、物理名称或 dx 顺序 |
-| `src/linkmesh/mesher/triangle_refinement.py` | 【APPROVED / NOT IMPLEMENTED】窄职责内部模块：从 initial/current Mesh2D 提取外边界与跨 Region PSLG、计算 interface 距离和指数 profile、构造逐 triangle 面积上界、调用同一 OFT 26.6 `liboft_triangle.so` 的 `rpqazQ`、管理 native ownership、执行有限迭代并返回全新 final Mesh2D | 读取配置或业务文件；创建 OFT Domain；修改 Mesh2D 字段；保存 native pointer；调用 Writer/Plotter/PUMI；复制 Triangle 算法；引入第二剖分器 |
+| `src/linkmesh/mesher/triangle_refinement.py` | 【IMPLEMENTED】窄职责内部模块：从 initial/current Mesh2D 提取外边界与跨 Region PSLG、计算 interface 距离和指数 profile、构造逐 triangle 面积上界、调用同一 OFT 26.6 `liboft_triangle.so` 的 `rpqazQ`、管理 native ownership、执行有限迭代并返回全新 final Mesh2D | 读取配置或业务文件；创建 OFT Domain；修改 Mesh2D 字段；保存 native pointer；调用 Writer/Plotter/PUMI；打印 CLI 日志；复制 Triangle 算法；引入第二剖分器 |
+| `src/linkmesh/mesh_quality.py` | 【APPROVED / NOT IMPLEMENTED】从 final `Mesh2D` 计算通用数值质量统计，并从 refinement 提供的最小只读诊断形成 transition 摘要；返回内部不可变报告对象，不负责打印 | 修改 mesh；调用 Triangle、Writer、Plotter 或 helper；访问 native pointer；重新实现 interface/refinement 算法；定义新的失败阈值 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
@@ -608,10 +617,16 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `triangulate`/`trifree` 运行时导出：**CONFIRMED**；
 - 动态依赖：**CHECKED / COMPLETE**；
 - 可行性：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**；
-- `transition_width` 与低层 Adapter：**APPROVED / NOT IMPLEMENTED**；
-- 真实 `rpqazQ`：**NOT RUN**；
-- attributes、PSLG、W 效果与有限迭代：**PENDING**；
-- M3D-C1 稳定性：**PENDING CONSUMER VALIDATION**。
+- `transition_width` 与低层 Adapter：**IMPLEMENTED**；
+- 自动 interface 发现、粗细侧判定、指数 profile 和逐 triangle `Amax`：
+  **IMPLEMENTED**；
+- 真实 `rpqazQ`：**RUN / GENERATED**；
+- `case_002` 的 `W=0.20/0.30 m` 与复杂合成压力案例：
+  **GENERATED / PNG USER-CHECKED PASSED**；
+- 全局单一 `transition_width` 产品设计：**FINALIZED**；
+- final `Mesh2D` verbose 数值质量报告：**APPROVED / NOT IMPLEMENTED**；
+- refined mesh 的 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性：
+  **PENDING CONSUMER VALIDATION**。
 
 #### 4.6.1 参数与编排
 
@@ -635,11 +650,16 @@ transition_width = <float>
 3. 只属于 `regions generate`；`regions inspect` 不接受。
 4. 适用于 `mesh_only`、`trimeg`、`m3dc1`。
 5. 优先级为内建默认值 < TOML < 显式 CLI。
-6. 不增加 Region 级 W、profile、minimum-angle、max-iterations、Triangle option
-   或 native library path 参数。
-7. initial Mesh2D 只生成一次；W>0 时 refinement 一次编排为 final Mesh2D；全部
+6. 不增加 Region 级或 interface 级 W、profile、minimum-angle、max-iterations、
+   mesh-quality 专用开关、quality-report 输出路径、Triangle option 或 native
+   library path 参数。
+7. `transition_width` 是一次 `regions generate` 的全局物理厚度。所有 effective
+   dx 不同的内部 Region interfaces 自动使用同一个 W；用户不选择 interface、
+   transition 方向、变化层 triangles 或每条 interface 的 W。该单一全局 W 产品设计
+   已由 User 正式确认为首版收口设计。
+8. initial Mesh2D 只生成一次；W>0 时 refinement 一次编排为 final Mesh2D；全部
    Plotter 和 Writer 只消费该 final Mesh2D。
-8. W=0 不导入或调用低层 refinement，不改变现有结果。
+9. W=0 不导入或调用低层 refinement，不改变现有结果。
 
 #### 4.6.2 interface、粗细侧与距离
 
@@ -654,7 +674,22 @@ Region ID 不同且 effective dx 不同的内部 interface。
 - `hf=min(dx_a,dx_b)`，`hc=max(dx_a,dx_b)`；
 - transition 只作用于粗侧 Region；
 - 不使用 `physical_label`、颜色、`curve_id`、technical role、坐标接近或最近邻
-  恢复 Region identity。
+  恢复 Region identity；
+- incidence>2 是 non-manifold，立即失败。
+
+变化层不是新增 Region、face、curve 或持久化对象。对 transition interface `I`，
+它是当前粗侧 triangles 中由距离隐式确定的集合：
+
+```text
+T_transition(I) = {
+    K |
+    region(K) = coarse_side(I)
+    and d(K,I) < W
+}
+```
+
+refinement 后必须基于新 mesh 重新提取 interface、triangle centroid 和距离，因此
+该隐式集合会在有限迭代中重新离散。
 
 对粗侧 triangle K 和 interface I：
 
@@ -823,20 +858,169 @@ final Mesh2D 必须满足：
 结构正确、形状改善和 W 离散逼近属于生成侧证据。M3D-C1 加载、时间推进、数值
 稳定性和物理正确性必须分别由消费端直接验证，不得由 refinement 或 PNG 外推。
 
-#### 4.6.9 最小实施范围
+#### 4.6.9 实现与运行证据收口
 
-下一轮最小候选修改：
+当前业务实现已经覆盖：
 
-- `src/linkmesh/mesher/triangle_refinement.py`（新建）；
-- `src/linkmesh/regions.py`；
-- `src/linkmesh/config.py`；
-- `src/linkmesh/cli.py`；
-- 对应现有测试文件；
-- `src/linkmesh/mesher/oft_adapter.py` 仅在复用已加载 native library 或既有结构定义
-  必需且不破坏其初始网格职责时做最小接线。
+- `transition_width` 的 regions generate CLI/TOML 合并和有限非负校验；
+- 自动提取外边界 PSLG 与不同 Region 的内部 interfaces；
+- 按 effective dx 自动判断每条 interface 的粗侧和细侧；
+- 粗侧 centroid-to-segment 距离、指数 profile 和逐 triangle `Amax`；
+- OFT 26.6 `liboft_triangle.so` 的 `rpqazQ` 调用、attributes/PSLG 保留、
+  native ownership 清理、最多 3 轮 refinement 和 final `Mesh2D` 验证；
+- W=0 保持既有路径，W>0 时所有 target 消费同一个 final `Mesh2D`。
 
-原则上不修改 `src/linkmesh/mesh.py`、regions map schema、requirements、Plotter、
-所有 Writer、native SCOREC helper、OFT/Triangle 源码、release 或 examples。
+服务器直接证据：
+
+- 删除服务器副本中的 `test_release_packaging.py` 后，当前剩余 pytest 集合为
+  **123 passed in 1.70s**；该结果不包含 release packaging 测试，不得表述为完整
+  仓库测试套件通过；
+- `case_002` 的 `W=0.20 m` 与 `W=0.30 m` 均由真实 regions generate CLI 成功生成
+  网格 PNG，并由 User 人工检查通过；
+- 复杂凸边界、复杂凹边界、锐角和尖点、三层 dx 单调增大/减小、中间 Region
+  最粗/最细、同一 parent 的近邻 sibling、狭窄粗侧变化层重叠、薄壳与大 W、
+  粗侧方向反转及复杂 PSLG 自动 refinement 均已成功生成，并由 User 完成 PNG
+  人工检查，结论为总体效果良好。
+
+上述证据达到 **GENERATED / PNG USER-CHECKED PASSED**。人工 PNG 检查受图像分辨率
+限制，不证明 minimum angle、shape quality、面积上界误差或实际 transition
+thickness 已定量通过，也不证明 refined mesh 已被 M3D-C1 加载、初始化或用于时间
+推进。
+
+#### 4.6.10 final Mesh2D verbose 数值质量报告
+
+状态：**APPROVED / NOT IMPLEMENTED**。
+
+质量报告复用现有：
+
+```text
+linkmesh regions generate ... --verbose
+```
+
+不新增 CLI 参数、TOML 字段、输出文件、JSON schema、Writer dataset、`Mesh2D`
+字段、native exchange 字段或 helper 字段。规则：
+
+1. 只在 `verbose=True` 时计算并打印；未启用 verbose 时不增加普通输出噪声。
+2. 发生在 final `Mesh2D` 已形成并完成正式结构验证之后，且在 Plotter 和 Writer
+   消费该同一对象之前的统一诊断位置。
+3. 只计算，不修改 mesh，不重新生成或 refinement，不访问 native pointer。
+4. W=0 时打印通用质量；W>0 且存在不同 dx interface 时额外打印 transition 摘要。
+5. 输出面向人类，不建立机器解析 wire format；采用紧凑稳定的 `Mesh quality:` 与
+   `Transition quality:` 分组，但空格、对齐宽度和完整日志文本不是长期契约。
+6. 不逐 triangle、逐 edge打印，不打印完整数组或 native pointer；正常统计写 stdout。
+7. verbose 关闭不得跳过正式结构验证，质量诊断不得改变 mesh 或 target 分派。
+
+通用质量至少包含：
+
+| 类别 | 指标 |
+|---|---|
+| 规模 | nodes、triangles、Region count；每 Region triangle count 最小复用既有 verbose 摘要 |
+| triangle angle [degree] | global minimum、minimum-angle P1、minimum-angle P5、global maximum |
+| shape quality `Q` | minimum、P1、P5、median |
+| equivalent size `hK` [m] | minimum、median、maximum |
+| adjacent size ratio | maximum、P95、P99 |
+| 结构计数 | degenerate triangles、duplicate triangles、non-manifold edges |
+
+定义：
+
+```text
+Q(K) = 4 * sqrt(3) * A(K) / (l1^2 + l2^2 + l3^2)
+hK = sqrt(2 * A(K))
+r(K1,K2) = max(hK1,hK2) / min(hK1,hK2)
+```
+
+相邻尺寸比只统计 incidence=2 edge 两侧的 triangle pair。没有相邻 pair 时打印明确的
+人类可读“不可用”状态，不伪造数值。全部计算使用 final `Mesh2D` 的 Python-owned
+float64 arrays；检查边长、面积和结果有限性；退化 triangle 不执行无保护除法；
+百分位数统一使用 NumPy 的确定性定义。长度单位为 m，角度单位为 degree，Q 和 ratio
+无量纲。
+
+W>0 且存在 transition interface 时额外输出：
+
+- W [m]、transition interface count、refinement iteration count；
+- initial/final nodes 和 triangles；
+- node/triangle growth ratio；
+- final maximum area excess、final violating triangle count；
+- 受 transition 影响的粗侧 triangle 总数；
+- 每条 interface 的两侧 Region IDs、fine/coarse Region ID、`hf`、`hc`、W、
+  粗侧受影响 triangle count 和该 interface 粗侧 maximum area excess。
+
+无量纲面积超限定义为：
+
+```text
+area_excess(K) = max(0, A(K) / Amax(K) - 1)
+```
+
+“违反”必须复用 refinement 停止判据的同一容差：
+
+```text
+area <= Amax + 64 * eps(float64) * max(1.0, abs(area), abs(Amax))
+```
+
+质量报告不得另建面积容差。没有不同 dx interface 时不打印虚假的 transition
+统计。
+
+actual transition thickness 只作为后续候选。若能从既有 final interface、距离和
+profile 诊断中确定性获得，且不修改 `Mesh2D`、不新增持久化状态、不额外 refinement，
+可按下式输出离散 centroid 估计：
+
+```text
+W_actual(I) = max {
+    d(K,I) |
+    K 位于 I 的粗侧且 h_target_from_I(K) < hc
+}
+```
+
+它不是连续几何厚度，不要求严格等于 W；粗 Region 厚度不足或 transition 重叠时可能
+小于 W 或无法恢复到 `hc`。若当前诊断不足，首版不得为此扩展 `Mesh2D` 或重复
+refinement，完整距离分箱和 min/median/max/P10/P90 profile 留作专题诊断。
+
+正式结构失败继续沿用既有条件：非有限 nodes、非法索引、超过现有阈值的退化
+triangle、duplicate triangle、non-manifold、非法 Region attributes、
+PSLG/interface 丢失、refinement 结束后仍违反面积上界及其他既有结构错误。以下仅
+报告，不新增失败阈值：minimum angle 偏低、Q 偏低、maximum angle 偏高、adjacent
+size ratio 偏高、`W_actual` 与 W 的离散偏差。Triangle 裸 q 的 20° 目标保持不变；
+PSLG 固有小角不得仅因报告值偏低触发 LinkMesh 新失败规则。
+
+#### 4.6.11 下一阶段最小模块与数据流
+
+正式选择方案 A：refinement 内部入口下一阶段返回一个窄职责结果对象，携带 refined
+`Mesh2D` 与最小 immutable diagnostics。选择 A 的原因是 final mesh、
+`resolved_dx` 和 W 可重新计算最终 interface/area 状态，但无法可靠恢复实际执行的
+refinement iteration count、initial/final growth 身份和每轮停止证据；让 CLI
+重算会复制 interface/refinement 语义。
+
+批准的数据流：
+
+```text
+initial Mesh2D
+  → triangle_refinement
+  → RefinementResult(final Mesh2D, immutable diagnostics)
+  → mesh_quality 计算通用质量并合并 transition diagnostics
+  → immutable MeshQualityReport
+  → cli 在 verbose=True 时格式化打印
+  → 同一个 final Mesh2D 进入 Writer / Plotter
+```
+
+职责：
+
+- `src/linkmesh/mesher/triangle_refinement.py` 继续唯一拥有 interface、距离、
+  profile、`Amax`、面积容差、native ownership 和迭代；只新增最小诊断结果传递，
+  不打印、不计算通用 mesh quality、不把诊断写入 `Mesh2D`。
+- 新增计划模块 `src/linkmesh/mesh_quality.py`，只从 final `Mesh2D` 计算通用统计，
+  并从 refinement diagnostics 形成 transition 摘要；返回内部不可变报告，不打印、
+  不修改 mesh、不调用 Triangle/Writer/Plotter/helper。
+- `src/linkmesh/cli.py` 只在 verbose 启用时调用质量计算并打印人类可读摘要，不复制
+  interface、profile、面积容差或 mesh-quality 算法。
+- W=0 旧路径不构造虚假 refinement diagnostics；通用质量直接基于 final
+  `Mesh2D`。
+- 该结果对象和质量报告均为 LinkMesh 内部接口，不扩大公共用户 API，不保存 native
+  pointer、完整 per-triangle arrays 或迭代 mesh 历史。
+
+下一阶段原则上只修改 `src/linkmesh/mesh_quality.py`、
+`src/linkmesh/mesher/triangle_refinement.py`、`src/linkmesh/cli.py` 和对应现有测试。
+原则上不修改 `src/linkmesh/mesh.py`、`src/linkmesh/config.py`、regions map、
+Plotter、Writer、helper、OFT/Triangle、requirements、examples 或 release。
 
 ---
 
@@ -3195,8 +3379,9 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 
 - 第二网格引擎、三维网格、环向或并行分区；
 - 未经本蓝图批准的局部加密；求解过程动态自适应或磁面对齐；
-- 把已批准但尚未实现、尚未运行的 transition refinement 写成 PASSED；
-- 允许用户修改 Triangle option、minimum angle、max iterations 或 native 库路径；
+- 把 refined mesh 的 PNG 人工检查写成数值质量、M3D-C1 消费、稳定性或物理验证；
+- 允许用户修改 Region/interface 级 W、profile、Triangle option、minimum angle、
+  max iterations、quality-report 输出路径或 native 库路径；
 - 未经生成侧探针和后续 C1/classification 调查批准的 LinkMesh M3D-C1 多区域或多
   geometric face；M3D-C1 求解器本身具备多区域模拟能力不自动开放 LinkMesh 输出；
 - 在 schema v2 获 User 批准且 native probe 前修改 helper exchange schema；
@@ -3344,12 +3529,15 @@ SMB、classification 或 helper exchange。当前授权 TRIMEG Loader 和正式 
 `linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，不得提前写死
 未经验证的相对目录、RPATH、临时解压方案或系统库兼容性。
 
-OFT/Triangle transition refinement 专项调查已完成。Triangle 1.6 静态契约、
-native ABI、ownership、目标服务器 `triangulate`/`trifree` 动态导出和动态依赖均已
-确认，源码和动态导出阻塞已经解除；最终裁决为
-**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**。`transition_width`
-及第 4.6 节技术契约已批准，但业务仍为 **NOT IMPLEMENTED**，真实 `rpqazQ` 为
-**NOT RUN**，attributes/PSLG、W 效果和有限迭代仍为 **PENDING**。
+OFT/Triangle transition refinement 专项调查与业务实现均已完成。Triangle 1.6
+静态契约、native ABI、ownership、目标服务器 `triangulate`/`trifree` 动态导出和
+动态依赖均已确认；`transition_width` CLI/TOML、自动 interface、粗细侧判定、指数
+profile、逐 triangle `Amax`、attributes/PSLG、有限迭代和 LinkMesh-side 低层
+Adapter 均为 **IMPLEMENTED**，真实 `rpqazQ` 为 **RUN / GENERATED**。
+`case_002` 的 `W=0.20/0.30 m` 与复杂合成压力案例均已生成并由 User 完成 PNG 人工
+检查。全局单一 W 产品设计为 **FINALIZED**。final `Mesh2D` verbose 数值质量报告为
+**APPROVED / NOT IMPLEMENTED**；定量质量结果及 refined mesh 的 M3D-C1 加载、
+初始化、时间推进、稳定性和物理正确性仍为 **PENDING**。
 
 M3D-C1 multi-face build result、schema v2、helper v1/v2 和
 `regions generate target=m3dc1` 已实现。`case_002` model TXT、rank-0 SMB 和 PNG
