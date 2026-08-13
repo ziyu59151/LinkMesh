@@ -620,6 +620,7 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `transition_width` 与低层 Adapter：**IMPLEMENTED**；
 - 自动 interface 发现、粗细侧判定、指数 profile 和逐 triangle `Amax`：
   **IMPLEMENTED**；
+- attributes、PSLG 与有限迭代：**IMPLEMENTED；真实服务器运行完成**；
 - 真实 `rpqazQ`：**RUN / GENERATED**；
 - `case_002` 的 `W=0.20/0.30 m` 与复杂合成压力案例：
   **GENERATED / PNG USER-CHECKED PASSED**；
@@ -712,12 +713,20 @@ h(d) = hf * (hc / hf)^(min(d / W, 1))
 
 其语义为 `h(0)=hf`、`d>=W` 时 `h=hc`，并截断到 `[hf,hc]`。同一 triangle 的
 多个 interface 候选取最小值，Region 基准尺寸也是上界；refinement 只细化，不请求
-coarsening。
+coarsening。每条 interface 独立使用同一个全局 W，但 `hf`、`hc` 由该 interface
+两侧 effective dx 自动确定，因此相同 W 不表示每条 interface 具有相同相对尺寸
+增长率。
 
 ```text
 h_target(K) = min(h_region, all applicable h_i(K))
 Amax(K) = h_target(K)^2 / 2
 ```
+
+transition 可以在粗 Region 厚度不足、两个变化层相遇、多个子 Region 靠近或 W
+大于局部厚度时重叠。重叠 triangle 采用最严格的目标尺寸，因此粗 Region 可能无法
+恢复到 `hc`，也可能大部分或全部被细化。这是几何、effective dx 和 W 共同决定的
+正式结果，不自动视为错误。典型生产场景中，最薄的导体或壁壳 Region 可作为细侧，
+变化层由相邻的大面积粗 Region 承载。
 
 `trianglearealist` 必须为与当前 triangle 顺序一一对应的 `(T,)`、C-contiguous、
 有限、严格正 `float64` 数组。不得使用 Triangle 支持的零或负 area sentinel。
