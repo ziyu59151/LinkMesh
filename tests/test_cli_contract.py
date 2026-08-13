@@ -82,6 +82,20 @@ def _assert_group_order(help_text, *titles):
     assert positions == sorted(positions)
 
 
+def _usage_block(help_text):
+    lines = help_text.splitlines()
+    start = next(
+        index for index, line in enumerate(lines)
+        if line.startswith("usage:")
+    )
+    block = [lines[start]]
+    for line in lines[start + 1:]:
+        if not line.startswith(" "):
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
 def test_top_level_help_describes_both_workflows_and_group_order(capsys):
     parser = cli.build_parser()
 
@@ -90,10 +104,13 @@ def test_top_level_help_describes_both_workflows_and_group_order(capsys):
 
     assert captured.value.code == 0
     help_text = capsys.readouterr().out
-    assert "标准网格工作流" in help_text
-    assert "多区域工作流" in help_text
+    assert "标准网格" in help_text
+    assert "多区域网格" in help_text
+    assert "linkmesh regions inspect" in help_text
+    assert "linkmesh regions generate" in help_text
     assert "regions {inspect,generate}" in help_text
     assert "linkmesh mesh" not in help_text
+    assert "M4" not in help_text
     for option in (
         "--config",
         "--no-config",
@@ -139,7 +156,11 @@ def test_regions_help_hierarchy_and_old_parser_scope(capsys):
     assert "inspect" in help_text
     assert "generate" in help_text
     assert "setup-only" in help_text
-    assert "完整多区域 Triangle 网格" in help_text
+    assert "不生成完整 Triangle 网格" in help_text
+    assert "经用户确认的 regions map" in help_text
+    usage = _usage_block(help_text)
+    assert "linkmesh regions {inspect,generate} ..." in usage
+    assert "regions {inspect,generate} ... regions" not in usage
     assert "--gfile" not in help_text
     assert "--hdf5" not in help_text
     assert "--smb" not in help_text
@@ -176,8 +197,16 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
         "--verbose",
     ):
         assert option in help_text
-    assert "正式 TOML regions map" in help_text
-    assert "inspection PNG" in help_text
+    usage = _usage_block(help_text)
+    assert "linkmesh regions inspect [options]" in usage
+    assert "regions inspect" not in usage.replace(
+        "linkmesh regions inspect",
+        "",
+        1,
+    )
+    assert "不生成完整 Triangle 网格" in help_text
+    assert "可选的 inspection PNG" in help_text
+    assert "供 generate 使用的 TOML regions map" in help_text
     assert "--region-dx" not in help_text
     assert "--transition-width" not in help_text
     assert "--hdf5" not in help_text
@@ -263,10 +292,23 @@ def test_regions_generate_help_is_scoped(capsys):
         "--verbose",
     ):
         assert option in help_text
+    usage = _usage_block(help_text)
+    assert "linkmesh regions generate [options]" in usage
+    assert "regions generate" not in usage.replace(
+        "linkmesh regions generate",
+        "",
+        1,
+    )
     assert "最终 Region ID" in help_text
     assert "可重复提供" in help_text
-    assert "完整覆盖全部 Region" in help_text
+    assert "覆盖所有最终 Region" in help_text
     assert "{mesh_only,trimeg,m3dc1}" in help_text
+    assert "0 表示关闭" in help_text
+    assert "统一变化层厚度" in help_text
+    assert "变化层自动位于粗侧" in help_text
+    assert "final Mesh2D 数值质量" in help_text
+    assert "可选的最终网格 PNG" in help_text
+    assert "M4" not in help_text
     assert "--gfile" not in help_text
     assert "--no-hdf5" not in help_text
     assert "--no-smb" not in help_text
