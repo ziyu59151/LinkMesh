@@ -78,6 +78,7 @@ DEFAULT_VACUUM_DX = 0.10
 DEFAULT_OUTER_DX = 0.15
 DEFAULT_VERBOSE = False
 DEFAULT_PLOT_LCFS = False
+DEFAULT_TRANSITION_WIDTH = 0.0
 
 # 路径默认值（第 6A.3 节，经只读核对实时 cli.py）：
 #   - hdf5 默认 mesh.h5（仅当 target=trimeg 需要时作为默认输出）；
@@ -196,6 +197,7 @@ class RegionsGenerateOverrides:
     smb: Any = UNSET
     mesh_dx: Any = UNSET
     region_dx: Any = UNSET
+    transition_width: Any = UNSET
     verbose: Any = UNSET
 
 
@@ -215,6 +217,7 @@ class RegionsGenerateConfig:
     smb_path: Optional[Path]
     mesh_dx: Optional[float]
     region_dx: Mapping[int, float]
+    transition_width: float
     verbose: bool
 
 
@@ -277,6 +280,19 @@ def _check_positive_float(value: Any, name: str,
     if not (math.isfinite(v) and v > 0.0):
         _fail(config_path, name, f"必须是有限正数，实际={value}")
     return v
+
+
+def _check_nonnegative_float(
+    value: Any,
+    name: str,
+    config_path: Optional[Path],
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(config_path, name, f"必须是数值，实际类型={type(value).__name__}")
+    numeric = float(value)
+    if not (math.isfinite(numeric) and numeric >= 0.0):
+        _fail(config_path, name, f"必须是有限非负数，实际={value}")
+    return numeric
 
 
 def _check_bool(value: Any, name: str, config_path: Optional[Path]) -> bool:
@@ -651,7 +667,11 @@ def _load_regions_generate_toml(
     mesh = regions.get("mesh", {})
     if not isinstance(mesh, dict):
         _fail(config_path, "[regions.mesh]", "必须是 TOML table")
-    unknown_mesh = set(mesh) - {"mesh_dx", "region_dx"}
+    unknown_mesh = set(mesh) - {
+        "mesh_dx",
+        "region_dx",
+        "transition_width",
+    }
     if unknown_mesh:
         _fail(
             config_path,
@@ -662,6 +682,12 @@ def _load_regions_generate_toml(
         values["mesh_dx"] = _check_positive_float(
             mesh["mesh_dx"],
             "[regions.mesh].mesh_dx",
+            config_path,
+        )
+    if "transition_width" in mesh:
+        values["transition_width"] = _check_nonnegative_float(
+            mesh["transition_width"],
+            "[regions.mesh].transition_width",
             config_path,
         )
 
@@ -921,6 +947,11 @@ def load_regions_generate_config(
             "[regions.mesh.region_dx] 提供完整 Region 覆盖"
         )
 
+    transition_width = _check_nonnegative_float(
+        merged("transition_width", DEFAULT_TRANSITION_WIDTH),
+        "regions transition_width",
+        config_path,
+    )
     verbose = _check_bool(
         merged("verbose", False),
         "verbose",
@@ -939,6 +970,7 @@ def load_regions_generate_config(
         smb_path=smb_path,
         mesh_dx=mesh_dx,
         region_dx=MappingProxyType(dict(sorted(region_dx.items()))),
+        transition_width=transition_width,
         verbose=verbose,
     )
 

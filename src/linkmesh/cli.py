@@ -387,6 +387,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ID=DX",
         help="按最终 Region ID 局部覆盖尺度，可重复提供，单位 m",
     )
+    generate_mesh_group.add_argument(
+        "--transition-width",
+        dest="transition_width",
+        type=float,
+        default=UNSET,
+        metavar="FLOAT",
+        help="不同 dx Region interface 粗侧渐变层的物理厚度，单位 m（默认：0）",
+    )
     generate_output_group.add_argument(
         "--hdf5",
         default=UNSET,
@@ -739,6 +747,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
             if args.region_dx is not None
             else UNSET
         ),
+        transition_width=args.transition_width,
         verbose=True if args.verbose else UNSET,
     )
     cfg = config_mod.load_regions_generate_config(
@@ -772,7 +781,20 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         dict(cfg.region_dx),
     )
 
-    mesh = generate_multi_region_mesh(numbered_plan, resolved_dx)
+    initial_mesh = generate_multi_region_mesh(numbered_plan, resolved_dx)
+    if cfg.transition_width > 0.0:
+        from linkmesh.mesher.triangle_refinement import (
+            refine_transition_mesh,
+        )
+
+        mesh = refine_transition_mesh(
+            initial_mesh,
+            resolved_dx,
+            cfg.transition_width,
+        )
+    else:
+        mesh = initial_mesh
+
     counts = {
         region_id: int(np.count_nonzero(mesh.region_ids == region_id))
         for region_id in sorted(resolved_dx)

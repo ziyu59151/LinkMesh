@@ -178,6 +178,7 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
     assert "正式 TOML regions map" in help_text
     assert "inspection PNG" in help_text
     assert "--region-dx" not in help_text
+    assert "--transition-width" not in help_text
     assert "--hdf5" not in help_text
     assert "--smb" not in help_text
     _assert_group_order(
@@ -253,6 +254,7 @@ def test_regions_generate_help_is_scoped(capsys):
         "--regions-map",
         "--mesh-dx",
         "--region-dx",
+        "--transition-width",
         "--hdf5",
         "--model",
         "--smb",
@@ -441,6 +443,219 @@ def test_regions_generate_rebuilds_validates_and_plots(
     assert "Region 1" in output
     assert "triangles=2" in output
     assert "Region 2" in output
+
+
+def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    records = (
+        SimpleNamespace(
+            region_id=1,
+            curve_id=2,
+            parent_region_id=2,
+            child_region_ids=(),
+            color="#D55E00",
+            physical_label="",
+        ),
+        SimpleNamespace(
+            region_id=2,
+            curve_id=1,
+            parent_region_id=0,
+            child_region_ids=(1,),
+            color="#0072B2",
+            physical_label="",
+        ),
+    )
+    initial_mesh = SimpleNamespace(
+        n_nodes=5,
+        n_triangles=3,
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+    final_mesh = SimpleNamespace(
+        n_nodes=7,
+        n_triangles=6,
+        region_ids=np.array([1, 1, 1, 2, 2, 2], dtype=np.int32),
+    )
+    generate = MagicMock(return_value=initial_mesh)
+    refine = MagicMock(return_value=final_mesh)
+    plot = MagicMock()
+
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        MagicMock(return_value=blocks),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.read_regions_map",
+        MagicMock(return_value=records),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.build_region_plan",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        MagicMock(return_value={1: 2, 2: 1}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.assign_final_region_ids",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.validate_plan_against_map",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.resolve_region_dx",
+        MagicMock(return_value={1: 0.03, 2: 0.08}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
+        generate,
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        refine,
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_mesh",
+        plot,
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "generate",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "mesh.png",
+            "--mesh-dx",
+            "0.08",
+            "--region-dx",
+            "1=0.03",
+            "--transition-width",
+            "0.12",
+        )
+    )
+
+    generate.assert_called_once()
+    refine.assert_called_once_with(
+        initial_mesh,
+        {1: 0.03, 2: 0.08},
+        0.12,
+    )
+    plot.assert_called_once_with(
+        final_mesh,
+        records,
+        str((tmp_path / "mesh.png").resolve()),
+    )
+
+
+def test_regions_generate_zero_transition_does_not_refine(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    records = (
+        SimpleNamespace(
+            region_id=1,
+            curve_id=2,
+            parent_region_id=2,
+            child_region_ids=(),
+            color="#D55E00",
+            physical_label="",
+        ),
+        SimpleNamespace(
+            region_id=2,
+            curve_id=1,
+            parent_region_id=0,
+            child_region_ids=(1,),
+            color="#0072B2",
+            physical_label="",
+        ),
+    )
+    mesh = SimpleNamespace(
+        n_nodes=5,
+        n_triangles=3,
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+    refine = MagicMock()
+
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        MagicMock(return_value=blocks),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.read_regions_map",
+        MagicMock(return_value=records),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.build_region_plan",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        MagicMock(return_value={1: 2, 2: 1}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.assign_final_region_ids",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.validate_plan_against_map",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.resolve_region_dx",
+        MagicMock(return_value={1: 0.03, 2: 0.08}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
+        MagicMock(return_value=mesh),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        refine,
+    )
+    plot = MagicMock()
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_mesh",
+        plot,
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "generate",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "mesh.png",
+            "--mesh-dx",
+            "0.08",
+        )
+    )
+
+    assert refine.call_count == 0
+    plot.assert_called_once_with(
+        mesh,
+        records,
+        str((tmp_path / "mesh.png").resolve()),
+    )
 
 
 def test_regions_generate_trimeg_reuses_mesh_and_calls_hdf5_once(

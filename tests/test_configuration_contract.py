@@ -191,6 +191,84 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
     assert config.hdf5_path == (tmp_path / "cli.h5").resolve()
     assert config.mesh_dx == 0.10
     assert dict(config.region_dx) == {1: 0.03, 2: 0.04, 3: 0.02}
+    assert config.transition_width == 0.0
+
+
+def test_regions_generate_transition_width_merges_and_validates(tmp_path):
+    config_path = tmp_path / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n"
+        "transition_width = 0.12\n",
+        encoding="utf-8",
+    )
+
+    toml_config = load_regions_generate_config(
+        RegionsGenerateOverrides(),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+    assert toml_config.transition_width == 0.12
+
+    cli_config = load_regions_generate_config(
+        RegionsGenerateOverrides(transition_width=0.2),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+    assert cli_config.transition_width == 0.2
+
+    zero_config = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            multi_array_file="multi.rz",
+            regions_map="regions.toml",
+            plot="mesh.png",
+            mesh_dx=0.08,
+            transition_width=0.0,
+        ),
+        cwd=tmp_path,
+    )
+    assert zero_config.transition_width == 0.0
+
+    for invalid in (-0.1, float("nan"), float("inf")):
+        with pytest.raises(ConfigError, match="transition_width"):
+            load_regions_generate_config(
+                RegionsGenerateOverrides(
+                    multi_array_file="multi.rz",
+                    regions_map="regions.toml",
+                    plot="mesh.png",
+                    mesh_dx=0.08,
+                    transition_width=invalid,
+                ),
+                cwd=tmp_path,
+            )
+
+
+def test_regions_inspect_rejects_transition_width_toml_key(tmp_path):
+    path = tmp_path / "regions.toml"
+    path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "transition_width = 0.1\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="未知"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            config_arg=str(path),
+            cwd=tmp_path,
+        )
 
 
 def test_regions_generate_target_defaults_and_hdf5_contract(tmp_path):

@@ -15,6 +15,8 @@ from linkmesh.mesher.oft_adapter import (
     inspect_multi_region_ids,
     mesh_from_oft_domain,
 )
+from linkmesh.mesh import Mesh2D
+from linkmesh.mesher import triangle_refinement
 from linkmesh.regions import build_region_plan
 
 
@@ -25,6 +27,252 @@ def _mesh_arrays():
     )
     triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
     return nodes, triangles
+
+
+def _two_region_mesh() -> Mesh2D:
+    nodes = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [2.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    triangles = np.array(
+        [
+            [0, 1, 4],
+            [0, 4, 3],
+            [1, 2, 5],
+            [1, 5, 4],
+        ],
+        dtype=np.int32,
+    )
+    return Mesh2D(
+        nodes=nodes,
+        triangles=triangles,
+        region_ids=np.array([1, 1, 2, 2], dtype=np.int32),
+    )
+
+
+def test_transition_topology_profile_and_pslg_contract():
+    mesh = _two_region_mesh()
+    dx = {1: 0.25, 2: 1.0}
+
+    topology = triangle_refinement._extract_edge_topology(mesh, dx)
+    assert len(topology.interfaces) == 1
+    interface = topology.interfaces[0]
+    assert interface.coarse_region_id == 2
+    assert interface.fine_region_id == 1
+    assert interface.fine_dx == 0.25
+    assert interface.coarse_dx == 1.0
+    assert interface.segments.tolist() == [[1, 4]]
+
+    pslg = {
+        tuple(edge)
+        for edge in topology.pslg_segments.tolist()
+    }
+    assert (1, 4) in pslg
+    assert (0, 4) not in pslg
+    assert (1, 5) not in pslg
+
+    bounds = triangle_refinement._triangle_area_bounds(
+        mesh,
+        dx,
+        1.0,
+        topology,
+    )
+    assert bounds.shape == (4,)
+    assert bounds.dtype == np.float64
+    assert bounds.flags.c_contiguous
+    assert np.all(np.isfinite(bounds))
+    assert np.all(bounds > 0.0)
+    assert bounds[2] < 0.5
+    assert bounds[3] < 0.5
+
+
+def test_centroid_to_segment_distance_is_euclidean():
+    nodes = np.array([[0.0, 0.0], [0.0, 2.0]], dtype=np.float64)
+    centroids = np.array([[1.0, 1.0], [2.0, 3.0]], dtype=np.float64)
+    segments = np.array([[0, 1]], dtype=np.int32)
+
+    distances = triangle_refinement._centroid_to_segments_distance(
+        centroids,
+        nodes,
+        segments,
+    )
+
+    assert distances == pytest.approx([1.0, np.sqrt(5.0)])
+
+
+def test_multiple_interfaces_use_strictest_size():
+    nodes = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    mesh = Mesh2D(
+        nodes=nodes,
+        triangles=np.array(
+            [[0, 1, 2], [1, 3, 4], [1, 4, 2]],
+            dtype=np.int32,
+        ),
+        region_ids=np.array([1, 2, 2], dtype=np.int32),
+    )
+    topology = triangle_refinement.EdgeTopology(
+        edges=np.empty((0, 2), dtype=np.int32),
+        incidences=(),
+        pslg_segments=np.array([[1, 2]], dtype=np.int32),
+        interfaces=(
+            triangle_refinement.InterfaceConstraint(
+                coarse_region_id=2,
+                fine_region_id=1,
+                fine_dx=0.2,
+                coarse_dx=1.0,
+                segments=np.array([[1, 2]], dtype=np.int32),
+            ),
+            triangle_refinement.InterfaceConstraint(
+                coarse_region_id=2,
+                fine_region_id=3,
+                fine_dx=0.1,
+                coarse_dx=1.0,
+                segments=np.array([[3, 4]], dtype=np.int32),
+            ),
+        ),
+    )
+
+    bounds = triangle_refinement._triangle_area_bounds(
+        mesh,
+        {1: 0.2, 2: 1.0, 3: 0.1},
+        10.0,
+        topology,
+    )
+
+    assert np.all(bounds[1:] < 0.5)
+
+
+def test_equal_dx_and_zero_width_do_not_call_native(monkeypatch):
+    mesh = _two_region_mesh()
+    native = MagicMock()
+    monkeypatch.setattr(triangle_refinement, "_native_refine", native)
+
+    equal_dx = triangle_refinement.refine_transition_mesh(
+        mesh,
+        {1: 0.5, 2: 0.5},
+        0.2,
+    )
+    zero_width = triangle_refinement.refine_transition_mesh(
+        mesh,
+        {1: 0.25, 2: 1.0},
+        0.0,
+    )
+
+    assert native.call_count == 0
+    assert np.array_equal(equal_dx.nodes, mesh.nodes)
+    assert np.array_equal(zero_width.triangles, mesh.triangles)
+    assert not np.shares_memory(equal_dx.nodes, mesh.nodes)
+    assert not np.shares_memory(zero_width.triangles, mesh.triangles)
+
+
+def test_transition_refinement_preserves_input_and_owned_final_mesh(monkeypatch):
+    mesh = _two_region_mesh()
+    original_nodes = mesh.nodes.copy()
+    original_triangles = mesh.triangles.copy()
+    original_regions = mesh.region_ids.copy()
+
+    monkeypatch.setattr(
+        triangle_refinement,
+        "_area_violations",
+        MagicMock(return_value=np.zeros(mesh.n_triangles, dtype=bool)),
+    )
+    native = MagicMock()
+    monkeypatch.setattr(triangle_refinement, "_native_refine", native)
+
+    result = triangle_refinement.refine_transition_mesh(
+        mesh,
+        {1: 0.25, 2: 1.0},
+        0.5,
+    )
+
+    assert native.call_count == 0
+    assert np.array_equal(mesh.nodes, original_nodes)
+    assert np.array_equal(mesh.triangles, original_triangles)
+    assert np.array_equal(mesh.region_ids, original_regions)
+    assert not np.shares_memory(result.nodes, mesh.nodes)
+    assert not np.shares_memory(result.triangles, mesh.triangles)
+    assert not np.shares_memory(result.region_ids, mesh.region_ids)
+
+
+def test_transition_topology_rejects_non_manifold_edge():
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [0.0, -1.0],
+                [1.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array(
+            [[0, 1, 2], [1, 0, 3], [0, 1, 4]],
+            dtype=np.int32,
+        ),
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+
+    with pytest.raises(ValueError, match="non-manifold"):
+        triangle_refinement._extract_edge_topology(mesh, {1: 0.2, 2: 0.4})
+
+
+def test_transition_rejects_changed_or_noninteger_attributes(monkeypatch):
+    mesh = _two_region_mesh()
+    topology = triangle_refinement._extract_edge_topology(
+        mesh,
+        {1: 0.25, 2: 1.0},
+    )
+    monkeypatch.setattr(
+        triangle_refinement,
+        "_area_violations",
+        MagicMock(return_value=np.ones(mesh.n_triangles, dtype=bool)),
+    )
+
+    def changed_attributes(_mesh, _bounds, _segments):
+        return (
+            mesh.nodes.copy(),
+            mesh.triangles.copy(),
+            np.array([1.0, 1.0, 2.0, 3.0]),
+            topology.pslg_segments.copy(),
+        )
+
+    monkeypatch.setattr(
+        triangle_refinement,
+        "_native_refine",
+        changed_attributes,
+    )
+    with pytest.raises(ValueError, match="Region ID 集合"):
+        triangle_refinement.refine_transition_mesh(
+            mesh,
+            {1: 0.25, 2: 1.0},
+            0.5,
+        )
+
+    with pytest.raises(ValueError, match="整数语义"):
+        triangle_refinement._validate_mesh_arrays(
+            Mesh2D(
+                nodes=mesh.nodes,
+                triangles=mesh.triangles,
+                region_ids=np.array([1.0, 1.0, 2.0, 2.5]),
+            )
+        )
 
 
 class _Region:
