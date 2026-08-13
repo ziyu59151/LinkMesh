@@ -9,6 +9,7 @@ import pytest
 
 from linkmesh import cli
 from linkmesh.config import ConfigError
+from linkmesh.mesh import Mesh2D
 from linkmesh.regions import RegionsError
 
 
@@ -364,9 +365,25 @@ def test_regions_generate_rebuilds_validates_and_plots(
     )
     plan = object()
     numbered_plan = object()
-    mesh = SimpleNamespace(
-        n_nodes=5,
-        n_triangles=3,
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 1.0],
+                [0.5, 0.5],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array(
+            [
+                [0, 1, 4],
+                [1, 2, 4],
+                [2, 3, 4],
+            ],
+            dtype=np.int32,
+        ),
         region_ids=np.array([1, 1, 2], dtype=np.int32),
     )
 
@@ -437,7 +454,17 @@ def test_regions_generate_rebuilds_validates_and_plots(
         numbered_plan,
         {1: 0.03, 2: 0.08},
     )
-    plot.assert_called_once_with(mesh, records, str((tmp_path / "mesh.png").resolve()))
+    plot.assert_called_once()
+    plotted_mesh, plotted_records, plotted_path = plot.call_args.args
+    assert isinstance(plotted_mesh, Mesh2D)
+    assert plotted_mesh is not mesh
+    assert plotted_mesh.n_nodes == 5
+    assert plotted_mesh.n_triangles == 3
+    assert np.array_equal(plotted_mesh.nodes, mesh.nodes)
+    assert np.array_equal(plotted_mesh.triangles, mesh.triangles)
+    assert np.array_equal(plotted_mesh.region_ids, np.array([1, 1, 2]))
+    assert plotted_records is records
+    assert plotted_path == str((tmp_path / "mesh.png").resolve())
     assert hdf5.call_count == 0
     output = capsys.readouterr().out
     assert "Region 1" in output
