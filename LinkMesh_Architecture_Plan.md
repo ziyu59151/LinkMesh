@@ -36,7 +36,6 @@ APF/MDS mesh，并调用官方 `writeNative()` 生成 SMB。PUMI/APF/MDS 不重�
 
 ### 1.2 总体数据流
 
-```text
 根命令单区域正式数据流：
 
 ```text
@@ -76,7 +75,6 @@ refinement 位于 initial `Mesh2D` 之后、全部 Plotter 和 Writer 之前。�
 消费同一个 final `Mesh2D`，不得按 target 分别生成或 refinement。`W=0` 保持现有
 行为。refinement 不修改 Region 物理语义，PUMI/M3D-C1 不参与 refinement；
 OFT/TokaMaker 封装的 Triangle 仍是唯一二维剖分底座。
-```
 
 M3D-C1 P0 正式生产链：
 
@@ -206,7 +204,7 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `case_002`，`W=0.20/0.30 m` | **GENERATED / PNG USER-CHECKED PASSED** |
 | 复杂合成 transition 压力案例 | **GENERATED / PNG USER-CHECKED PASSED** |
 | 全局单一 `transition_width` 产品设计 | **FINALIZED** |
-| final `Mesh2D` verbose 数值质量报告 | **APPROVED / NOT IMPLEMENTED** |
+| final `Mesh2D` verbose 数值质量报告 | **IMPLEMENTED / USER ACCEPTED** |
 | refined mesh 的 M3D-C1 消费 | **PENDING** |
 | 三维、动态自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
@@ -273,15 +271,17 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
    multi-array inspect 与 generate 生产链已经实现并形成合法 N-region `Mesh2D`。
 8. 首版不建设通用鲁棒计算几何系统，不引入 Shapely/GEOS，不承诺精确分类复杂
    自交、相切、重合或近接触输入。
-9. `nested_three_region` 暂不修改、删除或优化。
-10. 后续再调查 OFT 单区域静态空间变网格密度、Triangle refinement、
-    M3D-C1 C1 连续性与多 geometric face。
+9. 历史 `nested_three_region` 根入口已由 User 退役；业务源码、测试和当前模板清理
+   为下一轮已批准任务，状态仍为 SOURCE REMOVAL PENDING。
+10. OFT 单区域静态空间变网格密度仍待调查；Triangle refinement、M3D-C1
+    multi-face 生成侧和 final `Mesh2D` verbose 数值质量报告均已实现。
 11. 动态自适应和磁面对齐继续保持未开放。
 
-既有 OFT 调查事实、问题列表和停止条件继续有效，仅降低当前执行优先级。在直接证据
-明确并先更新蓝图前，不开放空间变密度、局部 refinement、M3D-C1 多区域、多
-geometric face、动态自适应或磁面对齐。M3D-C1 多区域输入契约调查虽已完成，但
-schema v2、构建结果接口、classification 与 helper native 能力仍未获完整批准或验证。
+既有 OFT 调查事实、问题列表和停止条件继续有效。空间变密度、动态自适应和磁面对齐
+在直接证据明确并先更新蓝图前不得开放。局部 transition refinement、M3D-C1
+multi-face build result、topology-driven classification、schema v2、helper v1/v2
+和 `regions generate target=m3dc1` 已实现；其生成侧证据不得外推为 M3D-C1
+加载、初始化、时间推进、稳定性或物理正确性。
 
 `array_file + GFile LCFS reference` 工作流已经实现。初版 Release 已发送给同门和
 老师，当前反馈为可以正常使用；该交付事实不得降级为 PENDING，也不得外推为
@@ -326,7 +326,7 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
 | `src/linkmesh/mesher/oft_adapter.py` | 根命令只构造单区域 OFT Domain；regions 路径消费已验证 Region plan 构造 N-region Domain；调用唯一 Triangle 底座并规范化为 Mesh2D；受控读取 outer Region 回写边界 | 保留 nested 专用 LCFS/第一壁/artificial-outer 自动分层；配置解析；transition profile；复制 OFT 算法；读取禁止的 OFT 私有结构；猜测包含树、Region ID、物理名称或 dx 顺序 |
 | `src/linkmesh/mesher/triangle_refinement.py` | 【IMPLEMENTED】窄职责内部模块：从 initial/current Mesh2D 提取外边界与跨 Region PSLG、计算 interface 距离和指数 profile、构造逐 triangle 面积上界、调用同一 OFT 26.6 `liboft_triangle.so` 的 `rpqazQ`、管理 native ownership、执行有限迭代并返回全新 final Mesh2D | 读取配置或业务文件；创建 OFT Domain；修改 Mesh2D 字段；保存 native pointer；调用 Writer/Plotter/PUMI；打印 CLI 日志；复制 Triangle 算法；引入第二剖分器 |
-| `src/linkmesh/mesh_quality.py` | 【APPROVED / NOT IMPLEMENTED】从 final `Mesh2D` 计算通用数值质量统计，并从 refinement 提供的最小只读诊断形成 transition 摘要；返回内部不可变报告对象，不负责打印 | 修改 mesh；调用 Triangle、Writer、Plotter 或 helper；访问 native pointer；重新实现 interface/refinement 算法；定义新的失败阈值 |
+| `src/linkmesh/mesh_quality.py` | 【IMPLEMENTED / USER ACCEPTED】从 final `Mesh2D` 计算通用数值质量统计，并从 refinement 提供的最小只读诊断形成 transition 摘要；返回内部不可变报告对象，不负责打印 | 修改 mesh；调用 Triangle、Writer、Plotter 或 helper；访问 native pointer；重新实现 interface/refinement 算法；定义新的失败阈值 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
@@ -644,7 +644,7 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `case_002` 的 `W=0.20/0.30 m` 与复杂合成压力案例：
   **GENERATED / PNG USER-CHECKED PASSED**；
 - 全局单一 `transition_width` 产品设计：**FINALIZED**；
-- final `Mesh2D` verbose 数值质量报告：**APPROVED / NOT IMPLEMENTED**；
+- final `Mesh2D` verbose 数值质量报告：**IMPLEMENTED / USER ACCEPTED**；
 - refined mesh 的 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性：
   **PENDING CONSUMER VALIDATION**。
 
@@ -917,7 +917,9 @@ thickness 已定量通过，也不证明 refined mesh 已被 M3D-C1 加载、初
 
 #### 4.6.10 final Mesh2D verbose 数值质量报告
 
-状态：**APPROVED / NOT IMPLEMENTED**。
+状态：**IMPLEMENTED / USER ACCEPTED**。User 确认相关自动测试全部通过且数值质量
+检测验收通过；未提供本轮精确 passed 数，因此不得猜测。该结果不证明 M3D-C1
+加载、初始化、时间推进、稳定性或物理正确性。
 
 质量报告复用现有：
 
@@ -1010,9 +1012,9 @@ PSLG/interface 丢失、refinement 结束后仍违反面积上界及其他既有
 size ratio 偏高、`W_actual` 与 W 的离散偏差。Triangle 裸 q 的 20° 目标保持不变；
 PSLG 固有小角不得仅因报告值偏低触发 LinkMesh 新失败规则。
 
-#### 4.6.11 下一阶段最小模块与数据流
+#### 4.6.11 已实现模块与数据流
 
-正式选择方案 A：refinement 内部入口下一阶段返回一个窄职责结果对象，携带 refined
+正式实现采用方案 A：refinement 内部入口返回一个窄职责结果对象，携带 refined
 `Mesh2D` 与最小 immutable diagnostics。选择 A 的原因是 final mesh、
 `resolved_dx` 和 W 可重新计算最终 interface/area 状态，但无法可靠恢复实际执行的
 refinement iteration count、initial/final growth 身份和每轮停止证据；让 CLI
@@ -1045,10 +1047,9 @@ initial Mesh2D
 - 该结果对象和质量报告均为 LinkMesh 内部接口，不扩大公共用户 API，不保存 native
   pointer、完整 per-triangle arrays 或迭代 mesh 历史。
 
-下一阶段原则上只修改 `src/linkmesh/mesh_quality.py`、
-`src/linkmesh/mesher/triangle_refinement.py`、`src/linkmesh/cli.py` 和对应现有测试。
-原则上不修改 `src/linkmesh/mesh.py`、`src/linkmesh/config.py`、regions map、
-Plotter、Writer、helper、OFT/Triangle、requirements、examples 或 release。
+该实现已落在 `src/linkmesh/mesh_quality.py`、
+`src/linkmesh/mesher/triangle_refinement.py`、`src/linkmesh/cli.py` 和对应测试中，
+未改变 `Mesh2D`、regions map、Plotter、Writer、helper 或 OFT/Triangle 契约。
 
 ---
 
@@ -1150,7 +1151,7 @@ gfile → gfile_reader → GFileData ──────────────�
 | `boundary_source` | `"lcfs"` |
 | `mesh_dx` | `0.08`；唯一单 Region 目标网格尺度 [m] |
 | `verbose` | `False` |
-| `plot_lcfs` | `False`（已批准、尚未实现） |
+| `plot_lcfs` | `False` |
 | `gfile_path` | `None` |
 | `array_file_path` | `None` |
 | `hdf5_path` | target 为 `trimeg` 时为当前工作目录下 `mesh.h5` |
@@ -1168,7 +1169,8 @@ gfile → gfile_reader → GFileData ──────────────�
   显式 CLI 提供。
 - `gfile_path=None`。是否必需由 `boundary_source` 和 required-fields 决定。
 - `outer_padding` 和 `merge_thresh` 不是配置字段。
-- 默认行为保持 `trimeg + nested_three_region + artificial_outer`。
+- 下一轮源码清理后的默认行为为 `trimeg + lcfs` 单区域；实时源码中的旧 nested
+  默认仅表示 SOURCE REMOVAL PENDING，不再是正式产品契约。
 
 ### 5.4 `linkmesh.in` TOML v1
 
@@ -1220,7 +1222,7 @@ schema_version = 1
 | `[output].plot` | 非空字符串 | `plot_path` |
 | `[output].model` | 非空字符串 | `model_path` |
 | `[output].smb` | 非空字符串 | `smb_path` |
-| `[output].plot_lcfs` | TOML bool | `plot_lcfs`；默认 `false`；已批准、尚未实现 |
+| `[output].plot_lcfs` | TOML bool | `plot_lcfs`；默认 `false`；已实现 |
 | `[runtime].verbose` | TOML bool | `verbose` |
 
 严格规则：
@@ -1252,7 +1254,7 @@ schema_version = 1
 | `--plot PATH` | `plot` | 覆盖 `[output].plot` |
 | `--model PATH` | `model` | 覆盖 `[output].model` |
 | `--smb PATH` | `smb` | 覆盖 `[output].smb`，表示未插 rank 的基础路径 |
-| `--plot-lcfs` | `plot_lcfs` | 显式出现时覆盖 `[output].plot_lcfs` 为 `True`；已批准、尚未实现 |
+| `--plot-lcfs` | `plot_lcfs` | 显式出现时覆盖 `[output].plot_lcfs` 为 `True`；已实现 |
 | `--verbose` | `verbose` | 显式出现时覆盖为 `True` |
 
 参与合并的 CLI 参数必须使用 `UNSET` 区分未提供与显式提供。CLI 层不得通过业务默认
@@ -1431,16 +1433,15 @@ EAST 直接证据：
 - 具体物理构造算法及其与 LCFS、第一壁、磁轴和 X-point 的精确关系仍为
   PENDING，但不阻塞读取已由研究人员确认的最终边界。
 
-### 5.7A `array_file + GFile LCFS reference` 候选工作流
+### 5.7A `array_file + GFile LCFS reference` 工作流
 
-状态：**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。
+状态：**IMPLEMENTED**。
 
 正式目标命令：
 
 ```text
 python -m linkmesh \
   --target trimeg \
-  --profile single_region \
   --boundary-source array_file \
   --array-file <boundary-path> \
   --plot-lcfs \
@@ -1456,8 +1457,8 @@ python -m linkmesh \
 - `--plot-lcfs`：要求读取 GFile LCFS 并叠加到 PNG。
 - `--gfile PATH`：仅在该组合中提供 LCFS 参考数据，不参与网格生成。
 - `--plot PATH`：提供包含实际网格边界和 LCFS reference 的 PNG 路径。
-- 既有 `boundary_source=lcfs` 或 `artificial_outer` 路径中，`gfile_path` 继续承担
-  原有网格输入职责，新功能不得改变其语义。
+- `boundary_source=lcfs` 路径中，`gfile_path` 继续承担网格输入职责；
+  `artificial_outer` 不再是根命令正式来源。
 
 合法组合：
 
@@ -1519,8 +1520,9 @@ exchange schema 或目标格式。
 
 ### 5.7B `multi_array_file` 与 `regions` 两阶段设计
 
-状态：**DESIGNED / NOT IMPLEMENTED；OFT N-region、编号与 no-plasma 前置调查已完成**。
-专项证据与设计见 `docs/linkmesh/multi_array_regions_investigation_report.md`。
+状态：**IMPLEMENTED；`regions inspect/generate` 是唯一正式多区域入口**。
+OFT N-region、编号与 no-plasma 前置调查及生产实现证据见
+`docs/linkmesh/multi_array_regions_investigation_report.md` 与 `History.md`。
 
 #### 5.7B.1 OFT 能力边界
 
@@ -1539,8 +1541,9 @@ Triangle `regionlist`；Triangle 将 attribute 传播到三角形；OFT 从
 `triangleattributelist` 读回。数值可能以浮点存储传递，但业务语义是离散 Region
 标签。
 
-OFT 官方能力不等于 LinkMesh 已实现 `multi_array_file`，也不证明 LinkMesh 候选的
-sibling、四层以上嵌套、混合拓扑、共享界面和编号稳定性已经通过。
+这些 OFT 能力已由后续 LinkMesh 探针和生产实现使用；五类合成案例及 dx variants
+已 GENERATED / STRUCTURALLY CHECKED，生产 `regions inspect/generate`、分 Region
+dx 和 N-region `Mesh2D` 已实现。该证据不外推到异常 polygon 或求解器消费层级。
 
 #### 5.7B.2 输入格式和拓扑前提
 
@@ -1566,7 +1569,7 @@ sibling、四层以上嵌套、混合拓扑、共享界面和编号稳定性已�
     `array_file + single_region` 入口；不得自动升级、降级或改变旧 `array_file`
     契约。
 
-首版输入前提：
+当前生产输入前提：
 
 - 曲线是简单闭合曲线，不自交；
 - 不同曲线不相交、不相切、不重合；
@@ -1576,10 +1579,10 @@ sibling、四层以上嵌套、混合拓扑、共享界面和编号稳定性已�
 - 不支持多个独立计算域；
 - 不支持无人占据、完全不剖分的 Triangle hole。
 
-每条曲线定义一个候选 Region：本曲线内部减去全部直接 child 曲线内部。child 不是
+每条曲线定义一个 Region：本曲线内部减去全部直接 child 曲线内部。child 不是
 不生成网格的 hole，而是由另一个 Region 占据的内部区域；对 parent 而言，child
-边界是内部界面。允许多层嵌套、一个 parent 带多个 sibling children，以及二者组合，
-但 LinkMesh/OFT 实际行为仍待探针。
+边界是内部界面。允许多层嵌套、一个 parent 带多个 sibling children，以及二者组合；
+这些拓扑已由五类 OFT 探针覆盖，生产输入仍受轻量几何前提限制。
 
 #### 5.7B.3 首版轻量包含推导和几何边界
 
@@ -1731,8 +1734,8 @@ linkmesh regions generate -h
 - 阶段不得根据 dx 或输出参数是否存在隐式推断；
 - `regions` 支持 `--config` 和完整长 CLI，优先级继续为默认值 < 配置 < 显式 CLI。
 
-regions 使用独立配置解析模型，不向旧入口固定 17 字段 `EffectiveConfig` 或旧
-TOML v1 允许键集合塞入动态 Region 字段。首版正式配置结构为：
+regions 使用独立配置解析模型，不向根命令 `EffectiveConfig` 或标准 TOML v1
+允许键集合塞入动态 Region 字段。正式配置结构为：
 
 ```toml
 schema_version = 1
@@ -2005,13 +2008,14 @@ profile 维度已从产品契约删除。根命令天然单区域：
    - 不排序、循环移位、插值、重采样、全局去重或改变保留坐标。
 4. 过滤后至少 3 点。
 5. 若首末距离仍小于 `1e-4 m`，失败。
-6. 定义唯一 `plasma` region，尺度为 `plasma_dx`。
+6. 定义唯一 OFT technical `plasma` region，尺度为根命令 `mesh_dx`；该 technical
+   role 不表示额外物理 Region。
 7. 调用一次 `add_polygon(lcfs, "plasma")`，无 parent。
 8. 不使用第一壁，不创建 vacuum、annulus 或 artificial outer。
 9. 通过 `domain.regions` 长度差捕获唯一新增 Region。
 10. build 后读取同一 Region 的 `_resampled_points`。
 11. 规范化并验证 `outer_boundary`。
-12. `vacuum_dx`、`outer_dx`、`outer_padding` 不参与。
+12. 已删除的 legacy 区域 dx 与 nested 专用 `outer_padding` 不参与。
 13. 不缩放 LCFS，不从最终拓扑反推边界。
 
 #### 5.11.2 根命令 `first_wall`
@@ -2115,8 +2119,8 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
   `[output].hdf5`，旧 `--output` 必须由 argparse 拒绝；
 - TOML 与 CLI 两套路径基准；
 - 路径不展开；
-- `EffectiveConfig` 冻结且恰为 17 字段，覆盖 `mesh_dx` 默认值、TOML、CLI、
-  有限正数校验及 profile 显式尺度冲突；
+- 源码收口后 `EffectiveConfig` 冻结且恰为 13 字段，覆盖 `mesh_dx` 默认值、TOML、
+  CLI 和有限正数校验，并拒绝旧 profile 与 legacy dx TOML 键；
 - 已实现、禁止和未实现组合的异常类型；
 - boundary source 和 target required-fields；
 - `mesh_only` 不调用 Writer；
@@ -3188,10 +3192,10 @@ OFT 26.6 `gs_Domain.build_mesh()` 的强制前置条件，失败发生在 Triang
 复杂异常几何不承诺精确分类。新网格的 M3D-C1 加载、初始化、时间推进和物理验证仍为
 PENDING。
 
-### 9.7 初期交付候选工作流验收
+### 9.7 初期交付工作流验收
 
-新增能力当前状态为
-**DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**。实施后至少验收：
+`array_file + 可选 GFile LCFS PNG reference` 当前状态为 **IMPLEMENTED**。当前契约
+和既有验收边界包括：
 
 1. 无 GFile 的旧 `array_file` 命令继续成功，且不读取 GFile。
 2. `array_file + plot_lcfs` 正好读取一次 boundary file 和一次 GFile。
@@ -3464,9 +3468,12 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
    `mesh_dx`、regions、作用域隔离、Writer 和 target 回归。
 5. 当前正式 examples：先定位并迁移仍含 profile 或 legacy dx 的模板；历史快照不改。
 
-该源码删除不得修改 `Mesh2D`、Writer、helper、OFT/Triangle、regions 参数、
-Region ID、transition、质量报告或外部格式。当前状态仍为
-**REMOVAL APPROVED / SOURCE REMOVAL PENDING**。
+该源码删除不得修改 `Mesh2D`、Reader 文件格式、GFile 的 LCFS/first-wall 读取、
+regions Reader/map/CLI 参数、`region_dx`、`transition_width`、
+`triangle_refinement`、`mesh_quality`、Plotter、任何 Writer、M3D-C1 ModelSpec、
+SCOREC helper、OFT/Triangle 外部源码、HDF5/TXT/SMB schema 或 Release 基础设施。
+不得删除 OFT 多 Region 能力；该能力继续由唯一多区域入口 regions 使用。当前状态
+仍为 **REMOVAL APPROVED / SOURCE REMOVAL PENDING**。
 
 ### 10.5A 既有交付、调查边界与待决事项
 
@@ -3476,15 +3483,16 @@ Region ID、transition、质量报告或外部格式。当前状态仍为
 multi-array OFT 能力、编号和 no-plasma 调查已经完成，inspect/generate 与生产
 N-region `Mesh2D` 已实现。多区域 TRIMEG 接线已完成，User 最新直接证据确认真实
 HDF5 已生成且自动测试和实际检测通过；标准 MATLAB/TRIMEG consumer 加载仍待验收。
-M3D-C1 多区域输入契约调查已经完成，但实现仍未开放。以下更高级 OFT 能力调查契约
-继续保留：
+M3D-C1 multi-face build result、schema v2、helper v1/v2 和
+`regions generate target=m3dc1` 已实现；消费验收仍按独立层级记录。以下更高级
+OFT 能力调查契约继续保留：
 
 必须区分：
 
 | 能力 | 含义 | 当前状态 |
 |---|---|---|
 | 全局常数 `dx` | 整个 Region 使用一个目标尺度 | 已支持 |
-| 分区域常数 `dx` | 不同 Region 使用不同常数尺度 | OFT 官方能力已确认；LinkMesh multi-array 尚未实现和探针 |
+| 分区域常数 `dx` | 不同 Region 使用不同常数尺度 | OFT 探针与 LinkMesh regions 生产路径均已实现并确认 |
 | 静态空间变密度 | 单一闭合二维区域中尺度随位置变化 | 待调查，未实现 |
 | 动态自适应 | 根据求解结果或误差反复调整网格 | 不在当前实现范围 |
 | 磁面对齐 | 网格方向或节点分布与磁通面/磁场结构关联 | 待能力定位，未开放 |
@@ -3531,9 +3539,9 @@ Aider 执行依据或第二份技术契约。
   默认保持 mesh-only；TRIMEG 分支复用既有 complete-11 Writer；
 - 多区域 HDF5 已由 User 确认生成，自动测试和实际检测通过；标准 MATLAB/TRIMEG
   consumer 加载仍为 PENDING；
-- M3D-C1 多区域输入契约调查已完成；不可变 build result、topology-driven
-  classification 和 schema v2 设计已批准。下一步进入正式 ModelSpec/Writer/helper
-  实现，不再维护两个独立 probes；
+- M3D-C1 多区域输入契约调查、不可变 build result、topology-driven classification、
+  schema v2、ModelSpec/Writer/helper 和 `regions generate target=m3dc1` 已实现；
+  `case_002` TXT/SMB/PNG 已生成且 TXT+SMB 已交付，消费层级继续单独验收；
 - 在 Linux 基于本轮 master 生成外部三文件 Release，验证内部 manifest、外部
   tar.gz.sha256、可移动入口和干净环境运行；
 - 将通过结构与运行验证的发布候选交付普通用户并取得初期 M3D-C1/TRIMEG 使用报告；
@@ -3652,9 +3660,9 @@ multi-array 业务状态为 **IMPLEMENTED**。OFT 五类合成案例及其 dx va
 
 M3D-C1 多区域输入契约源码调查为 **COMPLETED**，教程三 face 拓扑与 exchange
 multi-face records 为 **CONFIRMED**。原始 curve corner exact-match 候选为
-**REJECTED BY DIRECT PROBE**；topology-driven classification 和 schema v2 为
-**DESIGNED / APPROVED / NOT IMPLEMENTED**；multi-face ModelSpec/build result 为
-**DESIGNED / NOT IMPLEMENTED**；helper multi-face 与
-`regions generate target=m3dc1` 均为 **NOT IMPLEMENTED**。多区域 TXT+SMB 为
-**NOT GENERATED**，同门消费验证为 **PENDING**。classification 必须从最终全局
-triangle incidence 自动派生，不从物理标签或浮点坐标近似猜测。
+**REJECTED BY DIRECT PROBE**；topology-driven classification、schema v2、
+multi-face ModelSpec/build result、helper multi-face 与
+`regions generate target=m3dc1` 均为 **IMPLEMENTED**。`case_002` 多区域 TXT、
+rank-0 SMB 和 PNG 为 **GENERATED**，TXT+SMB 为 **DELIVERED**；M3D-C1 加载及后续
+消费层级继续为 **PENDING**。classification 必须从最终全局 triangle incidence
+自动派生，不从物理标签或浮点坐标近似猜测。

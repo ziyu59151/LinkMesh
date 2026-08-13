@@ -36,7 +36,8 @@ GFile/EQDSK 或 counted R-Z boundary
 
 OFT/Triangle 是 LinkMesh 唯一的二维三角剖分底座。PUMI 不重新生成三角网格，只负责建立目标几何分类、构造 APF/MDS 网格并调用官方接口写出 native SMB。
 
-LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区域 M3D-C1 模型、三维网格或并行分区工具。
+LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维网格或并行
+分区工具。多区域 M3D-C1 生成侧已实现，消费验证继续按独立层级记录。
 
 ---
 
@@ -79,7 +80,7 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | OFT 无 plasma technical role | OFT 26.6 主动拒绝，准确异常已确认 |
 | synthetic plasma compatibility role | IMPLEMENTED；仅服务 regions OFT 兼容，不表达用户物理语义 |
 | OFT 自动包含树 | 未提供 |
-| LinkMesh 轻量包含推导 | DESIGNED / NOT IMPLEMENTED |
+| LinkMesh 轻量包含推导 | IMPLEMENTED |
 | OFT multi-array 最小探针程序 | 调查完成，无需继续扩展当前探针 |
 | OFT 五类合成案例 | 全部 PASS；GENERATED / STRUCTURALLY CHECKED |
 | M3D-C1 求解器多区域模拟能力 | User 根据同门实际展示确认 |
@@ -87,17 +88,17 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | 教程三 face 拓扑 | CONFIRMED |
 | exchange 多 face record 表达能力 | CONFIRMED |
 | 原始 curve corner exact-match | REJECTED BY DIRECT PROBE |
-| topology-driven classification | DESIGNED / APPROVED / NOT IMPLEMENTED |
-| schema v2 | DESIGNED / APPROVED / NOT IMPLEMENTED |
-| multi-face ModelSpec / build result | DESIGNED / NOT IMPLEMENTED |
-| helper 多 face 支持 | NOT IMPLEMENTED；当前正式 helper 仍是 single-face |
-| `regions generate target=m3dc1` | DESIGNED / NOT IMPLEMENTED |
-| LinkMesh 多区域 TXT+SMB | NOT GENERATED |
+| topology-driven classification | IMPLEMENTED |
+| schema v2 | IMPLEMENTED |
+| multi-face ModelSpec / build result | IMPLEMENTED |
+| helper 多 face 支持 | IMPLEMENTED；支持 schema v1/v2 |
+| `regions generate target=m3dc1` | IMPLEMENTED |
+| LinkMesh 多区域 TXT+SMB | `case_002` GENERATED / DELIVERED |
 | LinkMesh 多区域 M3D-C1 消费验证 | PENDING |
 | OFT/Triangle transition refinement | IMPLEMENTED；真实 `rpqazQ` 已在目标服务器运行 |
 | 全局单一 `transition_width` 产品设计 | FINALIZED；所有不同 dx interfaces 自动共享同一 W |
 | 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
-| final `Mesh2D` verbose 数值质量报告 | APPROVED / NOT IMPLEMENTED |
+| final `Mesh2D` verbose 数值质量报告 | IMPLEMENTED / USER ACCEPTED |
 | refined mesh 的 M3D-C1 消费 | PENDING |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
 | OFT 多区域拓扑 | 生成与共享 mesh topology 已调查；M3D-C1 interface classification 对应仍待确认 |
@@ -160,8 +161,8 @@ PROBE-CONFIRMED UNSUPPORTED
 VALUEERROR: NO PLASMA REGION SPECIFIED
 
 synthetic plasma compatibility role：
-DESIGNED / USER-APPROVED
-NOT IMPLEMENTED
+IMPLEMENTED
+ADAPTER COMPATIBILITY ONLY
 
 OFT 任意无序曲线自动包含树：
 NOT PROVIDED
@@ -181,12 +182,13 @@ EXCHANGE MULTI-FACE RECORD CAPABILITY: CONFIRMED
 
 LinkMesh 多区域 M3D-C1：
 ORIGINAL-CORNER EXACT MATCH: REJECTED BY DIRECT PROBE
-TOPOLOGY-DRIVEN CLASSIFICATION: DESIGNED / APPROVED / NOT IMPLEMENTED
-SCHEMA V2: DESIGNED / APPROVED / NOT IMPLEMENTED
-MULTI-FACE MODELSPEC / BUILD RESULT: DESIGNED / NOT IMPLEMENTED
-HELPER SUPPORT: NOT IMPLEMENTED / CURRENT HELPER REMAINS SINGLE-FACE
-REGIONS TARGET=M3DC1: DESIGNED / NOT IMPLEMENTED
-TXT+SMB: NOT GENERATED
+TOPOLOGY-DRIVEN CLASSIFICATION: IMPLEMENTED
+SCHEMA V2: IMPLEMENTED
+MULTI-FACE MODELSPEC / BUILD RESULT: IMPLEMENTED
+HELPER V1/V2 MULTI-FACE SUPPORT: IMPLEMENTED
+REGIONS TARGET=M3DC1: IMPLEMENTED
+CASE_002 TXT+SMB+PNG: GENERATED
+TXT+SMB: DELIVERED
 CONSUMER VALIDATION: PENDING
 ```
 
@@ -217,7 +219,7 @@ LinkMesh/
 │       ├── cli.py
 │       ├── config.py
 │       ├── mesh.py
-│       ├── mesh_quality.py（计划模块，尚不存在）
+│       ├── mesh_quality.py
 │       ├── m3dc1_model.py
 │       │
 │       ├── readers/
@@ -546,10 +548,10 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
   尺寸。
 - **不负责**：CLI 打印、Writer、Plotter、PUMI 或把诊断保存到 `Mesh2D`。
 
-### `src/linkmesh/mesh_quality.py`（计划模块，尚不存在）
+### `src/linkmesh/mesh_quality.py`
 
-- **状态**：APPROVED / NOT IMPLEMENTED。
-- **计划职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 refinement 的最小诊断
+- **状态**：IMPLEMENTED / USER ACCEPTED。
+- **职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 refinement 的最小诊断
   形成现有 `--verbose` 人类可读摘要。
 - **不负责**：修改 mesh、调用 Triangle、定义新 CLI/TOML 参数或新增质量失败阈值。
 - 详细指标、单位、数据流和失败边界统一查阅当前技术蓝图。
@@ -559,8 +561,8 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 - **输入**：当前正式路径接收单区域 `Mesh2D` 及其有序外边界。
 - **职责**：当前构造 single-loop、single-face 的 `M3DC1ModelSpec`。
 - **输出**：TXT Writer 和 SMB Writer 共同使用的 analytic geometric model。
-- **多区域状态**：字段容器具备多个 loops/faces 的数据形状，但 validation 和 builder
-  仍是 single-face；multi-face 构建结果及 mappings 传递接口尚待 User 裁决。
+- **多区域状态**：topology-driven multi-face build result 已实现，并统一携带
+  ModelSpec、mappings 和 classifications 供 TXT/SMB Writers 使用。
 - **不负责**：调用 PUMI、生成 SMB、读取固定外部 TXT 模板或当前处理 multi-face
   model。
 
@@ -763,15 +765,13 @@ leaf 使用 plasma，深度并列取最小 curve_id；其他内部 Region 使用
 仅属于 Adapter 兼容性，不表达用户物理语义。regions map 的 `physical_label` 可选、
 默认空且不阻塞建网。
 
-两个脚本都不是未来业务模块，也不得由 `src/linkmesh` 导入。调查阶段已经结束，当前
-下一步是第一批 inspect 业务实现：支持正式空行规则且至少读取两个 block 的 Reader、
-基础检查、轻量包含树、deterministic synthetic role plan、OFT setup-only 编号、
-`regions inspect`、TOML regions map 和 inspection PNG。map 是计划中的用户产物，
-但当前仓库尚无该产物或对应业务模块。
+两个脚本都不是业务模块，也不得由 `src/linkmesh` 导入。调查阶段已经结束；正式
+multi-array Reader、轻量包含树、deterministic synthetic role plan、OFT setup-only
+编号、`regions inspect/generate`、TOML regions map、inspection PNG 和 N-region
+`Mesh2D` 均已实现。
 
-这些是候选职责，不是当前仓库中已存在的新模块。当前 tests 不属于本轮设计依据，也未
-在本轮读取或修改。现有 `Mesh2D`、TRIMEG Writer、M3D-C1 Writer、SMB helper、旧
-CLI 和 `nested_three_region` 本轮均未修改。
+根命令 legacy nested 分支仍存在于实时源码，但已退役并等待下一轮删除；详细破坏性
+迁移和最小源码范围只查阅当前技术蓝图。
 
 ## 9. 测试与证据导读
 
@@ -1081,25 +1081,11 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 multi-array OFT 前置调查、inspect/generate 生产链和多区域 TRIMEG 文件生成均已完成。
 User 已确认自动测试和实际检测通过；标准 MATLAB/TRIMEG consumer 加载仍待直接证据。
 
-M3D-C1 多区域下一步进入正式业务实现，而不是继续维护两个独立 probes：
-
-1. 从最终 `Mesh2D.triangles/region_ids` 自动派生全局 mesh edges、outer boundary、
-   Region interfaces 和规范 topology cycles。
-2. 实现不可变 `M3DC1BuildResult`，统一携带 ModelSpec、自动 tags、Region-to-face
-   mapping 和全部 classifications。
-3. 扩展 ModelSpec/TXT Writer 与 SMB Writer，使 TXT/SMB 使用同一 build result。
-4. 扩展正式 helper 同时支持 schema v1/v2；当前 helper 在代码修改前仍为
-   single-face。
-5. 在 `regions generate` 增加 `target=m3dc1`、`model` 和 `smb`，不增加用户手工
-   mapping/tag/classification 参数。
-6. 正式 helper 实现后，在目标环境执行构建、`acceptChanges()`、`verify()` 和
-   `writeNative()`，生成配套 TXT 与非空 rank-0 SMB。
-7. 产物交付同门，分别验证 M3D-C1 加载、初始化、时间推进、稳定性和物理结果；
-   `writeNative()` 成功不能替代消费验证。
-
-内部 tags 和 classification 全部由 LinkMesh 根据全局数学 topology 自动生成，不需要
-User 逐项确认。原始 curves 只保留输入一致性与追踪职责，不再是 classification 的
-必要输入。当前文档已足以进入正式 multi-face 业务实现，但该能力仍未实现或开放。
+M3D-C1 多区域生成侧已经实现：LinkMesh 从 final `Mesh2D` topology 自动派生
+interfaces 和 cycles，以不可变 `M3DC1BuildResult` 统一驱动 TXT/SMB，并通过
+schema v2 和正式 helper 写出 multi-face 产物。`case_002` TXT、rank-0 SMB 和 PNG
+已生成，TXT+SMB 已交付同门；加载、初始化、时间推进、稳定性和物理结果必须继续
+分别取得消费端直接证据，`writeNative()` 成功不能替代这些验收。
 
 M3D-C1 本身能够进行多区域模拟，是 User 根据同门实际展示确认的能力；该事实不表示
 LinkMesh 当前已生成或验证新多区域网格。
@@ -1127,14 +1113,11 @@ M3D-C1 多区域、多 face、三维和并行分区仍未开放。
 初版 Release 已经发送给同门和老师，当前反馈为可以正常使用。该状态不自动证明
 M3D-C1 时间推进、长期稳定性或物理结果正确性。
 
-`multi_array_file`、`regions inspect/generate`、TOML regions map 和轻量包含推导
-当前只达到 **PRODUCT CONTRACT FINALIZED / DESIGNED / NOT IMPLEMENTED**：未实现
-Reader、synthetic role Adapter 或子命令，未生成 LinkMesh 生产路径的多 Region
-`Mesh2D`，也未证明新网格可被 M3D-C1 正确使用。OFT 五类合成案例已全部
-**PASS / GENERATED / STRUCTURALLY CHECKED**；Region 编号主逻辑和 no-plasma 行为已
-由运行探针确认；synthetic plasma compatibility role 已完成设计并获 User 批准。
-OFT 自动包含树未提供。M3D-C1 求解器本身的多区域能力不等于 LinkMesh 多区域输出
-已经开放。当前技术文档已经足以进入第一批 inspect 源码实现。
+`multi_array_file`、`regions inspect/generate`、TOML regions map、轻量包含推导、
+synthetic role Adapter、分 Region dx 和生产 N-region `Mesh2D` 均已实现；
+`regions inspect/generate` 是唯一多区域产品入口。OFT 五类合成案例已全部
+**PASS / GENERATED / STRUCTURALLY CHECKED**；Region 编号主逻辑和 no-plasma 行为
+已由运行探针确认。OFT 自动包含树未提供，复杂异常几何仍不属于当前承诺。
 
 遇到问题时：
 
