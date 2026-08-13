@@ -1584,9 +1584,9 @@ dx 和 N-region `Mesh2D` 已实现。该证据不外推到异常 polygon 或求�
 边界是内部界面。允许多层嵌套、一个 parent 带多个 sibling children，以及二者组合；
 这些拓扑已由五类 OFT 探针覆盖，生产输入仍受轻量几何前提限制。
 
-#### 5.7B.3 首版轻量包含推导和几何边界
+#### 5.7B.3 轻量包含推导和几何边界
 
-首版只设计：
+当前实现：
 
 1. counted blocks 完整解析；
 2. `(N,2)`、有限值、最低点数、精确相邻重复、精确零长度闭合边和明显退化面积检查；
@@ -1624,16 +1624,14 @@ parent-minus-children 的实际 Region。父 Region seed 被 child 覆盖和 Reg
 本地源码确认 `build_mesh()` 在 Triangle 调用前按 OFT technical role 和
 `region_info` 遍历顺序重新分配 ID，并更新 `region_info`、`Region._id` 和
 `_extra_reg_defs`。最终 ID 进入 Triangle regionlist，并从 triangle attributes
-读回。以下仍待探针：
+读回。运行探针与生产实现已经确认：
 
-- `setup_only=True` 是否可取得最终编号；
-- setup 前后 `region_info` 和 `Region._id` 的变化；
-- 同一 Domain 重复调用；
-- inspect/generate 分别重建后的编号一致性；
-- 改变 dx 后的编号稳定性；
-- block 重排对 curve_id 和 Region ID 的影响；
-- setup 编号与最终 Triangle attribute 是否一致；
-- `Mesh2D.region_ids` 与 regions map 是否一致。
+- `setup_only=True` 可取得最终编号；
+- setup 编号与完整 Triangle attribute 一致；
+- inspect/generate 使用全新 Domain 重建时编号一致；
+- 只改变 dx 时编号一致；
+- block 重排可能改变同一 technical role 内的 Region ID，因此必须重新 inspect；
+- 生产 `Mesh2D.region_ids` 与本次 regions map 的 Region ID 集合一致。
 
 #### 5.7B.5 OFT technical role 与用户物理语义隔离
 
@@ -3615,8 +3613,10 @@ profile、逐 triangle `Amax`、attributes/PSLG、有限迭代和 LinkMesh-side 
 Adapter 均为 **IMPLEMENTED**，真实 `rpqazQ` 为 **RUN / GENERATED**。
 `case_002` 的 `W=0.20/0.30 m` 与复杂合成压力案例均已生成并由 User 完成 PNG 人工
 检查。全局单一 W 产品设计为 **FINALIZED**。final `Mesh2D` verbose 数值质量报告为
-**APPROVED / NOT IMPLEMENTED**；定量质量结果及 refined mesh 的 M3D-C1 加载、
-初始化、时间推进、稳定性和物理正确性仍为 **PENDING**。
+**IMPLEMENTED / USER ACCEPTED**；User 确认相关自动测试全 pass 且数值质量检测
+验收通过，但未提供本轮精确 passed 数。该结果不证明 refined mesh 的 M3D-C1 加载、
+初始化、时间推进、稳定性或物理正确性；这些层级继续严格依据 `History.md` 的最新
+直接证据记录。
 
 M3D-C1 multi-face build result、schema v2、helper v1/v2 和
 `regions generate target=m3dc1` 已实现。`case_002` model TXT、rank-0 SMB 和 PNG
