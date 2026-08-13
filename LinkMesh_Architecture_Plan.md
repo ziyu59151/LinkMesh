@@ -1637,7 +1637,12 @@ regions generate 的尺度参数：
 ```text
 --mesh-dx 0.08
 --region-dx 1=0.03 --region-dx 2=0.05
+--transition-width 0.12
 ```
+
+`--transition-width` 写入 argparse 的 `transition_width`，使用 `type=float`、
+`default=UNSET`，属于 generate 的 `Mesh Resolution` 分组；未显式提供时不得覆盖
+TOML，最终由 regions generate 独立配置合并为默认 `0.0`。
 
 正式规则：
 
