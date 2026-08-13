@@ -2,11 +2,10 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.3；OFT/Triangle transition refinement、
-  自动 interface/粗细侧、指数 profile、逐 triangle `Amax` 和真实 `rpqazQ` 已实现；
-  全局单一 `transition_width` 设计已收口，复杂合成几何 PNG 已由 User 人工检查通过；
-  现有 `--verbose` final `Mesh2D` 数值质量报告已批准但尚未实现，refined mesh 的
-  M3D-C1 消费仍待验收）
+- 文档状态：当前有效（对应技术蓝图 v5.4；根命令已在产品契约中收口为天然单区域，
+  `regions inspect/generate` 是唯一多区域入口；legacy `nested_three_region`、
+  root `--profile`、三个区域 dx 参数及 nested 专用 `artificial_outer` 已批准退役，
+  业务源码删除仍待下一轮实施）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -46,7 +45,7 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | 项目 | 当前状态 |
 |---|---|
 | GFile Reader | 已实现并通过既有验收 |
-| OFT/Triangle 二维网格生成 | 已实现；默认嵌套区域路径和单区域 LCFS 路径均有真实运行证据 |
+| 根命令 OFT/Triangle 二维网格生成 | 当前产品契约仅单区域；历史 nested 路径曾有真实运行证据，现已 RETIRED，源码删除 PENDING |
 | `Mesh2D` 统一网格对象 | 已实现 |
 | TRIMEG HDF5 Writer | 已实现并通过既有 Python、h5py 和 MATLAB 消费验收 |
 | M3D-C1 analytic model TXT Writer | PASSED |
@@ -69,7 +68,7 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | `single_region + first_wall` | 未实现 |
 | `single_region + flux_surface` | 未实现 |
 | `boundary_source=multi_array_file` | IMPLEMENTED；只通过独立 `regions` 命令族进入 |
-| `linkmesh regions inspect/generate` | IMPLEMENTED；two-level/four-level 真实 OFT/Triangle 生成已通过 |
+| `linkmesh regions inspect/generate` | IMPLEMENTED；唯一正式多区域入口；two-level/four-level 真实 OFT/Triangle 生成已通过 |
 | regions map | IMPLEMENTED；inspect 输出、generate 必须读取的 TOML 用户产物 |
 | 多区域 N-region `Mesh2D` | STRUCTURALLY CHECKED |
 | 多区域 mesh PNG | GENERATED；已由 User 人工复核 |
@@ -78,7 +77,7 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 | OFT 多 Region与分 Region常数 dx | 运行探针确认 |
 | OFT Region 编号主逻辑 | setup、fresh rebuild、dx change 已由运行探针确认 |
 | OFT 无 plasma technical role | OFT 26.6 主动拒绝，准确异常已确认 |
-| synthetic plasma compatibility role | DESIGNED；确定性 Adapter 规则已批准 |
+| synthetic plasma compatibility role | IMPLEMENTED；仅服务 regions OFT 兼容，不表达用户物理语义 |
 | OFT 自动包含树 | 未提供 |
 | LinkMesh 轻量包含推导 | DESIGNED / NOT IMPLEMENTED |
 | OFT multi-array 最小探针程序 | 调查完成，无需继续扩展当前探针 |
@@ -109,6 +108,16 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区�
 当前最准确的结论是：
 
 ```text
+根命令：
+SINGLE-REGION WORKFLOW / CURRENT
+ROOT MESH_DX = 唯一单 Region 尺度
+NESTED_THREE_REGION = RETIRED BY USER DECISION
+SOURCE REMOVAL = PENDING
+--PROFILE / --PLASMA-DX / --VACUUM-DX / --OUTER-DX =
+REMOVAL APPROVED / SOURCE REMOVAL PENDING
+ARTIFICIAL_OUTER NESTED CONSTRUCTION =
+REMOVAL APPROVED / SOURCE REMOVAL PENDING
+
 LinkMesh 单区域生成侧最小闭环：PASSED
 TXT、rank-0 SMB、PNG：已生成
 PNG 人工检查：PASSED
@@ -124,7 +133,9 @@ DELIVERED TO COLLEAGUES AND TEACHERS
 CURRENT FEEDBACK: USABLE
 
 multi_array_file / regions inspect/generate / TOML regions map：
-IMPLEMENTED
+IMPLEMENTED / ONLY MULTI-REGION PRODUCT ENTRY
+REGIONS MESH_DX = 全部最终 Regions 默认尺度
+REGION_DX = 按最终 Region ID 覆盖
 REAL TWO-LEVEL / FOUR-LEVEL OFT MESHES GENERATED
 N-REGION MESH2D STRUCTURALLY CHECKED
 MESH PNG GENERATED / USER-REVIEWED
@@ -440,8 +451,9 @@ TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric
 ### `src/linkmesh/cli.py`
 
 - **输入**：命令行参数。
-- **职责**：调用配置合并，编排 Reader、Mesher、Writer 和 Plotter；标准工作流保持
-  旧顶层 target，`regions generate` 在自身作用域内选择 `mesh_only` 或 `trimeg`。
+- **职责**：根命令编排单区域 Reader、Mesher、Writer 和 Plotter；`regions
+  inspect/generate` 是作用域隔离的唯一多区域入口。legacy nested 参数和分支已批准
+  删除，源码修改仍为 PENDING。
 - **输出**：标准工作流按目标生成 HDF5 或配套 TXT/SMB/PNG；多区域 generate 默认
   输出 mesh PNG，选择 `target=trimeg` 时把同一个 N-region `Mesh2D` 交给既有 HDF5
   Writer 并继续输出 PNG。
@@ -458,9 +470,8 @@ python -m linkmesh
 ### `src/linkmesh/config.py`
 
 - **输入**：内建默认值、`linkmesh.in` 和显式 CLI 覆盖。
-- **职责**：读取并严格校验配置，解析路径，检查当前允许的 target/profile/boundary
-  组合；regions 使用隔离的 inspect/generate 配置对象，generate 支持自身的
-  `target` 与 `hdf5_path` required/forbidden/path-collision 规则。
+- **职责**：读取并严格校验根命令单区域配置及独立 regions 配置。profile 和三个
+  legacy 区域 dx 已从正式契约删除，实时源码清理仍为 PENDING；详细迁移规则见蓝图。
 - **输出**：不可变的标准有效配置对象或独立 regions 配置对象。
 - **不负责**：读取 GFile、生成网格或写出任何目标文件。
 
@@ -496,20 +507,19 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 
 ### `src/linkmesh/mesher/oft_adapter.py`
 
-- **输入**：按边界来源得到的实际计算边界、区域策略和网格尺度。
-- **职责**：构造 OFT Domain，调用 OFT/TokaMaker/Triangle，并把结果规范化为 `Mesh2D`。
+- **输入**：根命令的单个实际计算边界，或 regions 已验证的 Region plan。
+- **职责**：根命令构造 single-region OFT Domain；regions 构造 N-region Domain；
+  调用 OFT/TokaMaker/Triangle 并规范化为 `Mesh2D`。nested/artificial-outer 专用
+  分支已批准删除，源码清理仍为 PENDING。
 - **输出**：二维非结构化三角网格。
 - **候选工作流边界**：`array_file` 路径只接收 array boundary，不接收参考
   `GFileData`，也不感知 `--plot-lcfs`。
 - **不负责**：第二种剖分后端、参考 GFile 绘图、PUMI 网格生成、
   TRIMEG/M3D-C1 文件写出或配置文件解析。
 
-当前正式 single-region 路径支持：
-
-```text
-profile=single_region
-boundary_source=lcfs 或 array_file
-```
+当前根命令天然是单区域，不再要求用户选择 profile。正式来源包括已实现的 `lcfs`
+和 `array_file`，并保留尚未实现的 `first_wall` 单区域规划。根命令唯一尺度参数为
+`mesh_dx`。
 
 `multi_array_file` 不属于旧单曲线入口，只允许通过 `regions` 命令族进入。生产路径
 已经完成基础几何检查、唯一根包含树、setup-only 最终 Region ID、map 核对和显式 dx
@@ -1004,7 +1014,7 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 
 ```text
 进入 Case
-  → 运行 LinkMesh
+  → 单区域使用根命令；多区域先 regions inspect 再 regions generate
   → 生成 TXT、rank-0 SMB 和 PNG
   → 人工检查 PNG
   → 固化网格输入
@@ -1049,8 +1059,7 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 
 ### 当前未开放
 
-- M3D-C1 多区域；
-- 多 geometric face；
+- 根命令多区域或 legacy `nested_three_region`；
 - 三维网格；
 - 环向切分；
 - MPI 并行分区；
@@ -1062,7 +1071,8 @@ python -m linkmesh --config linkmesh.in --mesh-dx 0.05
 - 通用边界插件系统；
 - Simmetrix、`.smd` 或 `.sms` 正式依赖。
 
-多区域、三维和并行分区不能从当前单区域闭环外推为已经支持。
+多区域只通过 `regions inspect/generate` 进入；根命令不得作为第二条多区域入口。
+三维和并行分区不能从当前二维闭环外推为已经支持。
 
 ---
 

@@ -3,13 +3,11 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.3**（multi-region `transition_width`、自动 interface
-  发现、自动粗细侧判定、指数 profile、逐 triangle 面积约束和 LinkMesh-side
-  Triangle `rpqazQ` refinement 已实现并完成真实服务器运行；`case_002` 的
-  `W=0.20/0.30 m` 及复杂合成压力案例已生成并由 User 完成 PNG 人工检查。全局单一
-  `transition_width` 产品设计正式收口。下一阶段已批准通过现有 `--verbose` 输出
-  final `Mesh2D` 数值质量摘要，但该质量报告尚未实现；refined mesh 的 M3D-C1
-  消费验证仍为 PENDING）
+- 文档状态：正式版 **5.4**（User 正式裁决根命令收口为天然单区域工作流，
+  `linkmesh regions inspect/generate` 成为唯一多区域产品入口；批准退役
+  `nested_three_region`、根命令 `--profile`、三个 legacy 区域尺度参数及
+  nested 专用 `artificial_outer` 构造。本轮只完成技术文档、用户导读和迁移契约
+  修订，业务源码、测试、配置实现、CLI 实现和示例删除仍为 PENDING）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -39,17 +37,27 @@ APF/MDS mesh，并调用官方 `writeNative()` 生成 SMB。PUMI/APF/MDS 不重�
 ### 1.2 总体数据流
 
 ```text
-GFile/EQDSK
+根命令单区域正式数据流：
+
+```text
+GFile/EQDSK 或单个 counted R-Z 闭合边界
   → Reader
-  → OFT Adapter
-  → Mesh2D
+  → 选择一个实际计算域边界
+  → OFT/Triangle single-region Domain
+  → 单 Region Mesh2D
       ├── TRIMEG HDF5 Writer → HDF5
       ├── M3DC1 model Adapter → M3DC1ModelSpec
       │     ├── TXT Writer → <base>.txt
       │     └── SMB Writer → native helper → rank-0 native SMB
       └── Plotter → PNG
+```
 
-多区域可控渐变正式数据流：
+根命令形式为 `python -m linkmesh [options]`，天然表达单区域，不再使用 profile
+选择器。它不得建立多个 Region、自动组合 LCFS/第一壁/人工外边界、读取重复 counted
+blocks 或 regions map、接收 `region_dx`/`transition_width`、执行 transition
+refinement，或根据旧 profile 值切换策略。
+
+唯一多区域正式数据流：
 
 ```text
 multi_array_file
@@ -94,12 +102,12 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 
 | 维度 | 允许 | 禁止 |
 |---|---|---|
-| 输入 | OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；严格读取 `array_file` counted R-Z boundary text；已设计但尚未实现的 `multi_array_file` 重复 counted blocks | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API；CSV 或通用区域 DSL |
-| 网格生成 | OFT `gs_Domain` / `build_mesh()` 调用 Triangle；已批准但尚未实现的 LinkMesh-side 静态 transition refinement 继续调用同一 OFT 26.6 `liboft_triangle.so` | 第二网格引擎；复制 Triangle/OFT 算法；三维网格；求解过程动态自适应；维护 OFT 分支 |
+| 输入 | 根命令读取 EQDSK/GFile 或单个 `array_file` counted R-Z boundary；`regions` 命令族读取 `multi_array_file` 重复 counted blocks | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API；CSV 或通用区域 DSL |
+| 网格生成 | 根命令只构造 single-region OFT Domain；`regions generate` 构造 N-region OFT Domain，并可调用已实现的 LinkMesh-side Triangle transition refinement | 根命令建立多 Region；第二网格引擎；复制 Triangle/OFT 算法；三维网格；求解过程动态自适应；维护 OFT 分支 |
 | 分区 | LinkMesh 不涉及；终点为分区前串行 native SMB | `split_smb`、`part*.smb`、`**1.smb`～`**16.smb`、环向或并行分区 |
 | 输出 | TRIMEG HDF5；M3D-C1 analytic model TXT + 分区前串行 PUMI native SMB | Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；手写、解析、修改、拼接、模板复制或逆向 SMB 字节 |
 | 可视化 | matplotlib PNG 自检 | 交互式或三维渲染 |
-| 配置 | `linkmesh.in` + CLI + `EffectiveConfig`；已设计但尚未实现的 regions 专用配置 | 通用配置 DSL、插件系统 |
+| 配置 | 单区域 `linkmesh.in` + 根 CLI + `EffectiveConfig`；独立 regions 配置与 `regions inspect/generate` CLI | 通用配置 DSL、插件系统；把旧 nested 配置静默转换为 regions 配置 |
 
 ### 1.4 事实环境边界
 
@@ -120,7 +128,14 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | 阶段或能力 | 状态 |
 |---|---|
 | M1 Reader | **PASSED** |
-| M2 默认 `nested_three_region + artificial_outer` | **PASSED** |
+| 历史 `nested_three_region + artificial_outer` 生成侧 | **曾实现并 PASSED；历史证据保留** |
+| 根命令 single-region workflow | **SUPPORTED / CURRENT** |
+| 根命令 `nested_three_region` | **RETIRED BY USER DECISION / SOURCE REMOVAL PENDING** |
+| 根命令 `--profile` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
+| 根命令 `--plasma-dx` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
+| 根命令 `--vacuum-dx` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
+| 根命令 `--outer-dx` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
+| 根命令 nested 专用 `artificial_outer` 构造 | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
 | DIII-D GFile 单区域网格生成 | **PASSED** |
 | M3 core | **PASSED** |
 | M3 complete-11 | **PASSED** |
@@ -147,15 +162,15 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | EAST M3D-C1 时间推进 | **PENDING** |
 | TCV 参考边界调查 | **PENDING** |
 | TCV/TRIMEG 实际消费 | **PENDING** |
-| `single_region + first_wall` | **PLANNED / NOT IMPLEMENTED；未开放** |
-| `single_region + array_file` | **IMPLEMENTED / PASSED；EAST 生成侧已验收** |
+| 根命令 `first_wall` 单区域边界来源 | **PLANNED / NOT IMPLEMENTED；保留** |
+| 根命令 `array_file` 单区域边界来源 | **IMPLEMENTED / PASSED；EAST 生成侧已验收** |
 | `array_file + 可选 GFile LCFS PNG 参考` | **IMPLEMENTED；自动测试与真实 PNG 回归待本轮实施后记录** |
 | `plot_lcfs` 配置字段与 `--plot-lcfs` CLI | **IMPLEMENTED；仅允许 LCFS reference 进入 array-file PNG** |
 | Release 构建、launcher、bootstrap 与分层检查基础设施 | **IMPLEMENTED** |
 | 初版 Release | **DELIVERED；已发送同门和老师，当前反馈可正常使用** |
 | `single_region + flux_surface` | **实现候选 / NOT IMPLEMENTED；需 OFT 26.6 只读侦察，未开放** |
 | `boundary_source=multi_array_file` | **IMPLEMENTED；通过独立 `regions` 命令族进入，不开放给旧无子命令入口** |
-| `linkmesh regions inspect/generate` 两阶段工作流 | **IMPLEMENTED；真实 two-level/four-level OFT/Triangle 生成与多区域 PNG 人工复核已完成** |
+| `linkmesh regions inspect/generate` 两阶段工作流 | **唯一正式多区域入口 / IMPLEMENTED；真实 two-level/four-level OFT/Triangle 生成与多区域 PNG 人工复核已完成** |
 | regions map | **IMPLEMENTED；正式 TOML 用户产物，inspect 必须输出，generate 必须读取** |
 | OFT 多 Region与分 Region 常数 dx | **运行探针确认；五类案例 GENERATED / STRUCTURALLY CHECKED** |
 | OFT Region 编号主逻辑 | **运行探针确认；setup、fresh rebuild、dx change 一致** |
@@ -304,12 +319,12 @@ Writer、CLI、Plotter 或 config。
 | 模块 | 职责 | 禁止 |
 |---|---|---|
 | `src/linkmesh/__main__.py` | `python -m linkmesh` 入口，仅调用 `cli.main()` | 参数解析和业务逻辑 |
-| `src/linkmesh/cli.py` | 收集显式 CLI 参数；调用配置合并；编排 Reader → Mesher → Writer → Plotter；标准工作流保持旧顶层 target；`regions inspect/generate` 使用独立作用域，generate 可在同一个 N-region `Mesh2D` 上选择 `mesh_only` 或 `trimeg` | 几何、区域、种子、Triangle、dx 换算、配置默认值合并、复制 HDF5 Writer 逻辑、把 regions map 元数据传给 Writer、SMB rank 改写或 helper 环境变量解析 |
-| `src/linkmesh/config.py` | 定义冻结的标准 `EffectiveConfig` 及独立 regions 配置对象；严格读取 TOML；执行默认值、配置文件、CLI 合并；验证兼容矩阵、required fields 与输出路径冲突 | 读取业务文件；创建 OFT Domain；调用 Writer；打开 HDF5；通用 DSL、插件或任意 N 区域语言 |
+| `src/linkmesh/cli.py` | 收集显式 CLI 参数；根命令编排天然单区域 Reader → Mesher → Writer → Plotter；`regions inspect/generate` 是作用域隔离的唯一多区域入口 | 根命令建立多 Region、读取 regions map、接收 region dx/transition 或调用 regions 内部编排；几何、种子、Triangle、配置默认值合并、复制 Writer 逻辑 |
+| `src/linkmesh/config.py` | 定义不含 profile 和 legacy 区域 dx 的冻结单区域 `EffectiveConfig` 及独立 regions 配置对象；严格读取 TOML；执行合并、required fields 与输出路径冲突校验 | 接受或静默忽略已删除的 profile/legacy dx；把旧 nested 配置自动迁移为 regions；读取业务文件；创建 OFT Domain；调用 Writer |
 | `src/linkmesh/readers/gfile_reader.py` | 独立薄 Adapter：调用 OFT `GEQDSKEquilibrium`，读取 LCFS、limiter、磁轴和基本平衡参数并输出 `GFileData` | 手写 GFile 解析；读取 array file；调用 `boundary_reader`；决定网格边界来源；调用 Mesher、Plotter 或 Writer |
 | `src/linkmesh/readers/boundary_reader.py` | 独立 Boundary Reader：实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化。未来 multi-array Reader 必须作为独立候选职责处理，不得放宽旧单 block 契约 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；调用 `gfile_reader`；返回 `GFileData`；组合参考几何；调用 Plotter；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
-| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座生成 initial Mesh2D；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary；multi-array 路径只接收完成基础检查、轻量包含推导和显式 ID/dx 解析的 Region plan | 配置解析；transition profile 或低层 refinement ownership；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；自行猜测包含树、Region ID、物理名称或 dx 顺序 |
+| `src/linkmesh/mesher/oft_adapter.py` | 根命令只构造单区域 OFT Domain；regions 路径消费已验证 Region plan 构造 N-region Domain；调用唯一 Triangle 底座并规范化为 Mesh2D；受控读取 outer Region 回写边界 | 保留 nested 专用 LCFS/第一壁/artificial-outer 自动分层；配置解析；transition profile；复制 OFT 算法；读取禁止的 OFT 私有结构；猜测包含树、Region ID、物理名称或 dx 顺序 |
 | `src/linkmesh/mesher/triangle_refinement.py` | 【IMPLEMENTED】窄职责内部模块：从 initial/current Mesh2D 提取外边界与跨 Region PSLG、计算 interface 距离和指数 profile、构造逐 triangle 面积上界、调用同一 OFT 26.6 `liboft_triangle.so` 的 `rpqazQ`、管理 native ownership、执行有限迭代并返回全新 final Mesh2D | 读取配置或业务文件；创建 OFT Domain；修改 Mesh2D 字段；保存 native pointer；调用 Writer/Plotter/PUMI；打印 CLI 日志；复制 Triangle 算法；引入第二剖分器 |
 | `src/linkmesh/mesh_quality.py` | 【APPROVED / NOT IMPLEMENTED】从 final `Mesh2D` 计算通用数值质量统计，并从 refinement 提供的最小只读诊断形成 transition 摘要；返回内部不可变报告对象，不负责打印 | 修改 mesh；调用 Triangle、Writer、Plotter 或 helper；访问 native pointer；重新实现 interface/refinement 算法；定义新的失败阈值 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
@@ -385,35 +400,32 @@ Writer、CLI、Plotter 或 config。
 
 ### 3.4 `EffectiveConfig`
 
-`EffectiveConfig` 是 `@dataclass(frozen=True)`，是默认值、配置文件和显式 CLI
-合并、类型校验、路径解析、兼容矩阵及 required-fields 校验后的唯一配置对象。
+`EffectiveConfig` 是 `@dataclass(frozen=True)`，是根命令默认值、配置文件和显式
+CLI 合并、类型校验、路径解析及 required-fields 校验后的唯一配置对象。根命令天然
+为单区域，不保存 profile 或区域角色尺度。
 
-`EffectiveConfig` 正式包含 17 个字段：既有 16 字段加
-`mesh_dx: float`。`mesh_dx` 与区域尺度均保存经过有限正数校验的最终值；尺度是否由
-TOML 或 CLI 显式提供只在配置合并期间以局部布尔值判断，绝不保存进最终对象。
+下一轮源码收口后的正式 13 字段为：
 
 | 字段 | 类型 |
 |---|---|
 | `schema_version` | `int`，固定 `1` |
 | `config_path` | `Optional[Path]` |
 | `target` | `Literal["mesh_only","trimeg","m3dc1"]` |
-| `profile` | `Literal["single_region","nested_three_region"]` |
-| `boundary_source` | `Literal["lcfs","first_wall","array_file","artificial_outer","flux_surface"]` |
+| `boundary_source` | `Literal["lcfs","first_wall","array_file","flux_surface"]` |
 | `gfile_path` | `Optional[Path]` |
 | `array_file_path` | `Optional[Path]` |
-| `mesh_dx` | `float`；single-region 唯一目标网格长度尺度 [m] |
-| `plasma_dx` | `float`；仅用于 nested-three-region plasma 区域 [m] |
-| `vacuum_dx` | `float`；仅用于 nested-three-region vacuum 区域 [m] |
-| `outer_dx` | `float`；仅用于 nested-three-region outer 区域 [m] |
+| `mesh_dx` | `float`；唯一单 Region 目标网格长度尺度 [m] |
 | `hdf5_path` | `Optional[Path]` |
 | `plot_path` | `Optional[Path]` |
 | `model_path` | `Optional[Path]` |
 | `smb_path` | `Optional[Path]` |
 | `verbose` | `bool` |
-| `plot_lcfs` | `bool`，默认 `False`；已批准、尚未实现 |
+| `plot_lcfs` | `bool`，默认 `False` |
 
-所有非 `None` 路径在构造前解析为绝对路径。对象不保存来源字典、NumPy 数组、
-`Mesh2D`、`GFileData`、PUMI 句柄、Writer、argparse Namespace 或可变业务状态。
+正式删除 `profile`、`plasma_dx`、`vacuum_dx` 和 `outer_dx`。源码删除完成前，这些
+字段仍可能存在于实时实现中，但不再属于当前产品契约，不得继续扩展或依赖。所有非
+`None` 路径在构造前解析为绝对路径。对象不保存来源字典、NumPy 数组、`Mesh2D`、
+`GFileData`、PUMI 句柄、Writer、argparse Namespace 或可变业务状态。
 
 ### 3.5 `M3DC1ModelSpec`
 
@@ -498,21 +510,28 @@ OFT 输出契约：
 5. 每个区域至少有一个三角形；
 6. 不重编号、排序、压缩或 `+1`。
 
-默认 nested 策略：
+根命令只允许单区域策略。LCFS、first wall、array file 和未来 flux surface 只在
+实际计算域边界获取阶段不同；合法边界进入 Mesher 前统一为 `(B,2)` 二维闭合轮廓，
+并复用同一 single-region OFT Domain 和 OFT/Triangle 核心。`Mesh2D` 与 Writer
+不按来源分叉。
 
-- 有有效第一壁：PLASMA + VACUUM + OUTER；
-- 无有效第一壁：PLASMA + OUTER；
-- 输入使用 GFile LCFS、可选 limiter/第一壁和 LinkMesh 固定策略构造的
-  `artificial_outer`；
-- 该生成路径已实现，并已有真实 DIII-D 与 fixed-boundary CLI、HDF5 和 PNG
-  的 LinkMesh 生成侧验收证据；
-- 该结论不开放 M3D-C1 多区域或多 face，不表示支持任意区域拓扑、三维、自适应
-  网格或并行分区。
+历史 nested 策略曾自动构造 LCFS、第一壁和 artificial outer 多层 Region，并已留下
+真实生成与验收记录；User 已正式退役该产品入口。对应源码和测试删除尚未执行，
+状态为 PENDING，不得把历史事实改写为从未存在。
 
-single-region 的 LCFS、first wall、array file 和 flux surface 只在边界获取阶段
-不同；合法边界进入 Mesher 前统一为 `(B,2)` 的二维闭合轮廓，并复用同一
-single-region OFT Domain 和 OFT/Triangle 核心。`Mesh2D` 与 Writer 不按来源分叉。
-具体策略见第 5.10 节。
+物理建模边界：
+
+1. 几何曲线不自动等于物理 Region interface。
+2. GFile 同时含 LCFS 和第一壁，不表示 LinkMesh 必须把二者之间划为独立 Region。
+3. 根命令选择 `first_wall` 时，第一壁是实际计算域外边界，壁内全部三角形属于一个
+   Region；LCFS 若显示，只是参考几何，不改变 `Mesh2D.region_ids`。
+4. 根命令选择 `lcfs` 时，LCFS 是实际计算域外边界，只生成一个 Region。
+5. 需要第一壁外导体层、真空层或其他物理层时，用户必须准备多条闭合曲线，通过
+   `regions inspect` 确认关系和 Region ID，再由 `regions generate` 指定尺度和输出。
+6. LinkMesh 不根据 plasma、vacuum、conductor 等名称自动决定物理方程。
+7. `physical_label` 不参与包含关系、dx、Region ID 或 Writer 语义。
+
+以上是当前 LinkMesh 产品与物理建模裁决，不表述为所有聚变程序普遍适用的物理定律。
 
 ### 4.3 `merge_thresh` 与边界方向
 
@@ -1122,16 +1141,14 @@ gfile → gfile_reader → GFileData ──────────────�
 
 ### 5.3 内建默认值
 
+根命令下一轮源码收口后的内建默认值：
+
 | 字段 | 内建默认值 |
 |---|---|
 | `schema_version` | `1` |
 | `target` | `"trimeg"` |
-| `profile` | `"nested_three_region"` |
-| `boundary_source` | `"artificial_outer"` |
-| `mesh_dx` | `0.08`；仅用于 `single_region` |
-| `plasma_dx` | `0.08`；仅用于 `nested_three_region` |
-| `vacuum_dx` | `0.10`；仅用于 `nested_three_region` |
-| `outer_dx` | `0.15`；仅用于 `nested_three_region` |
+| `boundary_source` | `"lcfs"` |
+| `mesh_dx` | `0.08`；唯一单 Region 目标网格尺度 [m] |
 | `verbose` | `False` |
 | `plot_lcfs` | `False`（已批准、尚未实现） |
 | `gfile_path` | `None` |
@@ -1143,6 +1160,9 @@ gfile → gfile_reader → GFileData ──────────────�
 
 裁决规则：
 
+- 当前实时源码在删除完成前仍保留旧 nested 默认；下一轮必须将根命令默认改为合法的
+  单区域来源。`lcfs` 作为新默认意味着无显式来源时需要 `gfile_path`。
+- 不得保留 `artificial_outer` 作为根命令默认或公开 choice。
 - `mesh.h5` 是配置合并后的 target 条件默认值，不是 `--hdf5`/`--h5` 的 argparse 默认值。
 - `smb_path` 不存在 `mesh.smb` 隐式默认值。`target=m3dc1` 时必须通过配置文件或
   显式 CLI 提供。
@@ -1172,14 +1192,10 @@ schema_version = 1
   array_file
 
 [domain]
-  profile
   boundary_source
 
 [mesh]
   mesh_dx
-  plasma_dx
-  vacuum_dx
-  outer_dx
 
 [output]
   hdf5
@@ -1198,12 +1214,8 @@ schema_version = 1
 | `[task].target` | 枚举字符串 | `target` |
 | `[input].gfile` | 非空字符串 | `gfile_path` |
 | `[input].array_file` | 非空字符串 | `array_file_path` |
-| `[domain].profile` | 枚举字符串 | `profile` |
 | `[domain].boundary_source` | 枚举字符串 | `boundary_source` |
-| `[mesh].mesh_dx` | 有限正数 | `mesh_dx`；仅适用于 `single_region` |
-| `[mesh].plasma_dx` | 有限正数 | `plasma_dx`；仅适用于 `nested_three_region` |
-| `[mesh].vacuum_dx` | 有限正数 | `vacuum_dx`；仅适用于 `nested_three_region` |
-| `[mesh].outer_dx` | 有限正数 | `outer_dx`；仅适用于 `nested_three_region` |
+| `[mesh].mesh_dx` | 有限正数 | `mesh_dx`；唯一单 Region 目标网格尺度 [m] |
 | `[output].hdf5` | 非空字符串 | `hdf5_path` |
 | `[output].plot` | 非空字符串 | `plot_path` |
 | `[output].model` | 非空字符串 | `model_path` |
@@ -1220,8 +1232,10 @@ schema_version = 1
 5. `verbose` 只接受 TOML bool。
 6. TOML 语法、读取和 schema 错误必须包含文件路径和字段位置。
 7. 配置层不读取业务文件，不创建目录。
-8. `examples/m3dc1_single_region/linkmesh.in.example` 已存在；示例不产生新规则，
-   也不开放未实现组合。
+8. 下一轮源码修改必须同步迁移当前正式示例，删除 `domain.profile` 及
+   `plasma_dx/vacuum_dx/outer_dx`；历史快照不得修改。
+9. 旧 `domain.profile` 和三个 legacy dx 键必须由严格校验明确拒绝，不得忽略后继续
+   使用默认 `mesh_dx`。
 
 ### 5.5 CLI 参数与 `UNSET`
 
@@ -1230,14 +1244,10 @@ schema_version = 1
 | `--config PATH` | `config` | 指定唯一配置文件 |
 | `--no-config` | `no_config` | 禁止自动发现 |
 | `--target VALUE` | `target` | 覆盖 `[task].target` |
-| `--profile VALUE` | `profile` | 覆盖 `[domain].profile` |
 | `--boundary-source VALUE` | `boundary_source` | 覆盖 `[domain].boundary_source` |
 | `--gfile PATH` | `gfile` | 覆盖 `[input].gfile` |
 | `--array-file PATH` | `array_file` | 覆盖 `[input].array_file` |
-| `--mesh-dx FLOAT` | `mesh_dx` | 覆盖 `[mesh].mesh_dx`；仅适用于 `single_region` |
-| `--plasma-dx FLOAT` | `plasma_dx` | 覆盖 `[mesh].plasma_dx`；仅适用于 `nested_three_region` |
-| `--vacuum-dx FLOAT` | `vacuum_dx` | 覆盖 `[mesh].vacuum_dx`；仅适用于 `nested_three_region` |
-| `--outer-dx FLOAT` | `outer_dx` | 覆盖 `[mesh].outer_dx`；仅适用于 `nested_three_region` |
+| `--mesh-dx FLOAT` | `mesh_dx` | 覆盖 `[mesh].mesh_dx`；唯一单 Region 目标网格尺度 [m] |
 | `--hdf5 PATH` / `--h5 PATH` | `hdf5` | 完全同义；覆盖 `[output].hdf5`，最终形成 `EffectiveConfig.hdf5_path` |
 | `--plot PATH` | `plot` | 覆盖 `[output].plot` |
 | `--model PATH` | `model` | 覆盖 `[output].model` |
@@ -1247,6 +1257,11 @@ schema_version = 1
 
 参与合并的 CLI 参数必须使用 `UNSET` 区分未提供与显式提供。CLI 层不得通过业务默认
 值覆盖 TOML。
+
+根命令正式删除 `--profile`、`--plasma-dx`、`--vacuum-dx` 和 `--outer-dx`。
+源码修改完成后，这些旧参数无论曾取 `single_region` 还是
+`nested_three_region`，都必须由 argparse 拒绝；不得保留单 choice profile、
+弃用别名、兼容执行分支或到 `mesh_dx`/regions 参数的静默映射。
 
 TRIMEG HDF5 输出路径的正式 CLI 参数是 `--hdf5 <PATH>`，`--h5 <PATH>` 是完全同义
 别名。二者属于同一个 argparse option action，写入同一个 `hdf5` dest，并沿既有
@@ -1308,49 +1323,48 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
 7. 合并后再次校验枚举、数值和 bool。
 8. `plot_lcfs` 按同一标量规则取显式 CLI，否则 TOML，否则默认 `False`，并严格校验
    为 bool。
-9. `mesh_dx` 和三个区域 dx 分别按同一优先级合并并校验为有限正数。
-10. 使用 `CliOverrides` 是否为 `UNSET` 及 TOML 是否含键，在局部判断尺度是否显式提供：
-    - `single_region` 只允许显式 `mesh_dx`，显式区域 dx 必须失败；
-    - `nested_three_region` 只允许显式三个区域 dx，显式 `mesh_dx` 必须失败；
-    - 内建默认值不构成冲突。
-11. 构造冻结的 17 字段 `EffectiveConfig`，不保存来源信息。
-12. 执行兼容矩阵、required-fields 和阶段闸门。
+9. `mesh_dx` 按同一优先级合并并校验为有限正数。
+10. 不读取或合并 profile、`plasma_dx`、`vacuum_dx`、`outer_dx`。
+11. 构造冻结的 13 字段 `EffectiveConfig`，不保存来源信息。
+12. 执行 boundary-source/target required-fields 和阶段闸门。
 13. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
 
 配置层不要求输出文件已经存在，不创建父目录。输入业务文件存在性由 Reader 报告。
 helper 定位不属于 `EffectiveConfig`。
 
-### 5.6A 网格尺度适用性与 Adapter 兼容映射
+### 5.6A 根命令与 regions 网格尺度作用域
 
-网格尺度按 profile 严格消歧：
-
-1. `profile=single_region` 只使用 `mesh_dx`，单位 m。该字段表示单一计算域的目标
-   网格长度尺度，不表示 plasma、vacuum 或 outer 的物理区域尺度。用户通过 TOML
-   或 CLI 显式提供任一 `plasma_dx/vacuum_dx/outer_dx` 时必须 `ConfigError`。
-2. `profile=nested_three_region` 只使用 `plasma_dx/vacuum_dx/outer_dx`，分别表示
-   三个物理区域的目标尺度。用户显式提供 `mesh_dx` 时必须 `ConfigError`。
-3. 所有字段保留内建默认值，但冲突只根据 TOML/CLI 显式性判断，默认值不得制造冲突。
-4. 同一适用字段继续遵循内建默认值 < TOML < 显式 CLI。
-5. 不建立任意 N 区域尺度配置语言。
-
-现有 OFT Adapter 公共签名保持不变。CLI 对 single-region 执行唯一兼容映射：
+根命令只有一个尺度：
 
 ```text
 EffectiveConfig.mesh_dx
-  → generate_mesh(..., plasma_dx=cfg.mesh_dx, profile="single_region", ...)
+  → single-region OFT Domain
 ```
 
-该映射只适配既有 Adapter 参数名，不把 single-region 重新定义为 plasma 物理区域；
-Adapter 的 single-region 分支仍只消费该一个尺度。本轮不修改 `oft_adapter.py`。
+`mesh_dx` 单位为 m，表示唯一单 Region 的目标网格长度尺度，不称为 plasma 专用
+尺度，也不因 boundary source 改名。它继续遵循内建默认值 < TOML < 显式 CLI。
+
+`regions generate` 在独立子解析器和独立配置对象中继续保留：
+
+- `--mesh-dx`：全部最终 Region 的默认尺度；
+- `--region-dx ID=DX`：按最终 Region ID 覆盖；
+- `--transition-width`：全局变化层厚度。
+
+两个 `--mesh-dx` 同名但作用域隔离。删除根命令 legacy dx 不得改变 regions 的
+任何尺度、transition、Region ID 或验证契约，也不得把旧区域 dx 自动映射为
+`region_dx`。
+
+下一轮 Adapter 收口时，应删除只为 nested 签名保留的参数，使根命令直接调用窄职责
+单区域入口；内部若需要单区域标识，只能使用内部常量或直接调用，不得重新暴露 profile。
 
 ### 5.6B CLI help 分组
 
 argparse 帮助按用户任务顺序分组：
 
 1. `Configuration`：`--config`、`--no-config`；
-2. `Task`：`--target`、`--profile`、`--boundary-source`；
+2. `Task`：`--target`、`--boundary-source`；
 3. `Input`：`--gfile`、`--array-file`、`--plot-lcfs`；
-4. `Mesh Resolution`：`--mesh-dx`、`--plasma-dx`、`--vacuum-dx`、`--outer-dx`；
+4. `Mesh Resolution`：`--mesh-dx`；
 5. `Output`：`--hdf5/--h5`、`--model`、`--smb`、`--plot`、
    `--no-hdf5`、`--no-smb`；
 6. `Runtime`：`--verbose`。
@@ -1887,7 +1901,8 @@ passed 数、实际检测的完整字段清单或标准 consumer 日志，本蓝
 dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG consumer
 `LOADED`；该消费层级继续为 `PENDING`。
 
-- `nested_three_region` 暂不修改、删除或优化。
+- 历史 `nested_three_region` 根入口已由 User 最新裁决退役；“暂不修改、删除或优化”
+  的旧约束失效。下一轮必须删除其业务源码、测试和当前示例入口，但不得修改历史快照。
 - 当前不修改 `Mesh2D` 字段、regions map schema、dx 规则、OFT technical role、
   TRIMEG schema、M3D-C1 model/SMB、classification 或 helper exchange。
 - M3D-C1 本身能够进行多区域模拟，是 User 根据同门实际展示确认的求解器能力。
@@ -1897,19 +1912,23 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 
 ### 5.8 `boundary_source`
 
+根命令公开来源收口为：
+
 | 来源 | 正式来源 | 状态 | 规则 |
 |---|---|---|---|
-| `lcfs` | `GFileData.lcfs_r/lcfs_z` | 已实现 | single-region 唯一边界；不使用第一壁或人工外框 |
-| `first_wall` | `GFileData.wall_r/wall_z` | 未实现 | 需要有效第一壁；首版 single-region |
-| `array_file` | counted R-Z boundary text | 已实现并通过 EAST 生成侧验收 | 首版 single-region；EAST 主线；v1 与 GFile 互斥 |
-| `artificial_outer` | LCFS/第一壁包围盒加固定 padding | 已实现并完成生成侧真实验收 | 当前只配 nested；四角不直接作为 `outer_boundary` |
-| `flux_surface` | 从 GFile 二维极向磁通场提取指定内部闭合磁通等值线 | 实现候选，未实现，待 OFT 26.6 只读侦察 | 只用于 single-region 核心或内部等离子体计算域；禁止缩放 LCFS 伪造 |
-| `multi_array_file` | 重复 counted R-Z blocks | DESIGNED / NOT IMPLEMENTED；OFT 调查与产品接口裁决已完成 | 仅供未来 `regions` 命令族；唯一根包含树、代码几何检查、TOML map 和显式 Region ID/dx 映射 |
+| `lcfs` | `GFileData.lcfs_r/lcfs_z` | 已实现 | 唯一实际边界；只生成一个 Region |
+| `first_wall` | `GFileData.wall_r/wall_z` | 规划保留，未实现 | 第一壁是计算域外边界，壁内只生成一个 Region；LCFS 不自动成为 interface |
+| `array_file` | 单个 counted R-Z boundary text | 已实现并通过 EAST 生成侧验收 | 唯一实际边界；只生成一个 Region |
+| `flux_surface` | 从 GFile 二维极向磁通场提取指定内部闭合磁通等值线 | 实现候选，未实现，待 OFT 26.6 只读侦察 | 单区域候选；禁止缩放 LCFS 伪造 |
+
+`artificial_outer` 随 nested 专用自动多层构造退役，已批准从根命令公开 choice 删除；
+源码删除仍为 PENDING。`multi_array_file` 不是根命令 boundary source，只能通过
+`regions inspect/generate` 的独立输入参数进入。
 
 共同规则：
 
-- 每次任务只有一个计算域外边界来源。
-- `lcfs`、`first_wall`、`artificial_outer` 需要 GFile。
+- 根命令每次任务只有一个计算域外边界来源并只生成一个 Region。
+- `lcfs`、`first_wall` 需要 GFile。
 - `array_file` v1 需要 array file。纯 array 工作流继续禁止 GFile；已批准但尚未实现的
   `plot_lcfs=True` 例外允许额外 `gfile_path`，且该 GFile 只能提供 PNG LCFS
   reference，不得改变实际计算边界、网格或 Writer 输出。
@@ -1921,33 +1940,33 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 - `multi_array_file` 不得由旧 `array_file` Reader 静默接收，也不得放宽旧单 block
   契约；业务实现和 OFT 探针通过前不得由现有 nested 成果外推为已支持。
 
-### 5.9 兼容矩阵
+### 5.9 根命令来源与 target 矩阵
 
-| target | profile | boundary_source | 状态 |
-|---|---|---|---|
-| `mesh_only` | `nested_three_region` | `artificial_outer` | 已实现 |
-| `trimeg` | `nested_three_region` | `artificial_outer` | 已实现并验收 |
-| `mesh_only` | `single_region` | `lcfs` | 已实现 |
-| `trimeg` | `single_region` | `lcfs` | 已实现并验收 |
-| `m3dc1` | `single_region` | `lcfs` | 已实现；加载和初始化通过 |
-| `mesh_only` / `trimeg` | `single_region` | `first_wall` | 规划有效，未实现 |
-| `mesh_only` | `single_region` | `array_file` | 已实现 |
-| `trimeg` | `single_region` | `array_file` | 已实现；不改变 HDF5 契约 |
-| `m3dc1` | `single_region` | `array_file` | 已实现；EAST 生成侧通过，外部消费待验收 |
-| `mesh_only` / `trimeg` / `m3dc1` | `single_region` | `array_file + plot_lcfs` | **DESIGNED / APPROVED FOR IMPLEMENTATION / NOT YET IMPLEMENTED**；GFile 只供 PNG 参考，不改变 target 输出 |
-| 任意非 `array_file` | 任意 | `plot_lcfs=True` | 禁止，使用 `ConfigError` |
-| 任意 | `single_region` | `flux_surface` | 实现候选，未实现，待 OFT 26.6 只读侦察 |
-| `regions generate --target mesh_only` | 多区域 | `multi_array_file` | IMPLEMENTED；N-region Mesh2D STRUCTURALLY CHECKED，PNG GENERATED 并人工复核 |
-| `regions generate --target trimeg` | 多区域 | `multi_array_file` | IMPLEMENTED；真实 HDF5 GENERATED，User 确认自动测试和实际检测通过；标准 MATLAB/TRIMEG 加载 PENDING |
-| `regions generate --target m3dc1` | 多区域 | `multi_array_file` | IMPLEMENTED；`case_002` TXT/SMB/PNG GENERATED，TXT+SMB DELIVERED，M3D-C1 LOADED PENDING |
-| 旧无子命令入口 | 任意 | `multi_array_file` | 当前未开放；不得回退旧 `array_file` 或 nested |
-| `m3dc1` | `single_region` | `first_wall` / `flux_surface` | 未开放 |
-| `m3dc1` | `nested_three_region` | 任意 | 禁止 |
-| 任意 | `nested_three_region` | `lcfs` / `first_wall` / `array_file` | 禁止 |
-| 任意 | `single_region` | `artificial_outer` | 禁止 |
+profile 维度已从产品契约删除。根命令天然单区域：
 
-禁止组合使用 `ConfigError`。架构可表达但未实现的组合使用
-`NotImplementedError`。旧测试若期待不同异常类型，应更新测试，不得放行组合。
+| target | boundary_source | 状态 |
+|---|---|---|
+| `mesh_only` / `trimeg` | `lcfs` | 已实现；TRIMEG 已验收 |
+| `m3dc1` | `lcfs` | 已实现；加载和初始化通过 |
+| `mesh_only` / `trimeg` | `first_wall` | 规划有效，未实现 |
+| `m3dc1` | `first_wall` | 未开放 |
+| `mesh_only` / `trimeg` / `m3dc1` | `array_file` | 已实现；各 target 维持既有验收层级 |
+| `mesh_only` / `trimeg` / `m3dc1` | `array_file + plot_lcfs` | 已实现；GFile 只供 PNG 参考 |
+| 任意非 `array_file` | `plot_lcfs=True` | 禁止，使用 `ConfigError` |
+| 任意 | `flux_surface` | 实现候选，未实现 |
+| 任意 | `artificial_outer` | 已退役；源码删除后由配置/argparse 拒绝 |
+
+唯一多区域入口：
+
+| 命令 | 状态 |
+|---|---|
+| `regions generate --target mesh_only` | IMPLEMENTED |
+| `regions generate --target trimeg` | IMPLEMENTED；真实 HDF5 GENERATED |
+| `regions generate --target m3dc1` | IMPLEMENTED；TXT/SMB/PNG GENERATED，消费仍按既有层级记录 |
+
+根命令不得接收 `multi_array_file`、regions map、`region_dx` 或
+`transition_width`。禁止组合使用 `ConfigError`；架构可表达但未实现的来源使用
+`NotImplementedError`。
 
 ### 5.10 required-fields
 
@@ -1957,7 +1976,6 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 |---|---|---|
 | `lcfs` | `gfile_path` | `array_file_path` |
 | `first_wall` | `gfile_path` | `array_file_path` |
-| `artificial_outer` | `gfile_path` | `array_file_path` |
 | `array_file`，`plot_lcfs=False` | `array_file_path` | `gfile_path` |
 | `array_file`，`plot_lcfs=True` | `array_file_path`、`gfile_path`、`plot_path` | 无；`gfile_path` 仅作 LCFS PNG reference |
 | `flux_surface` | 未定义，阶段闸门报未实现 | 不得猜测 |
@@ -1996,13 +2014,14 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 12. `vacuum_dx`、`outer_dx`、`outer_padding` 不参与。
 13. 不缩放 LCFS，不从最终拓扑反推边界。
 
-#### 5.11.2 `single_region + first_wall`
+#### 5.11.2 根命令 `first_wall`
 
-当前未实现。规划契约：
+当前未实现，作为单区域来源保留。规划契约：
 
-- 使用有效 `wall_r/wall_z` 作为唯一 polygon；
-- 首版尺度为 `plasma_dx`；
-- 不创建 LCFS 内部界面、vacuum 或 artificial outer；
+- 使用有效 `wall_r/wall_z` 作为唯一实际计算域边界；
+- 第一壁以内形成一个 Region，使用唯一尺度 `mesh_dx`；
+- LCFS 即使存在也不得自动成为内部 Region interface；
+- 不创建 LCFS 内部界面、vacuum、第一壁外 Region 或 artificial outer；
 - 缺壁、点数不足、非有限、退化或非简单闭环时失败；
 - 必须走 Region 捕获、build 后回写和统一验证；
 - CLI 当前不得放行。
@@ -2128,7 +2147,8 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
 - M3D-C1 只构造一次 `M3DC1ModelSpec`；
 - SMB 基础路径不插 rank；
 - helper 定位由 SMB Writer 管理；
-- 默认 nested TRIMEG 行为不变；
+- 根命令默认行为迁移为单区域，旧 nested TRIMEG 不再作为当前回归目标；其历史验收
+  事实保留；
 - PNG 不替代加载、初始化、时间推进、稳定性或物理正确性验收。
 
 ---
@@ -3005,7 +3025,8 @@ README 内容变化不得改变 tar.gz，除非归档内部其他内容也发生
 ### 9.1 M1–M3 和 TRIMEG
 
 - M1 Reader：**PASSED**；
-- M2 nested 默认链：**PASSED**；
+- M2 历史 nested 默认链：**曾实现并 PASSED；当前已退役，源码删除 PENDING**；
+- 根命令单区域链：**SUPPORTED / CURRENT**；
 - M3 core：**PASSED**；
 - M3 complete-11：**PASSED**；
 - TRIMEG 11 数据集写出：**PASSED**；
@@ -3331,7 +3352,8 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 
 以下变化必须先修改本蓝图并经 User 确认：
 
-- 新字段、CLI 参数、TOML key 或用户格式；
+- 新字段、CLI 参数、TOML key，或恢复已退役的 profile、legacy dx、
+  nested/artificial-outer 根入口；
 - 新 target/profile/boundary-source 组合或 `regions` 命令阶段；
 - helper 名称、定位、构建、安装或兼容策略变化；
 - Python 打包、共享 release、包装入口或 modulefile 契约变化；
@@ -3409,7 +3431,44 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 - 在打包探针完成前宣称已实现物理意义上的真正单文件可执行程序；
 - 修改 M3D-C1、TokaMaker 或 SCOREC/PUMI 只读参考源码。
 
-### 10.5 v4.1 交付优先级、调查边界与待决事项
+### 10.5 破坏性迁移、下一轮源码范围与待决事项
+
+本次是明确批准的破坏性 CLI/config 清理，不提供弃用别名或自动转换。
+
+迁移规则：
+
+- 旧单区域配置删除 `[domain].profile`，将稳定目标尺度写为
+  `[mesh].mesh_dx`。
+- `--profile single_region` 与 `--profile nested_three_region` 在源码收口后均由
+  argparse 拒绝。
+- `--plasma-dx`、`--vacuum-dx`、`--outer-dx` 均由 argparse 拒绝，不映射为
+  `mesh_dx` 或 regions `region_dx`。
+- 旧 TOML `domain.profile`、`mesh.plasma_dx`、`mesh.vacuum_dx`、
+  `mesh.outer_dx` 由严格 schema 校验明确拒绝，不得忽略后继续使用默认值。
+- 旧 nested 配置不能机械一对一迁移。用户必须准备真实多轮廓输入，执行
+  `regions inspect`，确认 regions map，再以 `regions generate` 的
+  `mesh_dx/region_dx` 表达尺度；需要变化层时使用 `transition_width`。
+- LinkMesh 不承诺自动把 LCFS、第一壁和人工外边界转换为 multi-array 文件或
+  regions map。
+
+下一轮批准的最小源码修改范围：
+
+1. `src/linkmesh/cli.py`：删除根 `--profile` 和三个 legacy dx 参数，清理 root help
+   的 nested 表述，将标准工作流明确为单区域；保留全部 regions 子命令。
+2. `src/linkmesh/config.py`：删除 profile、三个 legacy dx 字段及默认值、TOML
+   allowed keys、合并和 compatibility 分支；保留单区域 `mesh_dx`；确保旧键明确失败。
+3. `src/linkmesh/mesher/oft_adapter.py`：删除 nested Domain、artificial outer、
+   自动 PLASMA/VACUUM/OUTER 分层及其专用签名参数；保留单区域核心、Region 回写和
+   regions N-region Adapter。
+4. 现有 tests：删除 nested 成功路径，增加旧参数/配置拒绝，保留根单区域
+   `mesh_dx`、regions、作用域隔离、Writer 和 target 回归。
+5. 当前正式 examples：先定位并迁移仍含 profile 或 legacy dx 的模板；历史快照不改。
+
+该源码删除不得修改 `Mesh2D`、Writer、helper、OFT/Triangle、regions 参数、
+Region ID、transition、质量报告或外部格式。当前状态仍为
+**REMOVAL APPROVED / SOURCE REMOVAL PENDING**。
+
+### 10.5A 既有交付、调查边界与待决事项
 
 初版 Release 已发送给同门和老师，当前反馈为可以正常使用。该事实只达到实际交付和
 当前用户反馈层级，不自动证明时间推进、长期稳定性或物理正确性。
@@ -3499,8 +3558,10 @@ Aider 执行依据或第二份技术契约。
 - 状态更新必须有直接证据，并保持加载、初始化、时间推进、稳定性和物理正确性分层。
 - 多 face、三维、自适应网格和并行分区继续未开放。
 
-当前准确结论：M1–M3 和既有 TRIMEG 消费验收已通过；nested-three-region 已完成
-真实 DIII-D 与 fixed-boundary 的 LinkMesh 生成侧验收；M4 LinkMesh 生成侧已通过；
+当前准确结论：M1–M3 和既有 TRIMEG 消费验收已通过；历史 nested-three-region
+曾完成真实 DIII-D 与 fixed-boundary 的 LinkMesh 生成侧验收，但现已由 User 决定
+退役，源码删除仍为 PENDING；根命令当前产品契约收口为天然单区域，regions 是唯一
+多区域入口；M4 LinkMesh 生成侧已通过；
 M5 第一条 `m3dc1 + single_region + lcfs` 真实 CLI、PNG、TXT+SMB 加载和
 M3D-C1 初始化已通过。EAST counted R-Z 文件结构、Reader、`single_region +
 array_file`、OFT/Triangle、Mesh2D、TXT+SMB+PNG 生成侧和 PNG 人工几何检查已通过；
@@ -3520,11 +3581,12 @@ tar.gz，也尚未验证内部 manifest、外部 tar.gz.sha256、完整二进制
 运行。Python 正式安装、CMake install、共享根目录、包装入口、modulefile、第一个
 共享 release 和普通用户验收仍为 `PENDING`。
 
-v4.2 正式收口 `array_file + 可选 GFile LCFS PNG reference`、CLI help 分组和
-profile 尺度消歧。`EffectiveConfig` 为 17 字段；single-region 用户接口使用
-`mesh_dx`，nested-three-region 用户接口使用三个区域 dx。旧 `--min-angle` 与
-`--max-area` 不再属于 CLI。array reference PNG 仅绘制 Mesh boundary 与 LCFS
-reference，不绘制参考 GFile 的 limiter、First wall 或 Magnetic axis。
+v5.4 正式收口根命令为单区域，批准删除 profile、三个 legacy 区域 dx 和 nested
+专用 artificial outer。源码收口后 `EffectiveConfig` 为 13 字段；根命令只使用
+`mesh_dx`。regions 的 `mesh_dx/region_dx/transition_width` 保持独立且不受影响。
+旧 `--min-angle` 与 `--max-area` 继续不属于 CLI。array reference PNG 仅绘制
+Mesh boundary 与 LCFS reference，不绘制参考 GFile 的 limiter、First wall 或
+Magnetic axis。
 
 该候选工作流中，array file 永远是唯一实际计算域边界，GFile LCFS 只供 Plotter。
 因此不修改 `Mesh2D`、TRIMEG 11 数据集、HDF5 Writer、M3D-C1 ModelSpec、TXT、
