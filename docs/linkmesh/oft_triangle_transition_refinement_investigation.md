@@ -2,15 +2,24 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项只读源码调查
-- 调查状态：native ABI、refinement 与 ownership 静态源码契约已确认；待服务器核验
-  `liboft_triangle.so` 的实际导出符号和动态依赖
-- 最终裁决：**BLOCKED BY MISSING RUNTIME EXPORT EVIDENCE**
+- 调查状态：**COMPLETED**；静态源码契约、native ABI、ownership、
+  `triangulate`/`trifree` 运行时导出与动态依赖均已确认
+- 静态源码契约：**CONFIRMED**
+- native ABI 和 ownership：**CONFIRMED**
+- `triangulate` 运行时导出：**CONFIRMED**
+- `trifree` 运行时导出：**CONFIRMED**
+- 动态依赖：**CHECKED / COMPLETE**
+- 最终裁决：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**
+- 业务实现：**NOT IMPLEMENTED**
+- 真实 `rpqazQ` 调用：**NOT RUN**
 - 调查对象：LinkMesh、OpenFUSIONToolkit/TokaMaker 26.6、随附 Triangle
 - 修改范围：仅生成本报告；未修改业务源码、蓝图、测试、配置、CLI、OFT/Triangle
   参考源码、外部库或求解器接口
-- 运行状态：未运行 LinkMesh、OFT、Triangle、服务器探针或消费端验证
-- 事实边界：本文严格区分当前源码直接事实、既有探针事实、Triangle 一般原理、
-  Agent 设计建议和待确认事项。任何 refinement 路线均未实现、未运行、未验证
+- 运行状态：已完成目标服务器实际动态库的路径、文件类型、动态符号和依赖核验；
+  未运行真实 `rpqazQ` refinement、LinkMesh 业务实现或消费端验证
+- 事实边界：本文严格区分当前源码直接事实、服务器动态库直接证据、既有探针事实、
+  Triangle 一般原理、已获 User 批准但尚未实现的正式设计和待确认事项。
+  refinement 业务仍未实现，`rpqazQ` 仍未运行
 
 ---
 
@@ -93,7 +102,7 @@ OFT 网格 Python 文件的精确符号位置由仓库参考映射确认：
 - `Region.check_in_poly()`：`meshing.py:1187`
 - `Region.get_in_point()`：`meshing.py:1213`
 
-### 2.3 版本、编译宏与剩余运行时证据
+### 2.3 版本、编译宏与运行时动态库证据
 
 `triangle.c` 文件头直接标识：
 
@@ -159,15 +168,25 @@ restype = c_int
 `triangle.h::triangulateio` 的字段顺序逐项一致；`REAL*` 对应 `c_double_ptr`，
 `int*` 对应 `c_int_ptr`，计数字段对应 `c_int`。
 
-静态源码和构建契约还不能代替目标服务器共享库的实际导出表。剩余纯运行时证据只有：
+User 已在目标服务器的 `linkmesh` Conda 环境完成实际共享库核验。实际文件为：
 
-1. 实际加载的 `liboft_triangle.so` 路径；
-2. `file` 对该文件的架构/类型输出；
-3. `triangulate` 是否实际导出；
-4. `trifree` 是否实际导出；
-5. `ldd` 是否报告缺失动态库。
+```text
+/home/lxzeng/miniconda3/envs/linkmesh/lib/python3.12/site-packages/OpenFUSIONToolkit/liboft_triangle.so
+```
 
-因此当前阻塞点已从 ABI/ownership 源码缺口缩小为 runtime export evidence。
+服务器直接结果：
+
+- ELF 64-bit LSB shared object；
+- x86-64；
+- dynamically linked；
+- `triangulate` 动态导出：PASS；
+- `trifree` 动态导出：PASS；
+- `ldd` 无 `not found`；
+- `DYNAMIC_LIBRARY_CHECK=PASS`。
+
+该证据确认目标动态库具有 refinement 调用入口、同库释放入口和完整动态依赖，
+解除 `BLOCKED BY MISSING RUNTIME EXPORT EVIDENCE`。它不证明候选 `rpqazQ`
+已经运行，也不证明 attributes、PSLG、内存行为、W 逼近或迭代终止已经通过。
 
 ---
 
@@ -1294,7 +1313,8 @@ Triangle refinement 只能细化，不能 coarsen。因此：
 4. 即使所有离散判据满足，也不代表实际分箱统计严格复现用户 W，因为约束只在离散
    triangle 上采样，且 Triangle 同时受 PSLG 与 Delaunay/质量处理影响。
 
-目标 OFT 二进制中的精确执行顺序仍待 `triangle.c` 和运行探针确认。
+上述执行顺序已由随附 Triangle 1.6 `triangle.c` 静态源码确认；目标服务器的真实
+`rpqazQ` 行为仍待最小运行验证。
 
 ### 14.4 无效约束
 
@@ -1307,7 +1327,8 @@ Triangle refinement 只能细化，不能 coarsen。因此：
 -缺少 Region dx；
 -未知 Region ID。
 
-在 `triangle.c` 明确负值或零值语义前，不应依赖特殊 sentinel。
+虽然 `triangle.c` 已确认零和负值表示不施加 variable-area 约束，正式实现仍不得
+使用该 sentinel；LinkMesh 生成的 `trianglearealist` 必须全部有限且严格为正。
 
 ---
 
@@ -1507,56 +1528,58 @@ max(hK1, hK2) / min(hK1, hK2)
 
 regions 配置使用独立 `RegionsGenerateConfig`，不污染旧 `EffectiveConfig`。
 
-### 18.2 最小用户表面候选
+### 18.2 已批准的最小用户表面
 
-Agent 建议未来只公开一个新参数：
+User 已批准只公开一个新参数：
 
 ```text
 --transition-width FLOAT
 ```
 
-语义候选：
+正式语义：
 
--单位 m；
--未提供或 `0`：关闭 transition refinement；
--正有限值：启用；
--负值、NaN、Inf：配置阶段失败；
--只适用于 `regions generate`；
--对同一个生成 mesh 的所有 target 一致生效；
--发生在 Writer 之前；
--与 `mesh_dx/region_dx` 共同决定 hf/hc；
--相邻 effective dx 相同时不触发。
+- 单位 m；
+- 内建默认值为 `0.0`，未提供等价于 `0.0`；
+- `0.0` 关闭 transition refinement，保持现有生成行为；
+- 正有限值启用；
+- 负值、NaN、Inf 在配置阶段失败；
+- 只适用于 `regions generate`，`regions inspect` 不接受；
+- 对 `mesh_only`、`trimeg`、`m3dc1` 一致生效；
+- refinement 发生在初始 `Mesh2D` 之后、全部 Writer 和 Plotter 之前；
+- 与 `mesh_dx/region_dx` 解析出的 effective dx mapping 共同决定 `hf/hc`；
+- 相邻 effective dx 精确相等时不触发；
+- 优先级为内建默认值 < TOML < 显式 CLI。
 
-TOML 候选：
+正式 TOML 字段：
 
 ```text
 [regions.mesh]
-transition_width = <meters>
+transition_width = <float>
 ```
 
-该字段尚未获蓝图批准，不是正式接口。
+首版不增加 Region 级 W、profile、minimum-angle、max-iterations、Triangle option
+或 native library path 参数。
 
-### 18.3 是否公开 minimum angle
+### 18.3 minimum angle 裁决
 
-本轮不建议首版公开 minimum-angle：
+首版不公开 minimum-angle：
 
--当前 q 默认值尚未由目标源码确认；
--当前 OFT 高层 API 不暴露它；
--用户唯一目标是控制 W；
--增加 angle 会扩大接口和验收矩阵。
+- Triangle 1.6 源码已确认裸 `q` 默认最小角为 20°；
+- 当前 OFT 高层 API 不暴露该参数；
+- User 首版目标仅为控制 W；
+- 增加 angle 会扩大接口和验收矩阵。
 
-应先锁定 Triangle 默认 q 行为并验证 transition refinement。只有真实案例证明需要
-用户控制时再更新蓝图。
+首版固定使用裸 `q`。以后若真实案例证明需要用户控制，必须先更新蓝图。
 
-### 18.4 是否公开 max iterations
+### 18.4 max iterations 裁决
 
-首版可考虑内部受控常量，而不立即公开：
+首版采用蓝图锁定的内部最多 3 轮 refinement，不公开 max-iterations：
 
--避免用户同时调 W、angle、迭代次数；
--先通过探针确定一次或有限轮 refinement 的行为；
--达到上限时明确失败并输出诊断。
-
-具体常量必须由蓝图批准。
+- 避免用户同时调 W、angle 和迭代次数；
+- 每轮基于当前 mesh 重新计算 interface、距离和面积上界；
+- 达到上限仍有面积违反时明确失败并输出诊断；
+- 3 是 LinkMesh P0 工程裁决，不是 Triangle 格式事实；
+- 修改该值必须蓝图先行。
 
 ---
 
@@ -1631,7 +1654,7 @@ W 超过粗 Region 局部厚度
 | 文件 | 原因 |
 |---|---|
 | `LinkMesh_Architecture_Plan.md` | 增加 refinement 阶段、W 字段、低层 ABI、ownership、验收和停止条件 |
-| `docs/linkmesh/oft_triangle_transition_refinement_investigation.md` | 在 ABI 和探针完成后更新直接证据 |
+| `docs/linkmesh/oft_triangle_transition_refinement_investigation.md` | 已同步 ABI、运行时动态导出与依赖直接证据；后续仅补最小运行结果 |
 | 相关现有测试 | 保护 transition、attributes、PSLG、ownership 和 Mesh2D 输出 |
 
 达到明确战术节点并由 User 验收后，按项目纪律再更新：
@@ -1649,8 +1672,10 @@ W 超过粗 Region 局部厚度
 | `src/linkmesh/cli.py` | 收集 W，在初始 mesh 与 Writer 之间调用 refinement |
 | 必要独立调查脚本 | 先验证 native ABI、free、`-r`、attributes 和 PSLG |
 
-若低层 Adapter 使 `oft_adapter.py` 过大，可在蓝图批准后新增一个窄职责模块；本报告不
-预先确定文件名。
+蓝图正式批准新增窄职责内部模块
+`src/linkmesh/mesher/triangle_refinement.py`。该模块唯一负责 transition topology/
+约束计算、`rpqazQ` 低层调用、native ownership、有限迭代和 refinement 输出验证；
+`oft_adapter.py` 继续只负责 OFT Domain 与初始 `Mesh2D`。
 
 ### 20.3 默认不修改
 
@@ -1699,29 +1724,25 @@ W 超过粗 Region 局部厚度
 
 ## 22. 未确认事项
 
-native 静态源码已确认 ABI、`-r`、q/a、attributes、PSLG 和 ownership 契约。当前只剩
-以下运行时或尚未执行的证据：
+native 静态源码、ABI、运行时导出和动态依赖均已确认。当前只剩以下尚未执行的
+refinement 运行与消费证据：
 
-1. 服务器实际加载的 `liboft_triangle.so` 路径。
-2. 该文件的架构和 shared-object 身份。
-3. `triangulate` 是否出现在实际动态符号表。
-4. `trifree` 是否出现在实际动态符号表。
-5. `ldd` 是否存在缺失依赖。
-6.候选 `rpqazQ` 是否在目标服务器成功运行。
-7.实际输出 attributes 是否保持整数 Region IDs。
-8.拆分后的外边界和内部 interface segments 是否完整输出。
-9.成功和故意失败调用后的常驻内存是否符合预期。
-10.一次 refinement 对 W 的实际逼近误差。
-11.有限迭代是否稳定终止。
+1. 候选 `rpqazQ` 是否在目标服务器成功运行。
+2. 实际输出 attributes 是否保持整数 Region IDs。
+3. 拆分后的外边界和内部 interface segments 是否完整输出。
+4. 成功和故意失败调用后的运行时内存行为是否符合 ownership 契约。
+5. 一次 refinement 对 W 的实际逼近误差。
+6. 有限迭代是否稳定终止。
+7. M3D-C1 加载、时间推进、数值稳定性和物理正确性。
 
-第 6-11 项属于后续最小服务器验证，不改变本文的静态源码结论，也不得在未运行前写成
-已验证能力。
+这些事项属于后续最小业务实现与服务器验证，不改变本文的静态和动态库可行性结论，
+也不得在未运行前写成已验证能力。
 
 ---
 
 ## 23. 实施停止条件
 
-native 源码缺失和 ownership 不明这两个停止条件已经解除：
+源码、ABI、ownership、动态导出和动态依赖阻塞均已解除：
 
 - `triangle.c` 已确认 `triangulate()` 的错误包装；
 - `reconstruct()` 已确认 refinement 输入；
@@ -1729,27 +1750,21 @@ native 源码缺失和 ownership 不明这两个停止条件已经解除：
 - `insertvertex()` 已确认 attributes 和 area constraints 的复制/平均；
 - `writenodes()`、`writeelements()`、`writepoly()` 已确认输出分配；
 - `trimalloc()`/`trifree()` 已确认 allocator 配对；
-- `triangle.h` 和 OFT CMake 已确认 ABI 类型与编译宏。
+- `triangle.h` 和 OFT CMake 已确认 ABI 类型与编译宏；
+- 目标服务器已确认实际 `liboft_triangle.so` 为 x86-64 动态链接 ELF；
+- `triangulate` 与 `trifree` 均已动态导出；
+- `ldd` 无 `not found`，`DYNAMIC_LIBRARY_CHECK=PASS`。
 
-当前唯一停止条件是实际共享库导出尚未实证。服务器只需一次性确认：
+因此已具备进入 LinkMesh 业务实现的前置条件。实现期间遇到以下任一情况仍必须停止：
 
-```text
-实际 liboft_triangle.so 路径
-file <实际路径>
-动态符号表中的 triangulate
-动态符号表中的 trifree
-ldd <实际路径> 是否含 not found
-```
-
-不要求创建或维护新的长期 probe。若 `triangulate` 与 `trifree` 均导出且动态依赖完整，
-静态证据支持把最终状态升级为：
-
-```text
-FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
-```
-
-若 `trifree` 未导出，则不能用 libc `free` 绕过；在“不修改或重编 OFT/Triangle”
-边界下应保持阻塞。
+1. marker 字段无法按“输入可为 NULL、输出复制后同库释放”无歧义处理；
+2. 必须修改 `Mesh2D` 字段；
+3. 必须修改、维护或重编 OFT/Triangle；
+4. `transition_width` 无法隔离在 regions generate 配置；
+5. 必须增加已批准范围外的用户参数；
+6. 必须引入第二剖分器；
+7. native ownership 无法在一轮调用内闭合；
+8. 实时源码与本文锁定契约出现实质冲突。
 
 ---
 
@@ -1762,21 +1777,20 @@ FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
    `hc^2/2` 的常数面积约束，且没有 W/gradation 参数。
 
 2. **当前 q 的准确行为和可调性？**  
-   OFT 使用硬编码裸 `q`；LinkMesh/OFT 高层 API 当前不可调。裸 q 的锁定默认角和
-   refinement 精确行为因缺少 `triangle.c` 仍待确认。
+   OFT 使用硬编码裸 `q`；LinkMesh/OFT 高层 API 当前不可调。Triangle 1.6 源码已
+   确认裸 `q` 默认最小角为 20°；首版固定沿用，不公开 minimum-angle 参数。
 
 3. **OFT 高层 API 是否支持 refinement？**  
    **不支持。** 当前 `gs_Domain`、`Mesh` 和 `run_triangle()` 没有公开 refinement
    入口。
 
 4. **低层 binding 是否足以安全执行 refinement？**  
-   静态 ABI 与 ownership 契约足以构造安全的 LinkMesh 低层调用；仍需确认实际共享库
-   导出 `trifree` 后才能运行。
+   **是。** 静态 ABI 与 ownership 契约已确认，目标服务器实际共享库也已确认动态
+   导出 `triangulate` 和 `trifree` 且依赖完整；仍需实现 Adapter 并运行 `rpqazQ`。
 
 5. **是否需要修改或重新编译 OFT/Triangle？**  
-   静态源码显示不需要。LinkMesh 可复用 `oft_triangle_lib`，自行绑定 `triangulate` 和
-   `trifree`。若服务器库未导出 `trifree`，则在当前边界下保持阻塞，不能以 libc
-   `free` 绕过。
+   **不需要。** LinkMesh 可复用 OFT 实际加载的 `liboft_triangle.so`，自行绑定
+   `triangulate` 和 `trifree`；不得以 libc `free` 替代同库 `trifree`。
 
 6. **`trianglearealist` 能否作为输入？**  
    **能。** 裸 `a` refinement 按输入 triangle 顺序读取 `(T,)` constraints；正值是
@@ -1822,13 +1836,13 @@ FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
     输出验证和生成侧验收标准。
 
 18. **仍缺哪些直接证据？**  
-    只缺目标服务器实际 `liboft_triangle.so` 的路径、架构、`triangulate`/`trifree`
-    动态导出和依赖完整性，以及尚未执行的最小 refinement 运行验证。
+    动态库路径、架构、`triangulate`/`trifree` 导出和依赖完整性均已确认。只缺尚未
+    执行的 `rpqazQ`、attributes/PSLG、运行时内存、W 逼近、有限迭代和消费端验证。
 
 ### 24.2 最终状态
 
 ```text
-BLOCKED BY MISSING RUNTIME EXPORT EVIDENCE
+FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
 ```
 
 最终静态裁决：
@@ -1844,6 +1858,7 @@ BLOCKED BY MISSING RUNTIME EXPORT EVIDENCE
 - LinkMesh 低层 Adapter 可以独立修复自己新增调用的完整生命周期，无需修改 OFT
   wrapper；
 -静态源码不要求修改或重新编译 OFT/Triangle；
--只要服务器实际库导出 `triangulate` 和 `trifree` 且依赖完整，即具备进入蓝图迭代的
-  技术条件；
--在运行时导出核验前，不得把静态可行性写成运行通过，也不得开始完整业务实现。
+-服务器实际库已确认导出 `triangulate` 和 `trifree` 且依赖完整，源码和动态导出
+  阻塞均已解除，具备进入 LinkMesh 业务实现的技术条件；
+-该结论不等于 `rpqazQ` 已运行。refinement 仍为 **NOT IMPLEMENTED**，attributes、
+  PSLG、W 效果、有限迭代和 M3D-C1 消费验证仍为 PENDING。

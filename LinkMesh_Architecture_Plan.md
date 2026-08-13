@@ -3,7 +3,12 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.1**（M3D-C1 多区域输入契约源码调查完成；原始 curve corner exact-match 候选已被直接 probe 否证；正式设计批准改为从最终 N-region `Mesh2D` 全局 triangle incidence 自动派生 cycles、model tags 与 classifications，并由不可变 `M3DC1BuildResult` 统一驱动 TXT/SMB；schema v2、multi-face build result、helper 与 `regions generate target=m3dc1` 均尚未实现；多区域 TRIMEG HDF5 已生成并由 User 确认自动测试和实际检测通过，标准 MATLAB/TRIMEG consumer 加载仍待验收）
+- 文档状态：正式版 **5.2**（正式批准 multi-region `transition_width` 与
+  LinkMesh-side Triangle `rpqazQ` refinement 契约；源码、native ABI、ownership、
+  `triangulate`/`trifree` 运行时导出和动态依赖均已确认，业务实现与真实 refinement
+  运行尚未开始；M3D-C1 multi-face build result、schema v2、helper v1/v2 和
+  `regions generate target=m3dc1` 已实现，`case_002` TXT/SMB/PNG 已生成且 TXT+SMB
+  已交付同门，M3D-C1 加载仍待验收）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -42,6 +47,26 @@ GFile/EQDSK
       │     ├── TXT Writer → <base>.txt
       │     └── SMB Writer → native helper → rank-0 native SMB
       └── Plotter → PNG
+
+多区域可控渐变正式数据流：
+
+```text
+multi_array_file
+  → RegionPlan 与 regions map 核对
+  → effective region_id-to-dx mapping
+  → OFT/TokaMaker Domain
+  → Triangle 初始共形 N-region mesh
+  → initial Mesh2D
+  → W > 0 时 LinkMesh-side Triangle transition refinement
+  → final Mesh2D
+      ├── Plotter
+      └── mesh_only / TRIMEG / M3D-C1 Writer
+```
+
+refinement 位于 initial `Mesh2D` 之后、全部 Plotter 和 Writer 之前。所有 target
+消费同一个 final `Mesh2D`，不得按 target 分别生成或 refinement。`W=0` 保持现有
+行为。refinement 不修改 Region 物理语义，PUMI/M3D-C1 不参与 refinement；
+OFT/TokaMaker 封装的 Triangle 仍是唯一二维剖分底座。
 ```
 
 M3D-C1 P0 正式生产链：
@@ -69,7 +94,7 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | 维度 | 允许 | 禁止 |
 |---|---|---|
 | 输入 | OFT `GEQDSKEquilibrium` 读取 EQDSK/GFile；严格读取 `array_file` counted R-Z boundary text；已设计但尚未实现的 `multi_array_file` 重复 counted blocks | LinkMesh 手写 GFile 解析；复杂 CAD；多维输入；Python ndarray 公共边界 API；CSV 或通用区域 DSL |
-| 网格生成 | OFT `gs_Domain` / `build_mesh()` 调用 Triangle | 第二网格引擎；复制 OFT 通用几何算法；三维网格；自适应细化；维护 OFT 分支 |
+| 网格生成 | OFT `gs_Domain` / `build_mesh()` 调用 Triangle；已批准但尚未实现的 LinkMesh-side 静态 transition refinement 继续调用同一 OFT 26.6 `liboft_triangle.so` | 第二网格引擎；复制 Triangle/OFT 算法；三维网格；求解过程动态自适应；维护 OFT 分支 |
 | 分区 | LinkMesh 不涉及；终点为分区前串行 native SMB | `split_smb`、`part*.smb`、`**1.smb`～`**16.smb`、环向或并行分区 |
 | 输出 | TRIMEG HDF5；M3D-C1 analytic model TXT + 分区前串行 PUMI native SMB | Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；手写、解析、修改、拼接、模板复制或逆向 SMB 字节 |
 | 可视化 | matplotlib PNG 自检 | 交互式或三维渲染 |
@@ -149,14 +174,19 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | 教程三 face 拓扑 | **CONFIRMED** |
 | exchange 多 face record 表达能力 | **CONFIRMED** |
 | 原始 curve corner exact-match 候选 | **REJECTED BY DIRECT PROBE** |
-| topology-driven classification | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
-| exchange schema v2 | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
-| multi-face ModelSpec / build result | **DESIGNED / NOT IMPLEMENTED** |
-| helper 多 face 支持 | **NOT IMPLEMENTED** |
-| `regions generate target=m3dc1` | **DESIGNED / NOT IMPLEMENTED** |
-| LinkMesh 多区域 TXT+SMB | **NOT GENERATED** |
-| LinkMesh 多区域 TXT+SMB 同门消费验证 | **PENDING** |
-| 三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
+| topology-driven classification | **IMPLEMENTED** |
+| exchange schema v2 | **IMPLEMENTED** |
+| multi-face ModelSpec / build result | **IMPLEMENTED** |
+| helper v1/v2 与多 face 支持 | **IMPLEMENTED** |
+| `regions generate target=m3dc1` | **IMPLEMENTED** |
+| `case_002` model TXT / rank-0 SMB / PNG | **GENERATED** |
+| `case_002` TXT+SMB 同门交付 | **DELIVERED；LOADED PENDING** |
+| OFT/Triangle transition refinement 调查 | **COMPLETED** |
+| native ABI / ownership / runtime exports | **CONFIRMED** |
+| `transition_width` 与低层 Adapter | **APPROVED / NOT IMPLEMENTED** |
+| `rpqazQ` 真实调用 | **NOT RUN** |
+| attributes / PSLG / W 效果 | **PENDING** |
+| 三维、动态自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
 ### 1.6 v4.1 当前主线与优先级
 
@@ -251,6 +281,7 @@ cli
   → utils
 
 mesher.oft_adapter → mesh
+mesher.triangle_refinement → mesh
 writers → mesh
 utils.plotter → mesh
 readers.boundary_reader → mesh
@@ -270,7 +301,8 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/readers/gfile_reader.py` | 独立薄 Adapter：调用 OFT `GEQDSKEquilibrium`，读取 LCFS、limiter、磁轴和基本平衡参数并输出 `GFileData` | 手写 GFile 解析；读取 array file；调用 `boundary_reader`；决定网格边界来源；调用 Mesher、Plotter 或 Writer |
 | `src/linkmesh/readers/boundary_reader.py` | 独立 Boundary Reader：实现 `read_boundary_file(filepath: str \| Path) -> np.ndarray`；严格读取 counted R-Z boundary text，返回独立 `(N,2) float64` 米制边界，并复用统一边界几何验证与方向规范化。未来 multi-array Reader 必须作为独立候选职责处理，不得放宽旧单 block 契约 | 创建 `Mesh2D` 或 OFT Domain；调用 OFT/Triangle；读取 GFile；调用 `gfile_reader`；返回 `GFileData`；组合参考几何；调用 Plotter；判断物理语义；平滑、重采样、排序、全局去重或缩放；使用 pandas |
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
-| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary。未来 multi-array 路径只接收已经完成基础检查、轻量包含推导和显式 ID/dx 解析的 Region plan | 配置解析；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；根据 LCFS 改变 Domain；自行猜测包含树、Region ID、物理名称或 dx 顺序 |
+| `src/linkmesh/mesher/oft_adapter.py` | 构造 OFT Domain；调用唯一 Triangle 底座生成 initial Mesh2D；规范化 OFT 输出；受控读取 outer Region 回写边界；`array_file` 路径只接收实际 array boundary；multi-array 路径只接收完成基础检查、轻量包含推导和显式 ID/dx 解析的 Region plan | 配置解析；transition profile 或低层 refinement ownership；复制 OFT 算法；读取禁止的 OFT 私有结构；写文件；接收参考 `GFileData`；感知 `plot_lcfs`；自行猜测包含树、Region ID、物理名称或 dx 顺序 |
+| `src/linkmesh/mesher/triangle_refinement.py` | 【APPROVED / NOT IMPLEMENTED】窄职责内部模块：从 initial/current Mesh2D 提取外边界与跨 Region PSLG、计算 interface 距离和指数 profile、构造逐 triangle 面积上界、调用同一 OFT 26.6 `liboft_triangle.so` 的 `rpqazQ`、管理 native ownership、执行有限迭代并返回全新 final Mesh2D | 读取配置或业务文件；创建 OFT Domain；修改 Mesh2D 字段；保存 native pointer；调用 Writer/Plotter/PUMI；复制 Triangle 算法；引入第二剖分器 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
@@ -428,6 +460,16 @@ TXT Writer 与 SMB Writer 必须接收同一个 build result，不得分别提�
 - nodes、triangles 和由 triangles 确定性派生的唯一 mesh edges 使用一套全局
   0-based topology。Region 不拥有局部节点编号；共享界面节点和 mesh edge 不复制。
 - 三角形不得有重复顶点、越界索引或绝对面积不大于 `1e-12`。
+- `Mesh2D` 不保存 effective dx、Triangle native pointer、`trianglearealist`、
+  refinement 迭代状态或 transition profile。
+- regions 配置产生的 `resolved_dx` 由编排层显式传给 refinement，不得从实际面积、
+  PNG、Region 名称、`physical_label`、technical role 或 Region ID 数值反推。
+- refinement 返回全新的 `Mesh2D`，不得就地修改 initial `Mesh2D`；最终 arrays
+  均由 Python 独立拥有，`outer_boundary` 保留为输入对象的独立副本。
+- 当前 `boundary_segments`、`boundary_markers`、`node_markers` 是安全空数组兼容字段，
+  不表达正式边界 topology 或 marker 语义。refinement 输出继续为它们分别创建独立的
+  `(0,2)`/`(0,)` `int32` 空数组；实际 refinement PSLG 和 native markers 只在低层
+  调用及迭代期间存在，不写入这些兼容字段。
 
 ### 4.2 OFT/Triangle 与区域语义
 
@@ -550,9 +592,251 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `_resampled_points` 写回时机和语义；
 - `build_mesh()` 默认 `merge_thresh`；
 - Triangle 输入数据流；
-- 真实 GFile、HDF5、PNG 和相邻回归。
+- 真实 GFile、HDF5、PNG 和相邻回归；
+- `liboft_triangle.so` 的 Triangle 版本、ABI、编译宏、动态导出、ownership 和
+  `rpqazQ` 行为。
 
 不得把 OFT 26.6 私有实现假定为跨版本公共 API。
+
+### 4.6 多区域 transition refinement 契约
+
+状态：
+
+- 专项调查：**COMPLETED**；
+- Triangle 1.6 静态源码契约：**CONFIRMED**；
+- native ABI 与 ownership：**CONFIRMED**；
+- `triangulate`/`trifree` 运行时导出：**CONFIRMED**；
+- 动态依赖：**CHECKED / COMPLETE**；
+- 可行性：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**；
+- `transition_width` 与低层 Adapter：**APPROVED / NOT IMPLEMENTED**；
+- 真实 `rpqazQ`：**NOT RUN**；
+- attributes、PSLG、W 效果与有限迭代：**PENDING**；
+- M3D-C1 稳定性：**PENDING CONSUMER VALIDATION**。
+
+#### 4.6.1 参数与编排
+
+`regions generate` 正式新增：
+
+```text
+--transition-width FLOAT
+```
+
+以及：
+
+```toml
+[regions.mesh]
+transition_width = <float>
+```
+
+规则：
+
+1. 单位 m，内建默认 `0.0`，未提供等价于 `0.0`。
+2. `0.0` 关闭 refinement；正有限值启用；负值、NaN、Inf 在配置阶段拒绝。
+3. 只属于 `regions generate`；`regions inspect` 不接受。
+4. 适用于 `mesh_only`、`trimeg`、`m3dc1`。
+5. 优先级为内建默认值 < TOML < 显式 CLI。
+6. 不增加 Region 级 W、profile、minimum-angle、max-iterations、Triangle option
+   或 native library path 参数。
+7. initial Mesh2D 只生成一次；W>0 时 refinement 一次编排为 final Mesh2D；全部
+   Plotter 和 Writer 只消费该 final Mesh2D。
+8. W=0 不导入或调用低层 refinement，不改变现有结果。
+
+#### 4.6.2 interface、粗细侧与距离
+
+transition source 仅为全局无向 mesh edge 中 incidence 恰为 2、两侧 triangle
+Region ID 不同且 effective dx 不同的内部 interface。
+
+- incidence=1 是计算域外边界，不产生 transition，但必须进入 PSLG；
+- incidence>2 拒绝；
+- 同 Region 内部 edge 不参与；
+- effective dx 使用配置规范化后的值精确相等判断；
+- dx 较大者为粗侧，较小者为细侧；
+- `hf=min(dx_a,dx_b)`，`hc=max(dx_a,dx_b)`；
+- transition 只作用于粗侧 Region；
+- 不使用 `physical_label`、颜色、`curve_id`、technical role、坐标接近或最近邻
+  恢复 Region identity。
+
+对粗侧 triangle K 和 interface I：
+
+```text
+d(K,I) =
+  K 的 centroid 到 I 全部实际共形 mesh segments 的最短欧氏距离
+```
+
+d 的单位为 m。interface 来自当前 Mesh2D topology；不得使用原始 curve corners、
+最近 mesh node、graph 层数或 circumcenter，不引入 Shapely/GEOS。实现必须确定性，
+允许纯 NumPy 分块。一个粗 Region 受多个 interfaces 影响时分别计算。
+
+#### 4.6.3 profile 与逐 triangle 面积
+
+正式指数 profile：
+
+```text
+h(d) = hf * (hc / hf)^(min(d / W, 1))
+```
+
+其语义为 `h(0)=hf`、`d>=W` 时 `h=hc`，并截断到 `[hf,hc]`。同一 triangle 的
+多个 interface 候选取最小值，Region 基准尺寸也是上界；refinement 只细化，不请求
+coarsening。
+
+```text
+h_target(K) = min(h_region, all applicable h_i(K))
+Amax(K) = h_target(K)^2 / 2
+```
+
+`trianglearealist` 必须为与当前 triangle 顺序一一对应的 `(T,)`、C-contiguous、
+有限、严格正 `float64` 数组。不得使用 Triangle 支持的零或负 area sentinel。
+
+#### 4.6.4 低层 Triangle Adapter 与输入
+
+低层实现固定新增于：
+
+```text
+src/linkmesh/mesher/triangle_refinement.py
+```
+
+它复用 OFT 实际加载的 `liboft_triangle.so`，调用 `triangulate()` 和 `trifree()`。
+版本身份锁定为 OFT 26.6、Triangle 1.6、`REAL=double`、`VOID=void`、
+`TRILIBRARY`、`ANSI_DECLARATORS`、`NO_TIMER`。
+
+首版 option string 固定为：
+
+```text
+rpqazQ
+```
+
+含义：
+
+- `r`：refine 已有 mesh；
+- `p`：保护 PSLG；
+- `q`：Triangle 裸 q，默认 20° 最小角；
+- `a`：读取逐 input-triangle area constraints；
+- `z`：0-based；
+- `Q`：quiet。
+
+不使用 `A`。用户不得修改 option string 或 minimum angle。不得修改、重编或分叉
+OFT/Triangle，不复制 Triangle 算法，不引入第二个 Triangle 包。
+
+每轮正式输入：
+
+- `pointlist (N,2)` C-contiguous `float64`；
+- `trianglelist (T,3)` C-contiguous `int32`；
+- `numberofcorners=3`；
+- `triangleattributelist (T,1)` C-contiguous `float64`；
+- `numberoftriangleattributes=1`；
+- `trianglearealist (T,)` C-contiguous `float64`；
+- `segmentlist (S,2)` C-contiguous `int32`；
+- point/segment markers 可为 NULL；
+- holelist/regionlist 为 NULL，count 为 0；
+- 全部索引 0-based。
+
+PSLG 必须且只需包含全部 incidence=1 外边界 edges 与全部 cross-Region
+incidence=2 interface edges。不得提交普通 Region 内部 edges，不得省略内部
+interfaces，不得从原始输入 curve 重建。下一轮必须使用上一轮输出的拆分后
+`segmentlist`。
+
+#### 4.6.5 Region attributes 与 PSLG
+
+每个 input triangle 的唯一 attribute 是原始 Region ID，以 `(T,1) float64` 输入
+native，不重编号、不压缩、不排序、不 `+1`。子 triangle 依靠 Triangle 原生
+attribute 传播；不同 Region interface 必须作为 PSLG，防止普通 edge flip 跨 Region
+混合 attributes。
+
+输出 attribute 必须有限且具有整数语义，转换为 `(T,) int32` 后，其 Region ID
+集合必须与输入完全一致且每个 Region 非空。未知、非整数、缺失或集合变化直接失败；
+不得几何回查、最近邻恢复或猜测。PSLG 可被共形拆分，但 triangle 不得跨越 PSLG。
+
+#### 4.6.6 Native ownership
+
+1. input NumPy arrays 由 Python 拥有，并保持强引用到调用结束。
+2. output pointers 调用前全部初始化为 NULL。
+3. 成功时立即把所需输出复制为 Python-owned arrays。
+4. `finally` 中使用同一 `liboft_triangle.so` 的 `trifree()` 释放 native allocations；
+   禁止调用任意 libc `free()`。
+5. 不释放 input-owned arrays，不释放 `out.holelist/out.regionlist` aliases。
+6. 每个 pointer 最多释放一次，释放后清空 ctypes pointer。
+7. native 非零返回时不读取不可信 shape，只清理已分配输出。
+8. `rpqazQ` 必须处理 `pointlist`、`pointmarkerlist`、`trianglelist`、
+   `triangleattributelist`、`segmentlist`、`segmentmarkerlist`。
+9. native pointer 不得进入 Mesh2D；一轮完整释放后才可开始下一轮。
+10. 清理或 ownership 无法闭合时失败。
+
+#### 4.6.7 有限迭代
+
+首版最多执行 **3 轮** refinement。该值是 LinkMesh P0 工程裁决，不是 Triangle
+格式事实，不向用户暴露；修改必须蓝图先行。
+
+```text
+initial/current Mesh2D
+  → 提取 PSLG/interfaces
+  → 计算 d/h/Amax
+  → rpqazQ
+  → copy + trifree
+  → 验证输出
+  → 重新提取并计算
+  → 成功或达到 3 轮上限
+```
+
+成功至少要求重新计算后不存在违反正面积上界的 triangle，并且 attributes、PSLG、
+shape、index 和 topology 验证通过。面积比较使用：
+
+```text
+area <= Amax + 64 * eps(float64) * max(1.0, abs(area), abs(Amax))
+```
+
+失败条件：
+
+- 达到 3 轮仍有 violations；
+- native 非零返回；
+- mesh 的 nodes/triangles 数量均不变但仍有 violations；
+- Region 集合改变、attribute 失去整数语义或 Region 为空；
+- PSLG/interface 丢失、non-manifold、裂缝；
+- output shape、有限性或索引无效；
+- 清理失败或 ownership 不闭合。
+
+q 由 Triangle 执行。LinkMesh 可计算角度与 shape 指标作为诊断，但不得把输入 PSLG
+固有小角自动视为业务失败。
+
+#### 4.6.8 Final Mesh2D 与生成侧指标
+
+final Mesh2D 必须满足：
+
+- nodes `(N,2) float64`、triangles `(T,3)` 整数 0-based、
+  region_ids `(T,) int32`；
+- arrays 独立且有限；
+- triangle 节点互异、无重复 triangle、绝对面积非退化；
+- edge incidence 仅为 1 或 2，interface 共形；
+- Region 集合不变且每个 Region 非空；
+- `outer_boundary` 为 initial Mesh2D 正式边界的独立副本；
+- 三个兼容 marker 字段为各自独立的正式空数组；
+- 不保存 native pointer、effective dx、area constraints、profile 或迭代状态。
+
+生成侧至少记录：
+
+- minimum/maximum angle；
+- `4*sqrt(3)*A/(l1^2+l2^2+l3^2)` shape quality；
+- `sqrt(2*A)` equivalent size；
+- 相邻 triangle size ratio；
+- 按 d 分箱的尺寸统计、目标 profile 和实际 transition thickness；
+- nodes/triangles 增长、迭代轮数和运行时间。
+
+结构正确、形状改善和 W 离散逼近属于生成侧证据。M3D-C1 加载、时间推进、数值
+稳定性和物理正确性必须分别由消费端直接验证，不得由 refinement 或 PNG 外推。
+
+#### 4.6.9 最小实施范围
+
+下一轮最小候选修改：
+
+- `src/linkmesh/mesher/triangle_refinement.py`（新建）；
+- `src/linkmesh/regions.py`；
+- `src/linkmesh/config.py`；
+- `src/linkmesh/cli.py`；
+- 对应现有测试文件；
+- `src/linkmesh/mesher/oft_adapter.py` 仅在复用已加载 native library 或既有结构定义
+  必需且不破坏其初始网格职责时做最小接线。
+
+原则上不修改 `src/linkmesh/mesh.py`、regions map schema、requirements、Plotter、
+所有 Writer、native SCOREC helper、OFT/Triangle 源码、release 或 examples。
 
 ---
 
@@ -1256,6 +1540,7 @@ hdf5 = "mesh.h5"
 
 [regions.mesh]
 mesh_dx = 0.08
+transition_width = 0.0
 
 [regions.mesh.region_dx]
 1 = 0.03
@@ -1280,7 +1565,9 @@ mesh_dx = 0.08
    不变。
 10. `[regions.mesh.region_dx]` 是最终 Region ID 到浮点 dx 的显式映射，不允许位置
     列表。
-11. 配置层不读取边界或 map 内容，不构造 `Mesh2D`，不调用 OFT/Writer，也不打开或
+11. `[regions.mesh].transition_width` 为有限非负浮点数，默认 `0.0`；显式 CLI
+    `--transition-width` 覆盖 TOML。该字段只属于 generate，inspect 不接受。
+12. 配置层不读取边界或 map 内容，不构造 `Mesh2D`，不调用 OFT/Writer，也不打开或
     创建 HDF5。
 
 #### 5.7B.7 regions map 和 dx
@@ -1454,7 +1741,7 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 | 任意 | `single_region` | `flux_surface` | 实现候选，未实现，待 OFT 26.6 只读侦察 |
 | `regions generate --target mesh_only` | 多区域 | `multi_array_file` | IMPLEMENTED；N-region Mesh2D STRUCTURALLY CHECKED，PNG GENERATED 并人工复核 |
 | `regions generate --target trimeg` | 多区域 | `multi_array_file` | IMPLEMENTED；真实 HDF5 GENERATED，User 确认自动测试和实际检测通过；标准 MATLAB/TRIMEG 加载 PENDING |
-| `regions generate --target m3dc1` | 多区域 | `multi_array_file` | DESIGNED / NOT IMPLEMENTED；要求 model、smb，禁止 hdf5；内部 tags 自动生成 |
+| `regions generate --target m3dc1` | 多区域 | `multi_array_file` | IMPLEMENTED；`case_002` TXT/SMB/PNG GENERATED，TXT+SMB DELIVERED，M3D-C1 LOADED PENDING |
 | 旧无子命令入口 | 任意 | `multi_array_file` | 当前未开放；不得回退旧 `array_file` 或 nested |
 | `m3dc1` | `single_region` | `first_wall` / `flux_surface` | 未开放 |
 | `m3dc1` | `nested_three_region` | 任意 | 禁止 |
@@ -2119,13 +2406,15 @@ fallback。两个独立 probes 停止维护；正式 helper 的目标环境构�
 | 教程三 face 拓扑 | **CONFIRMED** |
 | exchange 多 face record 表达能力 | **CONFIRMED** |
 | 原始 curve corner exact-match | **REJECTED BY DIRECT PROBE** |
-| topology-driven classification | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
-| schema v2 | **DESIGNED / APPROVED / NOT IMPLEMENTED** |
-| multi-face ModelSpec / build result | **DESIGNED / NOT IMPLEMENTED** |
-| helper 多 face 支持 | **NOT IMPLEMENTED** |
-| `regions generate target=m3dc1` | **DESIGNED / NOT IMPLEMENTED** |
-| 多区域 TXT+SMB | **NOT GENERATED** |
-| 同门消费验证 | **PENDING** |
+| topology-driven classification | **IMPLEMENTED** |
+| schema v2 | **IMPLEMENTED** |
+| multi-face ModelSpec / build result | **IMPLEMENTED** |
+| helper v1/v2 与多 face 支持 | **IMPLEMENTED** |
+| `regions generate target=m3dc1` | **IMPLEMENTED** |
+| `case_002` model TXT / rank-0 SMB / PNG | **GENERATED** |
+| `case_002` TXT+SMB 同门交付 | **DELIVERED** |
+| M3D-C1 加载 | **PENDING** |
+| 初始化、时间推进、稳定性与物理验证 | **PENDING** |
 
 ---
 
@@ -2900,7 +3189,9 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 ### 10.4 当前禁止事项
 
 - 第二网格引擎、三维网格、环向或并行分区；
-- 未经调查和蓝图批准的局部加密、动态自适应或磁面对齐；
+- 未经本蓝图批准的局部加密；求解过程动态自适应或磁面对齐；
+- 把已批准但尚未实现、尚未运行的 transition refinement 写成 PASSED；
+- 允许用户修改 Triangle option、minimum angle、max iterations 或 native 库路径；
 - 未经生成侧探针和后续 C1/classification 调查批准的 LinkMesh M3D-C1 多区域或多
   geometric face；M3D-C1 求解器本身具备多区域模拟能力不自动开放 LinkMesh 输出；
 - 在 schema v2 获 User 批准且 native probe 前修改 helper exchange schema；
@@ -3048,9 +3339,19 @@ SMB、classification 或 helper exchange。当前授权 TRIMEG Loader 和正式 
 `linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，不得提前写死
 未经验证的相对目录、RPATH、临时解压方案或系统库兼容性。
 
-OFT 单区域静态空间变密度、Triangle refinement、多区域界面拓扑、M3D-C1 C1 与
-多区域/多 face 兼容性调查继续保留为 P2。动态自适应、磁面对齐、M3D-C1 多区域、
-多 face、三维和并行分区均未开放。
+OFT/Triangle transition refinement 专项调查已完成。Triangle 1.6 静态契约、
+native ABI、ownership、目标服务器 `triangulate`/`trifree` 动态导出和动态依赖均已
+确认，源码和动态导出阻塞已经解除；最终裁决为
+**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**。`transition_width`
+及第 4.6 节技术契约已批准，但业务仍为 **NOT IMPLEMENTED**，真实 `rpqazQ` 为
+**NOT RUN**，attributes/PSLG、W 效果和有限迭代仍为 **PENDING**。
+
+M3D-C1 multi-face build result、schema v2、helper v1/v2 和
+`regions generate target=m3dc1` 已实现。`case_002` model TXT、rank-0 SMB 和 PNG
+已生成，TXT+SMB 已交付同门；该证据只到 **GENERATED / DELIVERED**，M3D-C1
+**LOADED** 仍为 **PENDING**，初始化、时间推进、稳定性和物理正确性均不得外推。
+
+动态自适应、磁面对齐、三维和并行分区仍未开放。
 
 v4.3 Release 迁移只修改正式蓝图、仓库导读、发布基础设施、唯一最终用户 README、
 发布专项静态回归和必要 Git 排除规则。未修改业务源码、native helper、业务测试、
