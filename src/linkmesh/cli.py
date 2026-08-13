@@ -687,6 +687,98 @@ def _run(args: argparse.Namespace) -> None:
             print(f"[LinkMesh] PNG 路径：{plot_str}")
 
 
+def _format_optional_metric(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.6g}"
+
+
+def _print_mesh_quality_report(report) -> None:
+    """Print one compact human-readable report without defining a wire format."""
+    print("Mesh quality:")
+    print(
+        f"  nodes={report.node_count}, triangles={report.triangle_count}, "
+        f"Regions={report.region_count}"
+    )
+    print(
+        "  angle [degree]: "
+        f"min={report.minimum_angle:.6g}, "
+        f"P01={report.minimum_angle_p01:.6g}, "
+        f"P05={report.minimum_angle_p05:.6g}, "
+        f"max={report.maximum_angle:.6g}"
+    )
+    print(
+        "  shape Q [-]: "
+        f"min={report.minimum_shape_quality:.6g}, "
+        f"P01={report.shape_quality_p01:.6g}, "
+        f"P05={report.shape_quality_p05:.6g}, "
+        f"median={report.median_shape_quality:.6g}"
+    )
+    print(
+        "  equivalent size [m]: "
+        f"min={report.minimum_equivalent_size:.6g}, "
+        f"median={report.median_equivalent_size:.6g}, "
+        f"max={report.maximum_equivalent_size:.6g}"
+    )
+    print(
+        "  adjacent size ratio [-]: "
+        f"max={_format_optional_metric(report.maximum_adjacent_size_ratio)}, "
+        f"P95={_format_optional_metric(report.adjacent_size_ratio_p95)}, "
+        f"P99={_format_optional_metric(report.adjacent_size_ratio_p99)}"
+    )
+    print(
+        "  structure counts: "
+        f"degenerate={report.degenerate_triangle_count}, "
+        f"duplicate={report.duplicate_triangle_count}, "
+        f"non-manifold={report.non_manifold_edge_count}"
+    )
+
+    diagnostics = report.refinement
+    if (
+        diagnostics is None
+        or not diagnostics.enabled
+        or diagnostics.transition_interface_count == 0
+    ):
+        return
+
+    node_growth = (
+        diagnostics.final_node_count / diagnostics.initial_node_count
+    )
+    triangle_growth = (
+        diagnostics.final_triangle_count
+        / diagnostics.initial_triangle_count
+    )
+    print("Transition quality:")
+    print(
+        f"  W [m]={diagnostics.transition_width:.6g}, "
+        f"interfaces={diagnostics.transition_interface_count}, "
+        f"iterations={diagnostics.iteration_count}"
+    )
+    print(
+        "  mesh growth: "
+        f"nodes={diagnostics.initial_node_count}"
+        f"->{diagnostics.final_node_count} ({node_growth:.6g}x), "
+        f"triangles={diagnostics.initial_triangle_count}"
+        f"->{diagnostics.final_triangle_count} ({triangle_growth:.6g}x)"
+    )
+    print(
+        f"  affected coarse triangles="
+        f"{diagnostics.affected_coarse_triangle_count}, "
+        f"maximum area excess="
+        f"{diagnostics.final_maximum_area_excess:.6g}, "
+        f"violations={diagnostics.final_violating_triangle_count}"
+    )
+    for interface in diagnostics.interfaces:
+        print(
+            f"  interface Regions={interface.region_ids}: "
+            f"fine={interface.fine_region_id} "
+            f"(hf={interface.fine_dx:.6g} m), "
+            f"coarse={interface.coarse_region_id} "
+            f"(hc={interface.coarse_dx:.6g} m), "
+            f"W={interface.transition_width:.6g} m, "
+            f"affected={interface.affected_coarse_triangle_count}, "
+            f"maximum area excess={interface.maximum_area_excess:.6g}"
+        )
+
+
 def _run_regions_inspect(args: argparse.Namespace) -> None:
     """Execute the first-batch inspect chain without Triangle generation."""
     overrides = config_mod.RegionsInspectOverrides(
@@ -782,18 +874,14 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
     )
 
     initial_mesh = generate_multi_region_mesh(numbered_plan, resolved_dx)
-    if cfg.transition_width > 0.0:
-        from linkmesh.mesher.triangle_refinement import (
-            refine_transition_mesh,
-        )
+    from linkmesh.mesher.triangle_refinement import refine_transition_mesh
 
-        mesh = refine_transition_mesh(
-            initial_mesh,
-            resolved_dx,
-            cfg.transition_width,
-        )
-    else:
-        mesh = initial_mesh
+    refinement_result = refine_transition_mesh(
+        initial_mesh,
+        resolved_dx,
+        cfg.transition_width,
+    )
+    mesh = refinement_result.mesh
 
     counts = {
         region_id: int(np.count_nonzero(mesh.region_ids == region_id))
@@ -801,6 +889,15 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
     }
     if any(count == 0 for count in counts.values()):
         raise ValueError("完整网格中至少一个 map Region 没有三角形")
+
+    if cfg.verbose:
+        from linkmesh.mesh_quality import calculate_mesh_quality
+
+        quality_report = calculate_mesh_quality(
+            mesh,
+            refinement_result.diagnostics,
+        )
+        _print_mesh_quality_report(quality_report)
 
     if cfg.target == "trimeg":
         from linkmesh.writers.hdf5_writer import write_hdf5

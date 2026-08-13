@@ -46,6 +46,46 @@ class EdgeTopology:
     interfaces: tuple[InterfaceConstraint, ...]
 
 
+@dataclass(frozen=True)
+class InterfaceRefinementDiagnostics:
+    """Immutable final diagnostics for one different-dx Region interface."""
+
+    region_ids: tuple[int, int]
+    fine_region_id: int
+    coarse_region_id: int
+    fine_dx: float
+    coarse_dx: float
+    transition_width: float
+    affected_coarse_triangle_count: int
+    maximum_area_excess: float
+
+
+@dataclass(frozen=True)
+class RefinementDiagnostics:
+    """Immutable bounded-refinement diagnostics for verbose reporting."""
+
+    enabled: bool
+    transition_width: float
+    iteration_count: int
+    initial_node_count: int
+    initial_triangle_count: int
+    final_node_count: int
+    final_triangle_count: int
+    transition_interface_count: int
+    affected_coarse_triangle_count: int
+    final_violating_triangle_count: int | None
+    final_maximum_area_excess: float | None
+    interfaces: tuple[InterfaceRefinementDiagnostics, ...]
+
+
+@dataclass(frozen=True)
+class RefinementResult:
+    """The unique final mesh and its immutable transition diagnostics."""
+
+    mesh: Mesh2D
+    diagnostics: RefinementDiagnostics
+
+
 def _owned_mesh_copy(mesh: Mesh2D) -> Mesh2D:
     """Return an equivalent Mesh2D whose arrays are all independently owned."""
     outer_boundary = (
@@ -467,6 +507,142 @@ def _area_violations(mesh: Mesh2D, area_bounds: np.ndarray) -> np.ndarray:
     return areas > area_bounds + tolerance
 
 
+def _maximum_area_excess(
+    areas: np.ndarray,
+    area_bounds: np.ndarray,
+) -> float:
+    excess = np.maximum(0.0, areas / area_bounds - 1.0)
+    if not np.all(np.isfinite(excess)):
+        raise ValueError("refinement area excess 含 NaN/Inf")
+    return float(np.max(excess, initial=0.0))
+
+
+def _refinement_diagnostics(
+    *,
+    initial_mesh: Mesh2D,
+    final_mesh: Mesh2D,
+    effective_dx: Mapping[int, float],
+    transition_width: float,
+    iteration_count: int,
+    topology: EdgeTopology,
+) -> RefinementDiagnostics:
+    """Build final diagnostics from the same topology and area rules."""
+    if transition_width <= 0.0 or not topology.interfaces:
+        return RefinementDiagnostics(
+            enabled=False,
+            transition_width=float(transition_width),
+            iteration_count=0,
+            initial_node_count=initial_mesh.n_nodes,
+            initial_triangle_count=initial_mesh.n_triangles,
+            final_node_count=final_mesh.n_nodes,
+            final_triangle_count=final_mesh.n_triangles,
+            transition_interface_count=0,
+            affected_coarse_triangle_count=0,
+            final_violating_triangle_count=None,
+            final_maximum_area_excess=None,
+            interfaces=(),
+        )
+
+    centroids = np.mean(final_mesh.nodes[final_mesh.triangles], axis=1)
+    areas = _triangle_areas(final_mesh)
+    area_bounds = _triangle_area_bounds(
+        final_mesh,
+        effective_dx,
+        transition_width,
+        topology,
+    )
+    violations = _area_violations(final_mesh, area_bounds)
+
+    affected_indices: set[int] = set()
+    interface_diagnostics: list[InterfaceRefinementDiagnostics] = []
+    for interface in topology.interfaces:
+        coarse_indices = np.flatnonzero(
+            final_mesh.region_ids == interface.coarse_region_id
+        )
+        distances = _centroid_to_segments_distance(
+            centroids[coarse_indices],
+            final_mesh.nodes,
+            interface.segments,
+        )
+        affected_mask = distances < transition_width
+        affected = coarse_indices[affected_mask]
+        affected_indices.update(int(index) for index in affected.tolist())
+
+        if affected.size:
+            exponent = np.minimum(
+                distances[affected_mask] / transition_width,
+                1.0,
+            )
+            candidate_size = interface.fine_dx * np.power(
+                interface.coarse_dx / interface.fine_dx,
+                exponent,
+            )
+            candidate_bounds = 0.5 * candidate_size * candidate_size
+            maximum_excess = _maximum_area_excess(
+                areas[affected],
+                candidate_bounds,
+            )
+        else:
+            maximum_excess = 0.0
+
+        interface_diagnostics.append(
+            InterfaceRefinementDiagnostics(
+                region_ids=tuple(
+                    sorted(
+                        (
+                            interface.fine_region_id,
+                            interface.coarse_region_id,
+                        )
+                    )
+                ),
+                fine_region_id=interface.fine_region_id,
+                coarse_region_id=interface.coarse_region_id,
+                fine_dx=interface.fine_dx,
+                coarse_dx=interface.coarse_dx,
+                transition_width=float(transition_width),
+                affected_coarse_triangle_count=int(affected.size),
+                maximum_area_excess=maximum_excess,
+            )
+        )
+
+    return RefinementDiagnostics(
+        enabled=True,
+        transition_width=float(transition_width),
+        iteration_count=iteration_count,
+        initial_node_count=initial_mesh.n_nodes,
+        initial_triangle_count=initial_mesh.n_triangles,
+        final_node_count=final_mesh.n_nodes,
+        final_triangle_count=final_mesh.n_triangles,
+        transition_interface_count=len(topology.interfaces),
+        affected_coarse_triangle_count=len(affected_indices),
+        final_violating_triangle_count=int(np.count_nonzero(violations)),
+        final_maximum_area_excess=_maximum_area_excess(areas, area_bounds),
+        interfaces=tuple(interface_diagnostics),
+    )
+
+
+def _result(
+    *,
+    initial_mesh: Mesh2D,
+    final_mesh: Mesh2D,
+    effective_dx: Mapping[int, float],
+    transition_width: float,
+    iteration_count: int,
+    topology: EdgeTopology,
+) -> RefinementResult:
+    return RefinementResult(
+        mesh=final_mesh,
+        diagnostics=_refinement_diagnostics(
+            initial_mesh=initial_mesh,
+            final_mesh=final_mesh,
+            effective_dx=effective_dx,
+            transition_width=transition_width,
+            iteration_count=iteration_count,
+            topology=topology,
+        ),
+    )
+
+
 def _canonical_segment_set(segments: np.ndarray) -> set[tuple[int, int]]:
     canonical: set[tuple[int, int]] = set()
     for raw_first, raw_second in np.asarray(segments):
@@ -706,8 +882,8 @@ def refine_transition_mesh(
     mesh: Mesh2D,
     dx_by_region_id: Mapping[int, float],
     transition_width: float,
-) -> Mesh2D:
-    """Return the unique final Mesh2D after bounded transition refinement.
+) -> RefinementResult:
+    """Return the unique final Mesh2D and immutable refinement diagnostics.
 
     A zero width or absence of different-dx interfaces returns an equivalent
     independently owned Mesh2D without loading or calling the native runtime.
@@ -729,12 +905,17 @@ def refine_transition_mesh(
         current.region_ids,
         dx_by_region_id,
     )
-    if width == 0.0:
-        return current
-
+    initial = _owned_mesh_copy(current)
     topology = _extract_edge_topology(current, effective_dx)
-    if not topology.interfaces:
-        return current
+    if width == 0.0 or not topology.interfaces:
+        return _result(
+            initial_mesh=initial,
+            final_mesh=current,
+            effective_dx=effective_dx,
+            transition_width=width,
+            iteration_count=0,
+            topology=topology,
+        )
 
     native_segments = np.array(
         topology.pslg_segments,
@@ -751,7 +932,14 @@ def refine_transition_mesh(
             topology,
         )
         if not np.any(_area_violations(current, area_bounds)):
-            return current
+            return _result(
+                initial_mesh=initial,
+                final_mesh=current,
+                effective_dx=effective_dx,
+                transition_width=width,
+                iteration_count=refinement_round - 1,
+                topology=topology,
+            )
 
         previous_size = (current.n_nodes, current.n_triangles)
         (
@@ -796,7 +984,14 @@ def refine_transition_mesh(
         )
         violations = _area_violations(candidate, next_bounds)
         if not np.any(violations):
-            return candidate
+            return _result(
+                initial_mesh=initial,
+                final_mesh=candidate,
+                effective_dx=effective_dx,
+                transition_width=width,
+                iteration_count=refinement_round,
+                topology=topology,
+            )
 
         current_size = (candidate.n_nodes, candidate.n_triangles)
         if current_size == previous_size:

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from linkmesh import mesh_quality
 from linkmesh.mesher import oft_adapter
 from linkmesh.mesher.oft_adapter import (
     _OUTER_REGION_ATTR,
@@ -175,10 +176,14 @@ def test_equal_dx_and_zero_width_do_not_call_native(monkeypatch):
     )
 
     assert native.call_count == 0
-    assert np.array_equal(equal_dx.nodes, mesh.nodes)
-    assert np.array_equal(zero_width.triangles, mesh.triangles)
-    assert not np.shares_memory(equal_dx.nodes, mesh.nodes)
-    assert not np.shares_memory(zero_width.triangles, mesh.triangles)
+    assert np.array_equal(equal_dx.mesh.nodes, mesh.nodes)
+    assert np.array_equal(zero_width.mesh.triangles, mesh.triangles)
+    assert not np.shares_memory(equal_dx.mesh.nodes, mesh.nodes)
+    assert not np.shares_memory(zero_width.mesh.triangles, mesh.triangles)
+    assert equal_dx.diagnostics.enabled is False
+    assert zero_width.diagnostics.enabled is False
+    assert zero_width.diagnostics.iteration_count == 0
+    assert zero_width.diagnostics.interfaces == ()
 
 
 def test_transition_refinement_preserves_input_and_owned_final_mesh(monkeypatch):
@@ -205,9 +210,119 @@ def test_transition_refinement_preserves_input_and_owned_final_mesh(monkeypatch)
     assert np.array_equal(mesh.nodes, original_nodes)
     assert np.array_equal(mesh.triangles, original_triangles)
     assert np.array_equal(mesh.region_ids, original_regions)
-    assert not np.shares_memory(result.nodes, mesh.nodes)
-    assert not np.shares_memory(result.triangles, mesh.triangles)
-    assert not np.shares_memory(result.region_ids, mesh.region_ids)
+    assert not np.shares_memory(result.mesh.nodes, mesh.nodes)
+    assert not np.shares_memory(result.mesh.triangles, mesh.triangles)
+    assert not np.shares_memory(result.mesh.region_ids, mesh.region_ids)
+    assert result.diagnostics.enabled is True
+    assert result.diagnostics.iteration_count == 0
+    assert result.diagnostics.transition_interface_count == 1
+    assert result.diagnostics.final_violating_triangle_count == 0
+    assert result.diagnostics.interfaces[0].fine_region_id == 1
+    assert result.diagnostics.interfaces[0].coarse_region_id == 2
+
+
+def test_mesh_quality_known_triangles_percentiles_and_immutability():
+    equilateral_height = np.sqrt(3.0) / 2.0
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.5, equilateral_height],
+                [2.0, 0.0],
+                [2.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array(
+            [[0, 1, 2], [1, 3, 4]],
+            dtype=np.int32,
+        ),
+        region_ids=np.array([1, 1], dtype=np.int32),
+    )
+    original_nodes = mesh.nodes.copy()
+    original_triangles = mesh.triangles.copy()
+
+    report = mesh_quality.calculate_mesh_quality(mesh)
+
+    assert report.minimum_shape_quality == pytest.approx(
+        2.0 * np.sqrt(3.0) / 4.0
+    )
+    assert report.shape_quality_p01 <= report.shape_quality_p05
+    assert report.shape_quality_p05 <= report.median_shape_quality
+    assert report.minimum_angle == pytest.approx(45.0)
+    assert report.minimum_angle_p01 <= report.minimum_angle_p05
+    assert report.maximum_angle == pytest.approx(90.0)
+    assert report.minimum_equivalent_size == pytest.approx(
+        np.sqrt(np.sqrt(3.0) / 2.0)
+    )
+    assert report.maximum_equivalent_size == pytest.approx(1.0)
+    assert report.maximum_adjacent_size_ratio is None
+    assert report.adjacent_size_ratio_p95 is None
+    assert report.adjacent_size_ratio_p99 is None
+    assert np.array_equal(mesh.nodes, original_nodes)
+    assert np.array_equal(mesh.triangles, original_triangles)
+
+    with pytest.raises(
+        AttributeError,
+    ):
+        report.node_count = 99
+
+
+def test_mesh_quality_equilateral_shape_quality_is_one():
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.5, np.sqrt(3.0) / 2.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array([[0, 1, 2]], dtype=np.int32),
+        region_ids=np.array([1], dtype=np.int32),
+    )
+
+    report = mesh_quality.calculate_mesh_quality(mesh)
+
+    assert report.minimum_shape_quality == pytest.approx(1.0)
+    assert report.minimum_angle == pytest.approx(60.0)
+    assert report.maximum_angle == pytest.approx(60.0)
+    assert report.minimum_equivalent_size == pytest.approx(
+        np.sqrt(np.sqrt(3.0) / 2.0)
+    )
+
+
+def test_mesh_quality_adjacent_ratio_duplicate_and_non_manifold_counts():
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [2.0, 0.0],
+                [0.0, 2.0],
+                [0.0, -1.0],
+                [1.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array(
+            [
+                [0, 1, 2],
+                [1, 0, 3],
+                [0, 1, 4],
+                [2, 1, 0],
+            ],
+            dtype=np.int32,
+        ),
+        region_ids=np.array([1, 1, 2, 1], dtype=np.int32),
+    )
+
+    report = mesh_quality.calculate_mesh_quality(mesh)
+
+    assert report.maximum_adjacent_size_ratio is not None
+    assert report.maximum_adjacent_size_ratio >= 1.0
+    assert report.duplicate_triangle_count == 1
+    assert report.non_manifold_edge_count == 1
 
 
 def test_transition_topology_rejects_non_manifold_edge():

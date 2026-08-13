@@ -483,7 +483,13 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         region_ids=np.array([1, 1, 1, 2, 2, 2], dtype=np.int32),
     )
     generate = MagicMock(return_value=initial_mesh)
-    refine = MagicMock(return_value=final_mesh)
+    diagnostics = SimpleNamespace(enabled=True)
+    refine = MagicMock(
+        return_value=SimpleNamespace(
+            mesh=final_mesh,
+            diagnostics=diagnostics,
+        )
+    )
     plot = MagicMock()
 
     monkeypatch.setattr(
@@ -559,7 +565,7 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
     )
 
 
-def test_regions_generate_zero_transition_does_not_refine(
+def test_regions_generate_zero_transition_returns_disabled_result(
     monkeypatch,
     tmp_path,
 ):
@@ -591,7 +597,12 @@ def test_regions_generate_zero_transition_does_not_refine(
         n_triangles=3,
         region_ids=np.array([1, 1, 2], dtype=np.int32),
     )
-    refine = MagicMock()
+    refine = MagicMock(
+        return_value=SimpleNamespace(
+            mesh=mesh,
+            diagnostics=SimpleNamespace(enabled=False),
+        )
+    )
 
     monkeypatch.setattr(
         "linkmesh.readers.boundary_reader.read_multi_boundary_file",
@@ -650,12 +661,292 @@ def test_regions_generate_zero_transition_does_not_refine(
         )
     )
 
-    assert refine.call_count == 0
+    refine.assert_called_once_with(
+        mesh,
+        {1: 0.03, 2: 0.08},
+        0.0,
+    )
     plot.assert_called_once_with(
         mesh,
         records,
         str((tmp_path / "mesh.png").resolve()),
     )
+
+
+def test_regions_generate_verbose_quality_uses_final_mesh(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    records = (
+        SimpleNamespace(
+            region_id=1,
+            curve_id=2,
+            parent_region_id=2,
+            child_region_ids=(),
+            color="#D55E00",
+            physical_label="",
+        ),
+        SimpleNamespace(
+            region_id=2,
+            curve_id=1,
+            parent_region_id=0,
+            child_region_ids=(1,),
+            color="#0072B2",
+            physical_label="",
+        ),
+    )
+    initial_mesh = SimpleNamespace(
+        n_nodes=5,
+        n_triangles=3,
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+    final_mesh = SimpleNamespace(
+        n_nodes=7,
+        n_triangles=6,
+        region_ids=np.array([1, 1, 1, 2, 2, 2], dtype=np.int32),
+    )
+    diagnostics = SimpleNamespace(
+        enabled=True,
+        transition_interface_count=1,
+    )
+    refinement_result = SimpleNamespace(
+        mesh=final_mesh,
+        diagnostics=diagnostics,
+    )
+    quality_report = SimpleNamespace(
+        node_count=7,
+        triangle_count=6,
+        region_count=2,
+        minimum_angle=20.0,
+        minimum_angle_p01=21.0,
+        minimum_angle_p05=22.0,
+        maximum_angle=100.0,
+        minimum_shape_quality=0.4,
+        shape_quality_p01=0.45,
+        shape_quality_p05=0.5,
+        median_shape_quality=0.8,
+        minimum_equivalent_size=0.02,
+        median_equivalent_size=0.05,
+        maximum_equivalent_size=0.1,
+        maximum_adjacent_size_ratio=2.0,
+        adjacent_size_ratio_p95=1.8,
+        adjacent_size_ratio_p99=1.9,
+        degenerate_triangle_count=0,
+        duplicate_triangle_count=0,
+        non_manifold_edge_count=0,
+        refinement=SimpleNamespace(
+            enabled=True,
+            transition_width=0.12,
+            transition_interface_count=1,
+            iteration_count=2,
+            initial_node_count=5,
+            initial_triangle_count=3,
+            final_node_count=7,
+            final_triangle_count=6,
+            affected_coarse_triangle_count=3,
+            final_maximum_area_excess=0.0,
+            final_violating_triangle_count=0,
+            interfaces=(
+                SimpleNamespace(
+                    region_ids=(1, 2),
+                    fine_region_id=1,
+                    coarse_region_id=2,
+                    fine_dx=0.03,
+                    coarse_dx=0.08,
+                    transition_width=0.12,
+                    affected_coarse_triangle_count=3,
+                    maximum_area_excess=0.0,
+                ),
+            ),
+        ),
+    )
+    calculate = MagicMock(return_value=quality_report)
+    plot = MagicMock()
+
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        MagicMock(return_value=blocks),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.read_regions_map",
+        MagicMock(return_value=records),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.build_region_plan",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        MagicMock(return_value={1: 2, 2: 1}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.assign_final_region_ids",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.validate_plan_against_map",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.resolve_region_dx",
+        MagicMock(return_value={1: 0.03, 2: 0.08}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
+        MagicMock(return_value=initial_mesh),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        MagicMock(return_value=refinement_result),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesh_quality.calculate_mesh_quality",
+        calculate,
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_mesh",
+        plot,
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "generate",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "mesh.png",
+            "--mesh-dx",
+            "0.08",
+            "--region-dx",
+            "1=0.03",
+            "--transition-width",
+            "0.12",
+            "--verbose",
+        )
+    )
+
+    calculate.assert_called_once_with(final_mesh, diagnostics)
+    plot.assert_called_once_with(
+        final_mesh,
+        records,
+        str((tmp_path / "mesh.png").resolve()),
+    )
+    output = capsys.readouterr().out
+    assert "Mesh quality:" in output
+    assert "Transition quality:" in output
+    assert "angle [degree]" in output
+    assert "equivalent size [m]" in output
+
+
+def test_regions_generate_without_verbose_skips_quality(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    blocks = (
+        np.array([[0, 0], [0, 3], [3, 3], [3, 0]], dtype=float),
+        np.array([[1, 1], [1, 2], [2, 2], [2, 1]], dtype=float),
+    )
+    records = (
+        SimpleNamespace(
+            region_id=1,
+            curve_id=2,
+            parent_region_id=2,
+            child_region_ids=(),
+            color="#D55E00",
+            physical_label="",
+        ),
+        SimpleNamespace(
+            region_id=2,
+            curve_id=1,
+            parent_region_id=0,
+            child_region_ids=(1,),
+            color="#0072B2",
+            physical_label="",
+        ),
+    )
+    mesh = SimpleNamespace(
+        n_nodes=5,
+        n_triangles=3,
+        region_ids=np.array([1, 1, 2], dtype=np.int32),
+    )
+    calculate = MagicMock()
+
+    monkeypatch.setattr(
+        "linkmesh.readers.boundary_reader.read_multi_boundary_file",
+        MagicMock(return_value=blocks),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.read_regions_map",
+        MagicMock(return_value=records),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.build_region_plan",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.inspect_multi_region_ids",
+        MagicMock(return_value={1: 2, 2: 1}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.assign_final_region_ids",
+        MagicMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.validate_plan_against_map",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        "linkmesh.regions.resolve_region_dx",
+        MagicMock(return_value={1: 0.03, 2: 0.08}),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
+        MagicMock(return_value=mesh),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        MagicMock(
+            return_value=SimpleNamespace(
+                mesh=mesh,
+                diagnostics=SimpleNamespace(enabled=False),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesh_quality.calculate_mesh_quality",
+        calculate,
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_regions_mesh",
+        MagicMock(),
+    )
+
+    cli._run(
+        _parse(
+            "regions",
+            "generate",
+            "--multi-array-file",
+            "multi.rz",
+            "--regions-map",
+            "regions.toml",
+            "--plot",
+            "mesh.png",
+            "--mesh-dx",
+            "0.08",
+        )
+    )
+
+    assert calculate.call_count == 0
 
 
 def test_regions_generate_trimeg_reuses_mesh_and_calls_hdf5_once(
@@ -724,6 +1015,15 @@ def test_regions_generate_trimeg_reuses_mesh_and_calls_hdf5_once(
     monkeypatch.setattr(
         "linkmesh.mesher.oft_adapter.generate_multi_region_mesh",
         generate,
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        MagicMock(
+            return_value=SimpleNamespace(
+                mesh=mesh,
+                diagnostics=SimpleNamespace(enabled=False),
+            )
+        ),
     )
     monkeypatch.setattr(
         "linkmesh.writers.hdf5_writer.write_hdf5",
