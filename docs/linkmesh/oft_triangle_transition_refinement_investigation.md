@@ -2,8 +2,9 @@
 
 - 文档主受众：Aider-facing / Human-facing
 - 知识库用途：专项只读源码调查
-- 调查状态：静态调查完成；因 native ABI 与内存释放证据不完整而停止
-- 最终裁决：**BLOCKED BY MISSING ABI/OWNERSHIP EVIDENCE**
+- 调查状态：native ABI、refinement 与 ownership 静态源码契约已确认；待服务器核验
+  `liboft_triangle.so` 的实际导出符号和动态依赖
+- 最终裁决：**BLOCKED BY MISSING RUNTIME EXPORT EVIDENCE**
 - 调查对象：LinkMesh、OpenFUSIONToolkit/TokaMaker 26.6、随附 Triangle
 - 修改范围：仅生成本报告；未修改业务源码、蓝图、测试、配置、CLI、OFT/Triangle
   参考源码、外部库或求解器接口
@@ -53,7 +54,7 @@
 |---|---|
 | OFT 26.6 目标源码直接事实 | 当前 `meshing.py`、`_interface.py` 的实际声明和调用 |
 | Triangle 随附头文件直接事实 | `triangle.h` 的 `triangulateio` 字段及 In/Out 标记 |
-| Triangle 随附 C 源码直接事实 | **当前缺失**，不能确认 option parser、`-r`、q 默认值和释放实现 |
+| Triangle 随附 C 源码直接事实 | `triangle.c` 已直接确认 option parser、`-r`、质量判据、属性传播、输出分配与 `trifree()` |
 | LinkMesh 当前源码事实 | 当前 regions 配置、生成编排、OFT Adapter、`Mesh2D` 契约 |
 | 既有服务器探针事实 | 已有 multi-region 生成、编号与结构检查事实；不含 refinement |
 | 一般网格生成数学原理 | 仅用于比较距离、profile 和质量指标，不冒充接口事实 |
@@ -71,7 +72,9 @@
 | `src/linkmesh/mesh.py` | `Mesh2D`、`_validate_outer_boundary()` | 最终统一对象和 `outer_boundary` 语义 |
 | `TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/TokaMaker/meshing.py` | 19、48、52、545、848、1068、1086 | ctypes 结构、Triangle 调用、Domain、Mesh、Region |
 | `TOKAMAKER/OpenFUSIONToolkit/src/python/OpenFUSIONToolkit/_interface.py` | `oft_triangle_lib` 加载块 | native 动态库加载和 ctypes 基础类型 |
-| `TOKAMAKER/OpenFUSIONToolkit/src/ext_libs/triangle.h` | 257-282 | native `triangulateio` 字段和方向标记 |
+| `TOKAMAKER/OpenFUSIONToolkit/src/ext_libs/triangle.h` | `struct triangulateio`、`triangulate()`、`trifree()` 声明 | native 字段顺序、C 类型和公开函数签名 |
+| `TOKAMAKER/OpenFUSIONToolkit/src/ext_libs/triangle.c` | 文件头、`parsecommandline()`、`reconstruct()`、`testtriangle()`、`insertvertex()`、`writenodes()`、`writeelements()`、`writepoly()`、`intern_triangulate()`、`triangulate()` | Triangle 1.6 身份、refinement 契约、属性/面积传播、输出分配与释放实现 |
+| `TOKAMAKER/OpenFUSIONToolkit/src/ext_libs/CMakeLists.txt` | `add_library(oft_triangle SHARED triangle.c)`、`target_compile_definitions(...)` | `liboft_triangle` 的编译宏、共享库形态和安装位置 |
 
 OFT 网格 Python 文件的精确符号位置由仓库参考映射确认：
 
@@ -90,29 +93,81 @@ OFT 网格 Python 文件的精确符号位置由仓库参考映射确认：
 - `Region.check_in_poly()`：`meshing.py:1187`
 - `Region.get_in_point()`：`meshing.py:1213`
 
-### 2.3 缺失的决定性证据
+### 2.3 版本、编译宏与剩余运行时证据
 
-当前未获得以下文件的完整、可引用内容：
+`triangle.c` 文件头直接标识：
 
 ```text
-TOKAMAKER\OpenFUSIONToolkit\src\ext_libs\triangle.c
+Triangle Version 1.6
+July 28, 2005
 ```
 
-必须确认的符号或代码段：
+OFT 的 `ext_libs/CMakeLists.txt` 直接构建：
 
-1. `triangulate(...)`
-2. option parser 对 `p`、`q`、`a`、`A`、`r`、`z`、`Q` 的实际处理
-3. 裸 `q` 的锁定版本默认最小角
-4. refinement 输入校验
-5. `trianglearealist` 的读取、传播和新 triangle 约束继承
-6. Region attribute 的 refinement 传播
-7. segment 的 refinement 行为
-8. 输出数组分配函数
-9. `trifree()` 或实际对应释放函数
-10. 错误返回、终止条件和质量约束警告
+```cmake
+add_library(oft_triangle SHARED triangle.c)
+target_compile_definitions(
+  oft_triangle PRIVATE
+  -DTRILIBRARY
+  -DANSI_DECLARATORS
+  -DNO_TIMER
+  -DREAL=double
+  -DVOID=void
+)
+```
 
-因此，本报告不能把 Triangle 通用文档中的 `-r` 行为写成目标 OFT 26.6 native
-二进制的完整 ABI 事实。
+由此确认：
+
+- `TRILIBRARY`：编译 callable-library 路径，公开 `triangulate()` 而非 CLI `main()`；
+- `ANSI_DECLARATORS`：采用 ANSI 原型路径；
+- `NO_TIMER`：移除 Unix timing 代码，不改变 `triangulateio` 布局；
+- `REAL=double`：native `REAL` 与 Python `ctypes.c_double` 一致；
+- `VOID=void`：`trifree(VOID*)` 等价于 `trifree(void*)`；
+-未定义 `SINGLE`、`REDUCED`、`CDT_ONLY`，因此 double precision、完整 refinement、
+  quality 和 segment 功能均被编译；
+- Intel Fortran 工具链下目标使用 `-O0`，其他工具链使用 `-O1`；该优化选项不改变
+  ABI；
+-目标是 `SHARED` library，并安装到 `bin`。
+
+`triangle.h` 的准确公开签名是：
+
+```c
+int triangulate(
+    char *,
+    struct triangulateio *,
+    struct triangulateio *,
+    struct triangulateio *);
+void trifree(VOID *memptr);
+```
+
+`triangle.c` 的 `TRILIBRARY` wrapper 实现与头文件一致：`triangulate()` 返回 `int`，
+内部以 `setjmp()`/`longjmp()` 把 Triangle 错误状态转换为非零返回值。
+
+OFT Python 的绑定：
+
+```text
+argtypes = [
+    c_char_p,
+    POINTER(triangle_struct),
+    POINTER(triangle_struct),
+    POINTER(triangle_struct),
+]
+restype = c_int
+```
+
+与 native `triangulate()` 匹配。Python `triangle_struct._fields_` 与
+`triangle.h::triangulateio` 的字段顺序逐项一致；`REAL*` 对应 `c_double_ptr`，
+`int*` 对应 `c_int_ptr`，计数字段对应 `c_int`。
+
+静态源码和构建契约还不能代替目标服务器共享库的实际导出表。剩余纯运行时证据只有：
+
+1. 实际加载的 `liboft_triangle.so` 路径；
+2. `file` 对该文件的架构/类型输出；
+3. `triangulate` 是否实际导出；
+4. `trifree` 是否实际导出；
+5. `ldd` 是否报告缺失动态库。
+
+因此当前阻塞点已从 ABI/ownership 源码缺口缩小为 runtime export evidence。
 
 ---
 
@@ -406,66 +461,109 @@ cubit_gradation=1.05
 
 ## 5. 当前 q 质量约束
 
-### 5.1 已确认事实
+### 5.1 option parser 直接事实
 
-1. 当前 OFT 使用裸 `q`，因为 option string 是 `pqaAzQ`。
-2. option string 在 `run_triangle()` 内硬编码。
-3. `gs_Domain.build_mesh()`、`Mesh.get_mesh()` 和 LinkMesh Adapter 均没有
-   minimum-angle 参数。
-4. 当前 LinkMesh 无法通过 OFT 高层 API 请求例如 `q25`。
-5. 修改高层 `gs_Domain` 参数不足以调节 q，因为没有相应参数通道。
+`triangle.c::parsecommandline()` 初始化：
 
-### 5.2 裸 q 默认最小角
-
-锁定 Triangle 版本的裸 `q` 默认最小角必须来自随附 `triangle.c` 的 option parser
-或与该源码严格对应的官方说明。
-
-当前已提供的 `triangle.h` 片段和 OFT Python wrapper 没有定义该数值。虽然常见
-Triangle 1.6 文档通常说明裸 `q` 使用默认最小角，但本报告不以一般经验替代目标源码
-事实。
-
-裁决：
-
-```text
-裸 q 默认最小角：待 triangle.c 或锁定版本官方说明直接确认
+```c
+b->minangle = 0.0;
 ```
 
-### 5.3 可调性
+并逐字符解析本任务相关开关：
 
-未来可能存在两种路径：
+| 开关 | native 解析结果 |
+|---|---|
+| `p` | `b->poly = 1` |
+| `r` | `b->refine = 1` |
+| `q` | `b->quality = 1`，随后解析连续数字和小数点 |
+| `a` | `b->quality = 1`；带数值时设置固定全局面积，不带数值时设置逐区/逐 triangle 面积 |
+| `A` | `b->regionattrib = 1` |
+| `z` | `b->firstnumber = 0` |
+| `Q` | `b->quiet = 1` |
 
-- LinkMesh 自己构造低层 option string，例如 `rpq25aAzQ`；
-- 修改 OFT `run_triangle()` 的硬编码字符串。
+裸 `q` 的锁定源码默认值明确为：
 
-第二种会修改外部 OFT 源码，违反任务边界。第一种需要 LinkMesh 侧低层 Adapter，
-但只有在 ABI、输入和释放契约确认后才可评估。
+```c
+b->minangle = 20.0;
+```
 
-不需要重新编译 Triangle的结论目前也不能最终确认，因为必须先验证现有导出
-`triangulate` 是否完整解析带数值的 q option；这应由 `triangle.c` 和最小运行探针
-确认。
+`q` 后可直接跟十进制数字或小数点，例如 `q25`、`q28.6`。parser 使用 `strtod()`；
+该解析分支没有显式数值上限校验，也不接受指数记法，因为扫描循环只接受数字和
+`.`。随后源码计算 `goodangle` 和 `offconstant`。
 
-### 5.4 refinement 中 q 的候选行为
+当前 OFT `run_triangle()` 的 `pqaAzQ` 因而准确表示：
 
-Triangle 通用算法通常会在 refinement 模式同时执行面积和质量判据。因此候选
-option string 若包含 `r` 和 `q`，面积已达标但形状不达标的 triangle 仍可能被细化。
+- PSLG；
+-默认 20° 最小角质量细化；
+-读取 Region 最大面积；
+-初始 PSLG Region attributes；
+- 0-based；
+- quiet。
 
-但在目标 OFT 26.6 环境中，以下问题尚未由直接源码关闭：
+### 5.2 refinement 组合与候选字符串
 
-- `r` 与裸 `q` 的实际组合路径；
-- q 判断是否对所有输入 triangle 执行；
-- 受约束小角附近的终止行为；
-- 锁定版本的 warning 和最大允许角阈值。
+`parsecommandline()` 支持 `r` 与 `p`、`q`、`a`、`A` 的组合。不过 parser 在末尾明确
+执行：
 
-### 5.5 PSLG 小角限制
+```c
+if (b->refine || !b->poly) {
+  b->regionattrib = 0;
+}
+```
 
-一般网格生成原理：
+所以 `A` 在 refinement 中会被关闭；它不会新增 Region attribute。已有
+`triangleattributelist` 通过 `reconstruct()` 的 `m->eextras` 路径保留。
 
-- 受约束 segment 形成的小输入角可能无法通过单纯 Steiner refinement 达到任意
-  minimum angle；
-- 过强质量要求可能导致持续加点、终止警告或无法满足全部 triangle；
-- 质量目标不能越过输入 PSLG 的几何可实现边界。
+本任务静态源码支持的最小候选 option string 是：
 
-目标版本的精确警告、终止条件和推荐角度必须从 `triangle.c` 或锁定官方说明确认。
+```text
+rpqazQ
+```
+
+含义：
+
+- `r`：重建并细化已有 mesh；
+- `p`：同时重建受约束 segments；
+-裸 `q`：继续使用 20° 质量约束；
+-裸 `a`：读取每个输入 triangle 的 `trianglearealist`；
+- `z`：输入输出均为 0-based；
+- `Q`：quiet。
+
+不需要 `A`，因为 refinement 会忽略它。该字符串是静态源码候选，尚未在目标服务器
+运行。
+
+### 5.3 面积与 q 的独立触发
+
+`triangle.c::testtriangle()` 依次检查：
+
+1. fixed area；
+2. per-triangle variable area；
+3. user test；
+4. minimum-angle quality。
+
+因此：
+
+-面积超过正 `areabound` 时会进入 bad-triangle queue；
+-面积达标不会因面积判据细化；
+-面积达标但最小角不达标时，仍会因 q 进入 bad-triangle queue；
+-面积和 q 都达标时，该函数不会将 triangle 加入质量队列。
+
+### 5.4 最小角边界和 PSLG 小角
+
+锁定 Triangle 1.6 随附说明明确记载：
+
+- `q` 默认把最小角目标设为 20°；
+-最小角不超过 28.6° 时，在无限精度假设下有终止保证；
+-实践中常能达到约 34°，但某些网格需要降低目标；
+-有限浮点精度可能使 refinement 无法终止或产生 precision error；
+-输入 PSLG 的小夹角不能被 q 消除，附近可能仍产生低于请求值的角；
+- `precisionerror()` 建议增大面积阈值和/或降低最小角；
+-达到 Steiner 点上限时可能留下 encroached subsegments，并输出非真正 Delaunay 的
+  warning。
+
+当前 LinkMesh/OFT 高层 API 仍不暴露 minimum angle。未来若需 `q25`，只能由
+LinkMesh 低层 Adapter 构造 option string；无需修改 OFT 源码，静态源码也未显示需要
+重新编译 Triangle。
 
 ---
 
@@ -553,150 +651,232 @@ numberofsegments
 
 ### 6.4 ABI 对应
 
-当前 Python `triangle_struct` 和 `triangle.h` 字段列表、顺序表面一致，但以下仍缺少
-最终 ABI 证据：
+静态源码和 OFT 构建定义已经关闭结构 ABI 的源码证据：
 
-- `REAL` 在实际 `liboft_triangle.so` 中确认为 `double`；
-- native `int` 宽度与 Python `ctypes.c_int` 一致；
-- 编译宏和结构体 packing；
-- `triangulate` 导出签名；
--输出分配与释放函数。
+- `REAL=double`，对应 `ctypes.c_double`；
+- `VOID=void`；
+- native `int` 字段和指针对应 `ctypes.c_int`/`POINTER(c_int)`；
+- `triangle_struct` 与 `triangulateio` 字段顺序逐项一致；
+-未设置自定义 packing；
+- `triangulate()` 的四个参数和 `int` 返回值与 OFT ctypes 绑定一致；
+- `trifree(void*)` 是对应的 native 释放入口。
 
-OFT 当前初始生成成功是 ABI 可工作的运行证据，但不能证明此前从未使用的
-`trianglearealist` refinement 输入和释放路径安全。
+`triangle.c` 中 `trimalloc()` 调用 C `malloc()`，`trifree()` 调用 C `free()`。
+LinkMesh 不应直接绑定 libc `free`；应绑定同一 `liboft_triangle.so` 中的
+`trifree()`，以保持 allocator 边界一致。
+
+剩余问题不是结构布局，而是服务器实际共享库是否导出 `trifree`。CMake 将
+`triangle.c` 直接编译为共享库，源码中的 `triangulate` 和 `trifree` 都不是
+`static`，因此按当前构建应导出；仍需在目标服务器以动态符号表实证。
 
 ---
 
 ## 7. `-r` refinement 输入/输出契约
 
-### 7.1 当前可直接确认的内容
+### 7.1 `trianglearealist` 直接契约
 
-- `trianglearealist` 在 Python 结构中存在。
-- `trianglearealist` 在 `triangle.h:266` 标记为 `In only`。
-- 当前 `run_triangle()` 不设置它。
-- 当前 option string 不包含 `r`。
-- OFT 高层 API 没有 refinement 方法或参数。
-- 当前 LinkMesh 没有 refinement 阶段。
+`triangle.c::reconstruct()` 在 `TRILIBRARY` 路径中设置：
+
+```text
+m->inelements = in->numberoftriangles
+incorners = in->numberofcorners
+m->eextras = in->numberoftriangleattributes
+```
+
+随后按输入 triangle 的顺序遍历，每个 triangle 在 `b->vararea` 为真时读取：
+
+```c
+area = trianglearealist[elementnumber - b->firstnumber];
+setareabound(triangleloop, area);
+```
 
 因此：
 
+-数组长度必须至少为 `numberoftriangles`；
+-第 `i` 项对应 `trianglelist` 中第 `i` 个输入 triangle；
+-裸 `a` 设置 `b->vararea=1`，refinement 才读取该数组；
+-正值是该 triangle 的最大允许面积；
+-零和负值均表示该 triangle 不受 variable-area 约束，因为
+  `testtriangle()` 仅在 `areabound > 0.0` 且实际面积更大时触发；
+-源码不会自动检查 Python 数组长度，过短会导致越界 native 读取，所以 LinkMesh
+  必须在调用前严格验证 `(T,) float64`。
+
+### 7.2 面积与质量细化
+
+`testtriangle()` 直接确认：
+
+-实际面积大于正 `areabound`：因面积进入 refinement；
+-实际面积小于等于约束：不因面积进入 refinement；
+- q 判据随后独立检查，所以面积达标但角度不达标仍会细化；
+-两者均达标时不进入 bad-triangle queue。
+
+`insertvertex()` 在拆分 triangle 时把父 triangle 的 `areabound` 复制给新
+triangles；在 edge flip 时，如果两侧约束均为正，则取两者平均，否则设为 `-1.0`。
+所以 area constraint 不是不可跨越普通 mesh edge 的永久标签：它可在未受 PSLG
+保护的 edge flip 中平均扩散。
+
+### 7.3 输入 triangle、嵌套性和约束传播
+
+refinement 由 `reconstruct()` 重建输入 mesh，再执行 Delaunay/quality 操作。源码
+明确允许 edge flips，并说明 refinement 不是 hierarchical：
+
+-输出保留输入 corner nodes，并把新 nodes 追加在后；
+-输出 element 不保证严格包含在单个输入 element 中；
+-输出 triangle 可跨越原普通 triangle edge；
+-一个输出 element 可能覆盖两个或三个输入 elements；
+- PSLG segment 是不可翻转的约束边，因此不能被新 triangle 跨越。
+
+所以一次调用中的 `trianglearealist` 是定义在输入 triangles 上的分片常数初值，
+随后可通过拆分复制并通过普通 edge flip 平均传播。它不能直接表达在新 triangle
+centroid 上重新采样的连续 `h(d)`；若要求更准确逼近 W，仍需要有限次重新计算。
+
+### 7.4 refinement 必需输入
+
+本任务的安全候选输入是：
+
+| 字段 | 要求 |
+|---|---|
+| `pointlist` | `(N,2)` C-contiguous `float64` |
+| `numberofpoints` | `N` |
+| `pointattributelist` | 无 point attributes 时为 NULL |
+| `numberofpointattributes` | `0` |
+| `pointmarkerlist` | 可为 NULL，native 默认 marker 0 |
+| `trianglelist` | `(T,3)` C-contiguous `int32`、0-based |
+| `numberoftriangles` | `T` |
+| `numberofcorners` | `3` |
+| `triangleattributelist` | `(T,1)` C-contiguous `float64` |
+| `numberoftriangleattributes` | `1` |
+| `trianglearealist` | `(T,)` C-contiguous `float64` |
+| `segmentlist` | `(S,2)` C-contiguous `int32`、0-based |
+| `numberofsegments` | `S` |
+| `segmentmarkerlist` | 可为 NULL，marker 默认 0 |
+| `holelist`/`regionlist` | refinement 不执行 carve/spread，可为 NULL 且 count 为 0 |
+
+候选 option string：
+
 ```text
-trianglearealist 能否作为目标 OFT 26.6 refinement 输入：
-结构可表达，但当前调用链未使用；实际契约仍待 native 源码确认。
+rpqazQ
 ```
 
-### 7.2 必须由锁定源码确认的问题
-
-以下内容不能仅根据字段名或一般 Triangle 经验定案：
-
-1. `trianglearealist` 长度是否必须精确等于输入 triangle 数。
-2. 负值、零和正值的准确含义。
-3. `r` 是否强制要求 `numberofcorners=3`。
-4. 输入 triangle attributes 的 shape 和 attribute count。
-5. 是否必须同时提供 `p` 才能保留全部 PSLG segments。
-6. `rpqaAzQ` 是否是正确组合。
-7. `A` 在 refinement 时如何处理已有 attributes。
-8. area constraint 如何传播到新子 triangle。
-9. output segment list是否重新分配。
-10. 原输入 vertex 是否全部保留。
-11. 原输入 segment 是否可能被拆分。
-12. output triangle 是否严格嵌套于输入 triangle。
-13. 是否允许新边跨越原 triangle 内部边。
-14. region attributes 是否从父 triangle 继承。
-15. q 与 a 的判据执行顺序。
-16. 错误码和部分分配后的清理要求。
-
-### 7.3 PSLG 保留候选
-
-要保留计算域外边界和内部 Region interfaces，候选 refinement 输入应重新构造完整
-全局 PSLG：
-
-```text
-segments =
-    topology outer-boundary edges
-    ∪ all Region-interface edges
-```
-
-只提交外边界会丢失内部 Region interface 的受约束身份；只提交 triangles 而不保留
-PSLG 的行为也不能在缺少 native 证据时假定安全。
-
-### 7.4 一次 refinement 是否足够
-
-一次调用可以为当前输入 triangle 提供分片常数 `trianglearealist`。但 refinement
-产生新 triangle 后，若目标 `h(d)` 应基于新 triangle 的空间位置重新评估，则一次
-调用只能近似初始 triangle 采样后的 profile。
-
-尤其当：
-
-- 初始粗 triangle 跨越较大的 d 范围；
-- `W` 较小；
-- refinement 后 centroid 移动到不同 profile 区间；
-- 多个 interface transition 重叠；
-
-一次调用未必足够表达连续 `h(d)`。有限迭代是合理候选，但尚未批准。
+`p` 必须保留，以使 `reconstruct()` 创建并连接 input segments。`A` 不需要且会在
+refinement 模式被 parser 关闭。
 
 ---
 
 ## 8. 内存 ownership 和释放
 
-### 8.1 当前输入 ownership
+### 8.1 allocator 和公开释放入口
 
-现有 `run_triangle()` 创建本地 NumPy contiguous arrays，并将其指针传给 native。
-这些数组在函数调用期间由 Python 局部变量持有，输入生命周期对同步调用是明确的。
+`triangle.c::trimalloc()` 使用：
 
-### 8.2 当前输出 ownership
-
-Native 填充 `out_struct` 指针。Python 使用：
-
-```text
-numpy.ctypeslib.as_array(native_pointer, shape=...)
+```c
+malloc((unsigned int) size)
 ```
 
-返回 NumPy view。该 view 不拥有 native 内存。
+`triangle.c::trifree()` 使用：
 
-当前 `run_triangle()`：
-
-- 没有显式复制输出；
-- 没有保存 native owner；
-- 没有调用释放函数；
-- 没有暴露释放 API；
-- 没有说明多次调用后的内存生命周期。
-
-因此，现有初始调用存在一个本任务必须正视的 ownership 证据缺口：不能安全地设计
-有限多轮 refinement，同时假定每轮 native 分配会被正确释放。
-
-### 8.3 必须确认的释放规则
-
-需要从 `triangle.c` 确认：
-
-1. 哪些 output pointers 由 Triangle 分配。
-2. 是否使用 `malloc()`、`trimalloc()` 或其他 allocator。
-3. 应调用 `trifree()`、`free()` 还是其他符号。
-4. `vorout` 中哪些指针也可能被分配。
-5. 输入 `holelist`/`regionlist` 被复制还是借用。
-6. 错误返回后哪些输出可能已分配。
-7. output segments、markers、neighbors、edges 是否需要分别释放。
-8. `trifree` 是否导出到 `liboft_triangle.so`。
-9. Python ctypes 是否可以绑定该释放函数。
-10. 复制到 Python-owned arrays 后的正确释放顺序。
-
-候选安全顺序应是：
-
-```text
-native triangulate
-→ 检查错误码
-→ 把所有需要的 output 完整复制成 Python-owned NumPy arrays
-→ 对每个由 native 分配的指针按官方规则释放
-→ 丢弃 ctypes structs
-→ 构造 Mesh2D
+```c
+free(memptr)
 ```
 
-该顺序目前是设计要求，不是已确认可执行事实。
+`triangle.h` 公开声明：
 
-### 8.4 停止裁决
+```c
+void trifree(VOID *memptr);
+```
 
-任务明确规定无法确认 ownership/free 规则时必须停止。当前正处于该条件，因此不能
-批准 LinkMesh 低层 refinement 实现。
+OFT 以 `VOID=void` 构建，因此准确签名为 `void trifree(void*)`。LinkMesh 应从
+`oft_triangle_lib` 额外绑定该函数为：
+
+```text
+argtypes = [c_void_p]
+restype = None
+```
+
+不得直接调用 Python 进程加载的 libc `free`。
+
+### 8.2 字段级 ownership
+
+下表假定 LinkMesh 把所有 `out` 指针预初始化为 NULL；若调用者预先提供 output
+buffer，则该 buffer 仍由调用者拥有，Triangle 不负责释放。
+
+| field | input ownership | output ownership | alias possibility | Python copy | free |
+|---|---|---|---|---|---|
+| `pointlist` | NumPy/input-owned | NULL 时由 Triangle `trimalloc` |正常路径不与 input 别名 | 必须 | output 非 NULL 时 `trifree` |
+| `pointattributelist` | NumPy/input-owned 或 NULL |有 attributes 且 NULL 时由 Triangle 分配 |正常路径不别名 | 若请求则必须 | `trifree` |
+| `pointmarkerlist` | NumPy/input-owned 或 NULL |未用 `B` 且 NULL 时由 Triangle 分配 |正常路径不别名 | 若请求则必须 | `trifree` |
+| `trianglelist` | NumPy/input-owned | NULL 时由 Triangle 分配 |不与 input 别名 | 必须 | `trifree` |
+| `triangleattributelist` | NumPy/input-owned |有 attributes 且 NULL 时由 Triangle 分配 |不与 input 别名 | 必须 | `trifree` |
+| `trianglearealist` | NumPy/input-owned | input only，不写 output |无 output 指针 | 不适用 | 不释放 input |
+| `neighborlist` |无 input ownership |仅 `n` 时分配 |不别名 |需要时复制 | `trifree` |
+| `segmentlist` | NumPy/input-owned | `p`/`c` 且允许 poly output 时分配 |不与 input 别名 |多轮 refinement 必须 | `trifree` |
+| `segmentmarkerlist` | NumPy/input-owned 或 NULL |未用 `B` 时随 segment output 分配 |不与 input 别名 |多轮 refinement 必须 | `trifree` |
+| `holelist` | NumPy/input-owned | `out->holelist = in->holelist` |明确别名 |通常不复制 |绝对不得从 out 释放 |
+| `regionlist` | NumPy/input-owned | `out->regionlist = in->regionlist` |明确别名 |通常不复制 |绝对不得从 out 释放 |
+| `edgelist` |无 input ownership |仅 `e` 时分配 |不别名 |需要时复制 | `trifree` |
+| `edgemarkerlist` |无 input ownership | `e` 且未用 `B` 时分配 |不别名 |需要时复制 | `trifree` |
+| `normlist` |无普通 mesh input |仅 Voronoi output 分配 |不别名 |需要时复制 | `trifree` |
+
+本任务的 `rpqazQ` 不请求 neighbors、edges 或 Voronoi，但会输出 points、point
+markers、triangles、triangle attributes、segments 和 segment markers。多轮调用需要
+复制并释放这六类 native allocations。
+
+### 8.3 hole/region alias 与 double-free
+
+`intern_triangulate()` 在写 PSLG output 后明确执行：
+
+```c
+out->holelist = in->holelist;
+out->regionlist = in->regionlist;
+```
+
+这两个字段只是借用 input 指针，不是新分配。释放规则：
+
+- input NumPy arrays由 Python 管理；
+-不得对 `out->holelist` 或 `out->regionlist` 调用 `trifree`；
+-即使二者非 NULL，也不能仅凭“out pointer 非 NULL”判断需要释放；
+-本任务 refinement 可把 input count 设为 0、指针设为 NULL，从源头避免别名处理。
+
+### 8.4 错误路径和部分分配
+
+`triangulate()` 通过 `setjmp()` 捕获 `triexit()`。如果错误发生在 output 写出阶段，
+此前成功执行的 `writenodes()`、`writeelements()` 或 `writepoly()` 可能已经分配部分
+output arrays。源码没有统一的 output rollback。
+
+LinkMesh 低层 Adapter 必须：
+
+1. 调用前保存哪些 output 字段由 Adapter 以 NULL 提交；
+2. 无论返回值为零还是非零，都检查这些 output-owned 字段；
+3. 成功时先复制所需 arrays，再进入释放；
+4. 失败时不读取未完成的 shape 数据，只释放已非 NULL 的 output-owned pointers；
+5. 跳过 `holelist`、`regionlist` 和所有 input-owned pointers；
+6. 每个 native pointer 最多释放一次；
+7. 清空已释放的 ctypes field，避免清理分支重复释放。
+
+### 8.5 `vorout`
+
+`triangle.h` 说明未使用 `v` 时 `vorout` 可以是 NULL。当前 OFT wrapper传入一个零初始
+`vor_struct`，也不会触发 Voronoi 分配。
+
+LinkMesh 候选低层 Adapter 可传 `None` 作为第四参数，因为 `rpqazQ` 不含 `v`；
+这比创建无用结构更明确。
+
+### 8.6 无泄漏同步调用顺序
+
+在服务器确认 `trifree` 导出后，多轮同步调用可以采用确定顺序：
+
+```text
+构造并强引用所有 Python-owned contiguous inputs
+→ 将所有 output pointers 初始化为 NULL
+→ triangulate(...)
+→ 成功时按 native counts 创建 view 并立即 copy()
+→ 在 finally 中逐个 trifree output-owned pointers
+→ 清空 ctypes pointers
+→ 验证 Python-owned copies
+→ 开始下一轮
+```
+
+静态源码已经确认该 ownership 方案；剩余阻塞只在实际共享库是否导出 `trifree`。
 
 ---
 
@@ -724,7 +904,7 @@ OFT final Region ID
 
 这些事实只覆盖初始生成，不覆盖 refinement attribute propagation。
 
-### 9.2 refinement 候选
+### 9.2 refinement attributes 直接契约
 
 候选 refinement 输入应把当前 `Mesh2D.region_ids` 转为：
 
@@ -733,18 +913,33 @@ triangleattributelist (T,1) float64
 numberoftriangleattributes = 1
 ```
 
-输出后必须验证：
+`reconstruct()` 按每个输入 triangle、每个 attribute 读取
+`triangleattriblist[attribindex++]`。`insertvertex()` 创建子 triangle 时复制父
+triangle attributes；普通 edge flip 时取两侧 attribute 的平均值。
 
-- attribute 全部有限；
-- attribute 具有整数语义；
--输出 attribute 集合严格等于输入正式 Region ID 集合；
--每个 Region 仍有 triangle；
--不通过最近邻、triangle centroid polygon 查询或面积统计恢复 Region identity。
+这意味着 Region ID 可以原生保留，但有一个关键前提：
 
-如果 Triangle refinement 不能原生保留 attributes，该路线应停止，因为用几何最近邻
-恢复 Region identity 违反项目边界。
+```text
+所有不同 Region 的共享 interface 必须作为 PSLG segment 提交
+```
 
-### 9.3 interface PSLG
+segment edge 不允许 flip，所以不同 Region attributes 不会在 interface 两侧平均。
+同一 Region 内两侧 attribute 相同，平均后数值不变。因此在完整 interface PSLG
+前提下，输出 `(T,1)` attribute 可直接恢复原整数 Region ID，无需几何回查、重建、
+重编号或 `+1`。
+
+`A` 在 refinement 中不会新增 attribute，因为 parser 主动清除
+`b->regionattrib`；保留 Region ID 依赖输入 `numberoftriangleattributes=1` 和
+`triangleattributelist`，不依赖 `A`。
+
+输出后仍必须验证：
+
+- attribute 全部有限且具有整数语义；
+- attribute 集合严格等于输入正式 Region ID 集合；
+-每个 Region 仍有 triangles；
+-任何非整数或未知 attribute 都作为 native contract failure，而不做最近邻恢复。
+
+### 9.3 PSLG 与 conforming topology
 
 从当前 triangles 和 region IDs 可确定性提取：
 
@@ -753,19 +948,35 @@ numberoftriangleattributes = 1
 - edge incidence=2 且两侧 Region ID 相同：Region 内部 edge；
 - incidence>2：non-manifold，失败。
 
-候选 refinement 的 PSLG segment list应包含：
+本任务提交：
 
 ```text
-all incidence=1 edges
-+ all cross-Region incidence=2 edges
+segments =
+    all incidence=1 outer topology edges
+    ∪ all cross-Region incidence=2 interface edges
 ```
 
-输出后必须再次提取 topology，确认：
+符合 native PSLG 输入契约：segment endpoints 都是 `pointlist` 中的 0-based vertex
+indices，且每条 segment 对应已重建 mesh edge。
 
--内部 interface 仍由共享 mesh edges 表达；
--没有裂缝或重复界面节点；
--界面两侧 Region ID 仍不同且合法；
--全局 edge incidence 仅为 1 或 2。
+`reconstruct()` 在 `p+r` 路径中创建 subsegments 并连接到相邻 triangles。后续
+quality refinement：
+
+-不得 flip PSLG segment；
+-新 triangle edge 不得跨越 PSLG segment；
+-允许拆分 encroached segment，并插入新的 segment vertex；
+-输出 `segmentlist` 包含拆分后的 subsegments；
+-全局 mesh 保持共形；
+-输入 linear corner points保持在输出点集中，新增点追加；必须设置
+  `numberofcorners=3`，避免高阶额外节点被 `reconstruct()` 丢弃；
+- point markers 可为 NULL，默认 0；
+- segment markers 可为 NULL，默认 0；
+- markers 不承担 Region identity，Region identity由 triangle attributes承担；
+- refinement 分支不执行 `carveholes()` 或新的 Region propagation，因此
+  `holelist`、`regionlist` 可为 NULL 且 counts 为 0。
+
+多轮 refinement 必须使用上一轮输出的拆分后 `segmentlist`，不能继续提交旧的
+pre-refinement segments。
 
 ---
 
@@ -1488,84 +1699,57 @@ W 超过粗 Region 局部厚度
 
 ## 22. 未确认事项
 
-当前仍缺少直接证据：
+native 静态源码已确认 ABI、`-r`、q/a、attributes、PSLG 和 ownership 契约。当前只剩
+以下运行时或尚未执行的证据：
 
-1. 锁定 Triangle 裸 `q` 默认最小角。
-2.目标 `triangle.c` 对 `r` 的准确输入要求。
-3. `p+r` 对 PSLG segment 的保留方式。
-4. `trianglearealist` 的长度和值语义。
-5. area constraints 对新 triangle 的传播。
-6. q 与 a 的执行顺序。
-7. triangle attributes 的 refinement 传播。
-8.输入 point/segment marker 是否必须提供。
-9.已有 points 是否全部保留。
-10.已有 segments 是否可能拆分。
-11.新 triangle 是否严格嵌套在输入 triangle。
-12. output arrays 的实际 allocator。
-13.所有 output pointers 的释放方法。
-14.错误返回后的部分分配清理。
-15. `trifree` 是否由当前共享库导出。
-16. Python view 在释放前复制的完整字段集合。
-17.多轮调用是否无泄漏。
-18.候选 option string在服务器是否运行。
-19.一次 refinement 对 W 的实际逼近误差。
-20.有限迭代是否稳定终止。
+1. 服务器实际加载的 `liboft_triangle.so` 路径。
+2. 该文件的架构和 shared-object 身份。
+3. `triangulate` 是否出现在实际动态符号表。
+4. `trifree` 是否出现在实际动态符号表。
+5. `ldd` 是否存在缺失依赖。
+6.候选 `rpqazQ` 是否在目标服务器成功运行。
+7.实际输出 attributes 是否保持整数 Region IDs。
+8.拆分后的外边界和内部 interface segments 是否完整输出。
+9.成功和故意失败调用后的常驻内存是否符合预期。
+10.一次 refinement 对 W 的实际逼近误差。
+11.有限迭代是否稳定终止。
+
+第 6-11 项属于后续最小服务器验证，不改变本文的静态源码结论，也不得在未运行前写成
+已验证能力。
 
 ---
 
 ## 23. 实施停止条件
 
-当前已经触发以下停止条件：
+native 源码缺失和 ownership 不明这两个停止条件已经解除：
 
-### 23.1 native Triangle 准确实现未纳入当前可引用内容
+- `triangle.c` 已确认 `triangulate()` 的错误包装；
+- `reconstruct()` 已确认 refinement 输入；
+- `testtriangle()` 已确认 q/a 独立判据；
+- `insertvertex()` 已确认 attributes 和 area constraints 的复制/平均；
+- `writenodes()`、`writeelements()`、`writepoly()` 已确认输出分配；
+- `trimalloc()`/`trifree()` 已确认 allocator 配对；
+- `triangle.h` 和 OFT CMake 已确认 ABI 类型与编译宏。
 
-缺失路径：
-
-```text
-TOKAMAKER\OpenFUSIONToolkit\src\ext_libs\triangle.c
-```
-
-需要最小只读权限的符号：
-
-```text
-triangulate
-intern_triangulate
-parsecommandline 或实际 option parser
-quality/refinement 主循环
-region attribute 传播
-trianglearealist 读取和传播
-output allocation
-trifree 或实际释放函数
-```
-
-### 23.2 ownership/free 规则未确认
-
-虽然 `triangle.h` 将 `trianglearealist` 标记为输入字段，但当前证据不足以确认：
-
-- output pointer ownership；
--错误路径 ownership；
--正确释放函数；
--多轮 refinement 的无泄漏调用方式。
-
-因此不能批准 LinkMesh 低层 Adapter。
-
-### 23.3 后续继续调查所需最小只读证据
-
-请将以下文件完整加入后续只读调查：
+当前唯一停止条件是实际共享库导出尚未实证。服务器只需一次性确认：
 
 ```text
-TOKAMAKER\OpenFUSIONToolkit\src\ext_libs\triangle.c
+实际 liboft_triangle.so 路径
+file <实际路径>
+动态符号表中的 triangulate
+动态符号表中的 trifree
+ldd <实际路径> 是否含 not found
 ```
 
-如 `triangle.c` 显示释放函数或导出 wrapper 位于其他文件，还需仅追加该符号所在的
-最小文件。还应提供目标 OFT 26.6 构建中 `liboft_triangle` 的导出符号证据，以确认：
+不要求创建或维护新的长期 probe。若 `triangulate` 与 `trifree` 均导出且动态依赖完整，
+静态证据支持把最终状态升级为：
 
 ```text
-triangulate
-trifree（若适用）
+FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER
 ```
 
-在这些证据到位前，不用一般 Triangle 经验补足 ABI。
+若 `trifree` 未导出，则不能用 libc `free` 绕过；在“不修改或重编 OFT/Triangle”
+边界下应保持阻塞。
 
 ---
 
@@ -1586,25 +1770,28 @@ trifree（若适用）
    入口。
 
 4. **低层 binding 是否足以安全执行 refinement？**  
-   结构字段表面足够表达候选输入，但 ownership/free 规则未确认，当前不能判定为安全。
+   静态 ABI 与 ownership 契约足以构造安全的 LinkMesh 低层调用；仍需确认实际共享库
+   导出 `trifree` 后才能运行。
 
 5. **是否需要修改或重新编译 OFT/Triangle？**  
-   目前没有证据证明必须修改或重新编译；也没有足够证据证明完全不需要。若现有
-   `triangulate` 和释放符号足够，可由 LinkMesh 低层 Adapter 完成。
+   静态源码显示不需要。LinkMesh 可复用 `oft_triangle_lib`，自行绑定 `triangulate` 和
+   `trifree`。若服务器库未导出 `trifree`，则在当前边界下保持阻塞，不能以 libc
+   `free` 绕过。
 
 6. **`trianglearealist` 能否作为输入？**  
-   `triangle.h:266` 直接标记为 `In only`，Python结构也有该字段；但目标 refinement
-   的值语义、长度和传播仍未确认，不能宣告当前 LinkMesh 可用。
+   **能。** 裸 `a` refinement 按输入 triangle 顺序读取 `(T,)` constraints；正值是
+   最大面积，零/负值是不约束。数组长度必须由 LinkMesh 在 native 调用前严格验证。
 
 7. **如何保持 interfaces 和 Region attributes？**  
-   候选是提交 topology outer edges 与 cross-Region interface edges 作为完整 PSLG，
-   并提交每 triangle 的一个 Region attribute。是否由目标 binary 正确保留仍待验证。
+   提交 outer edges 与全部 cross-Region interface edges 作为 PSLG，并提交
+   `(T,1)` input attributes。受约束 interface 不允许 flip，子 triangle 原生继承
+   attributes，无需几何回查或重编号。
 
 8. **一次 refinement 是否足够？**  
    不一定。初始 triangle 采样的 profile 可能需要有限迭代重新计算。
 
 9. **面积达标但形状差时 q 是否仍触发？**  
-   Triangle 通用机制候选为会触发，但目标 OFT 26.6 的直接源码和运行证据尚缺。
+   **会。** `testtriangle()` 在面积判据之后独立执行 minimum-angle 判据。
 
 10. **q+a 是否直接保证 W？**  
     **不能。** q 约束形状，a 约束离散 triangle 面积；W 是 LinkMesh 通过距离
@@ -1635,21 +1822,28 @@ trifree（若适用）
     输出验证和生成侧验收标准。
 
 18. **仍缺哪些直接证据？**  
-    完整目标 `triangle.c`、导出释放符号、`-r` 输入和传播契约，以及服务器最小
-    ABI/refinement 探针。
+    只缺目标服务器实际 `liboft_triangle.so` 的路径、架构、`triangulate`/`trifree`
+    动态导出和依赖完整性，以及尚未执行的最小 refinement 运行验证。
 
-### 24.2 五选一最终状态
+### 24.2 最终状态
 
 ```text
-BLOCKED BY MISSING ABI/OWNERSHIP EVIDENCE
+BLOCKED BY MISSING RUNTIME EXPORT EVIDENCE
 ```
 
-这不是判定算法不可行，也不是判定必须修改 OFT。当前更精确的工程结论是：
+最终静态裁决：
 
-- OFT 高层 API 不直接支持所需 refinement；
--现有 ctypes 结构在形状上具备表达 refinement 输入的候选能力；
-- LinkMesh 可以在 initial mesh 后计算 interface、d、h(d) 和逐 triangle Amax；
--但 native `-r` 契约、attribute/PSLG 传播与输出释放规则尚未由目标源码关闭；
--在补齐 `triangle.c` 和导出符号证据前，不能把候选升级为
-  `FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER`；
--不得开始业务实现、CLI/config 修改或多轮 native 调用。
+- LinkMesh 能构造 `rpqazQ` refinement 所需的 contiguous、typed、0-based 输入；
+- `trianglearealist` 原生支持逐输入 triangle 的面积上界；
+- Region attributes 可在完整 interface PSLG 前提下原生保留；
+-外边界和内部 interfaces 可作为 PSLG 原生保留，并允许共形拆分；
+- native 输出可先复制到 Python-owned NumPy arrays，再用同库 `trifree()` 逐字段释放；
+-当前 OFT `run_triangle()` 确实没有复制或释放由 native 分配的 points、point markers、
+  triangles、triangle attributes、segments 和 segment markers，因此每次当前初始生成
+  调用都会遗留这些 native allocations；
+- LinkMesh 低层 Adapter 可以独立修复自己新增调用的完整生命周期，无需修改 OFT
+  wrapper；
+-静态源码不要求修改或重新编译 OFT/Triangle；
+-只要服务器实际库导出 `triangulate` 和 `trifree` 且依赖完整，即具备进入蓝图迭代的
+  技术条件；
+-在运行时导出核验前，不得把静态可行性写成运行通过，也不得开始完整业务实现。
