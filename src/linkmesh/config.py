@@ -1,36 +1,11 @@
-"""
-config.py —— LinkMesh 两层输入架构：EffectiveConfig 与 linkmesh.in 读取/校验/合并。
+"""Strict configuration loading for root and isolated regions workflows.
 
-职责（严格对齐 LinkMesh_Architecture_Plan.md v2.3 第 6A 节）：
-    - 定义只读/不可变 EffectiveConfig（@dataclass(frozen=True)，字段逐项匹配第 6A.2 节）；
-    - 使用标准库 tomllib 读取 linkmesh.in（v1 schema）；
-    - 严格校验 schema_version、允许的 section、允许的键、值类型与枚举；
-    - 配置文件发现（--config / --no-config / 当前目录自动发现）；
-    - 合并「内建默认值 < linkmesh.in < 用户显式 CLI」；
-    - 按配置目录 / 当前工作目录两套基准解析路径，全部规范化为绝对路径；
-    - 校验 target/profile/boundary_source 兼容矩阵与 required fields；
-    - 输出已完成路径解析与类型验证的 EffectiveConfig。
+The root command resolves one single-region configuration. Multi-region
+settings remain isolated in the regions inspect/generate configuration types.
+This module performs no business-file I/O and invokes no readers, meshers,
+writers, or plotters.
 
-禁止事项（第 2 节表 / 第 6A 节）：
-    - 不导入 OFT、h5py；
-    - 不读取 GFile 内容、不读取 array CSV 内容；
-    - 不构造 Mesh2D、不构造 OFT Domain；
-    - 不调用 Mesher/Writer/Plotter；
-    - 不保存值来源字典、NumPy 数组、Mesh2D、GFileData、PUMI 句柄、Writer 实例、
-      argparse Namespace；
-    - 不建设通用配置 DSL、插件系统、注册表、抽象基类或任意 N 区域语言。
-
-内建默认值集中在本模块（第 6A.3 节），CLI 只负责收集用户显式输入。
-
-CLI 依赖契约（供 cli.py 导入）：
-    - 序列枚举：TARGETS / PROFILES / BOUNDARY_SOURCES；
-    - 哨兵：UNSET；
-    - 可变输入载体：CliOverrides；
-    - 异常：ConfigError；
-    - 合并入口：load_effective_config(overrides, config_arg=..., no_config=...)；
-    - 只读结果：EffectiveConfig（17 字段）。
-
-键名约定（重要）：
+Path-key convention:
     - CliOverrides 使用 CLI 短键名：gfile/array_file/hdf5/plot/model/smb（与 argparse
       dest 一致）；
     - _load_toml 输出与 EffectiveConfig 字段名一致的长键名：gfile_path/array_file_path/
@@ -59,23 +34,16 @@ from typing import Any, Literal, Mapping, Optional
 SCHEMA_VERSION = 1
 
 TARGETS = ("mesh_only", "trimeg", "m3dc1")
-PROFILES = ("single_region", "nested_three_region")
 BOUNDARY_SOURCES = (
     "lcfs",
     "first_wall",
     "array_file",
-    "artificial_outer",
     "flux_surface",
 )
 
-# 内建默认值（第 6A.3 节）。无配置文件、无新增显式 CLI 时保持旧 CLI 行为。
 DEFAULT_TARGET = "trimeg"
-DEFAULT_PROFILE = "nested_three_region"
-DEFAULT_BOUNDARY_SOURCE = "artificial_outer"
+DEFAULT_BOUNDARY_SOURCE = "lcfs"
 DEFAULT_MESH_DX = 0.08
-DEFAULT_PLASMA_DX = 0.08
-DEFAULT_VACUUM_DX = 0.10
-DEFAULT_OUTER_DX = 0.15
 DEFAULT_VERBOSE = False
 DEFAULT_PLOT_LCFS = False
 DEFAULT_TRANSITION_WIDTH = 0.0
@@ -92,8 +60,8 @@ _ALLOWED_SECTIONS = {"task", "input", "domain", "mesh", "output", "runtime"}
 _ALLOWED_SECTION_KEYS = {
     "task": {"target"},
     "input": {"gfile", "array_file"},
-    "domain": {"profile", "boundary_source"},
-    "mesh": {"mesh_dx", "plasma_dx", "vacuum_dx", "outer_dx"},
+    "domain": {"boundary_source"},
+    "mesh": {"mesh_dx"},
     "output": {"hdf5", "plot", "model", "smb", "plot_lcfs"},
     "runtime": {"verbose"},
 }
@@ -108,30 +76,26 @@ class ConfigError(ValueError):
 
 
 # --------------------------------------------------------------------------- #
-# EffectiveConfig（frozen dataclass，17 字段）                                 #
+# EffectiveConfig（frozen dataclass，13 字段）                                 #
 # --------------------------------------------------------------------------- #
 
 @dataclass(frozen=True)
 class EffectiveConfig:
     """LinkMesh 只读/不可变有效配置（合并「默认 < TOML < 显式 CLI」的最终结果）。
 
-    字段逐项对齐当前蓝图字段表（共 17 字段）。所有非 None Path
+    字段逐项对齐当前蓝图字段表（共 13 字段）。所有非 None Path
     均为规范化绝对路径。不保存值来源字典、NumPy 数组、句柄或 Namespace。
     """
 
     schema_version: int
     config_path: Optional[Path]
     target: Literal["mesh_only", "trimeg", "m3dc1"]
-    profile: Literal["single_region", "nested_three_region"]
     boundary_source: Literal[
-        "lcfs", "first_wall", "array_file", "artificial_outer", "flux_surface"
+        "lcfs", "first_wall", "array_file", "flux_surface"
     ]
     gfile_path: Optional[Path]
     array_file_path: Optional[Path]
     mesh_dx: float
-    plasma_dx: float
-    vacuum_dx: float
-    outer_dx: float
     hdf5_path: Optional[Path]
     plot_path: Optional[Path]
     model_path: Optional[Path]
@@ -236,14 +200,10 @@ class CliOverrides:
     """
 
     target: Any = UNSET
-    profile: Any = UNSET
     boundary_source: Any = UNSET
     gfile: Any = UNSET
     array_file: Any = UNSET
     mesh_dx: Any = UNSET
-    plasma_dx: Any = UNSET
-    vacuum_dx: Any = UNSET
-    outer_dx: Any = UNSET
     hdf5: Any = UNSET
     plot: Any = UNSET
     model: Any = UNSET
@@ -385,10 +345,6 @@ def _load_toml(config_path: Path) -> dict:
         )
 
     dom = raw.get("domain", {})
-    if "profile" in dom:
-        out["profile"] = _check_enum(
-            dom["profile"], PROFILES, "[domain].profile", config_path
-        )
     if "boundary_source" in dom:
         out["boundary_source"] = _check_enum(
             dom["boundary_source"], BOUNDARY_SOURCES,
@@ -399,18 +355,6 @@ def _load_toml(config_path: Path) -> dict:
     if "mesh_dx" in mesh:
         out["mesh_dx"] = _check_positive_float(
             mesh["mesh_dx"], "[mesh].mesh_dx", config_path
-        )
-    if "plasma_dx" in mesh:
-        out["plasma_dx"] = _check_positive_float(
-            mesh["plasma_dx"], "[mesh].plasma_dx", config_path
-        )
-    if "vacuum_dx" in mesh:
-        out["vacuum_dx"] = _check_positive_float(
-            mesh["vacuum_dx"], "[mesh].vacuum_dx", config_path
-        )
-    if "outer_dx" in mesh:
-        out["outer_dx"] = _check_positive_float(
-            mesh["outer_dx"], "[mesh].outer_dx", config_path
         )
 
     output = raw.get("output", {})
@@ -1097,25 +1041,17 @@ def load_effective_config(
         return default
 
     target = _merge_scalar("target", DEFAULT_TARGET)
-    profile = _merge_scalar("profile", DEFAULT_PROFILE)
     boundary_source = _merge_scalar("boundary_source", DEFAULT_BOUNDARY_SOURCE)
     mesh_dx = _merge_scalar("mesh_dx", DEFAULT_MESH_DX)
-    plasma_dx = _merge_scalar("plasma_dx", DEFAULT_PLASMA_DX)
-    vacuum_dx = _merge_scalar("vacuum_dx", DEFAULT_VACUUM_DX)
-    outer_dx = _merge_scalar("outer_dx", DEFAULT_OUTER_DX)
     verbose = _merge_scalar("verbose", DEFAULT_VERBOSE)
     plot_lcfs = _merge_scalar("plot_lcfs", DEFAULT_PLOT_LCFS)
 
     # 枚举/类型再校验（覆盖 CLI 直接注入的情况；TOML 侧已在 _load_toml 校验）。
     target = _check_enum(target, TARGETS, "target", config_path)
-    profile = _check_enum(profile, PROFILES, "profile", config_path)
     boundary_source = _check_enum(
         boundary_source, BOUNDARY_SOURCES, "boundary_source", config_path
     )
     mesh_dx = _check_positive_float(mesh_dx, "mesh_dx", config_path)
-    plasma_dx = _check_positive_float(plasma_dx, "plasma_dx", config_path)
-    vacuum_dx = _check_positive_float(vacuum_dx, "vacuum_dx", config_path)
-    outer_dx = _check_positive_float(outer_dx, "outer_dx", config_path)
     verbose = _check_bool(verbose, "verbose", config_path)
     plot_lcfs = _check_bool(plot_lcfs, "plot_lcfs", config_path)
 
@@ -1151,32 +1087,14 @@ def load_effective_config(
     hdf5_default_name = DEFAULT_HDF5_NAME if target == "trimeg" else None
     hdf5_path = _merge_path("hdf5", "hdf5_path", hdf5_default_name)
 
-    explicit_mesh_dx = (
-        _explicit("mesh_dx") is not None or "mesh_dx" in toml_values
-    )
-    explicit_region_dx = tuple(
-        name
-        for name in ("plasma_dx", "vacuum_dx", "outer_dx")
-        if _explicit(name) is not None or name in toml_values
-    )
-    _validate_mesh_resolution_inputs(
-        profile,
-        explicit_mesh_dx=explicit_mesh_dx,
-        explicit_region_dx=explicit_region_dx,
-    )
-
     cfg = EffectiveConfig(
         schema_version=SCHEMA_VERSION,
         config_path=config_path,
         target=target,
-        profile=profile,
         boundary_source=boundary_source,
         gfile_path=gfile_path,
         array_file_path=array_file_path,
         mesh_dx=mesh_dx,
-        plasma_dx=plasma_dx,
-        vacuum_dx=vacuum_dx,
-        outer_dx=outer_dx,
         hdf5_path=hdf5_path,
         plot_path=plot_path,
         model_path=model_path,
@@ -1194,66 +1112,16 @@ def load_effective_config(
 
 
 # --------------------------------------------------------------------------- #
-# 网格尺度适用性                                                                #
-# --------------------------------------------------------------------------- #
-
-def _validate_mesh_resolution_inputs(
-    profile: str,
-    *,
-    explicit_mesh_dx: bool,
-    explicit_region_dx: tuple[str, ...],
-) -> None:
-    """Reject explicitly supplied mesh scales that do not apply to profile."""
-    if profile == "single_region" and explicit_region_dx:
-        conflicts = ", ".join(explicit_region_dx)
-        raise ConfigError(
-            "profile=single_region 不接受显式多区域网格尺度 "
-            f"{conflicts}；请使用 mesh_dx（--mesh-dx 或 [mesh].mesh_dx）"
-        )
-    if profile == "nested_three_region" and explicit_mesh_dx:
-        raise ConfigError(
-            "profile=nested_three_region 不接受显式 mesh_dx；请使用 "
-            "plasma_dx、vacuum_dx、outer_dx"
-        )
-
-
-# --------------------------------------------------------------------------- #
-# 兼容矩阵（第 6A.9 节）                                                        #
+# 根命令组合校验                                                                #
 # --------------------------------------------------------------------------- #
 
 def _combo(cfg: EffectiveConfig) -> str:
-    return (
-        f"target={cfg.target}, profile={cfg.profile}, "
-        f"boundary_source={cfg.boundary_source}"
-    )
+    return f"target={cfg.target}, boundary_source={cfg.boundary_source}"
 
 
 def _validate_compatibility(cfg: EffectiveConfig) -> None:
-    """校验 target/profile/boundary_source 兼容矩阵（第 6A.9 节明确禁止项）。"""
-    t, p, b = cfg.target, cfg.profile, cfg.boundary_source
-
-    # m3dc1 + nested_three_region 明确禁止。
-    if t == "m3dc1" and p == "nested_three_region":
-        raise ConfigError(
-            f"禁止的组合（{_combo(cfg)}）：m3dc1 + nested_three_region "
-            "多物理区域与界面语义未确认"
-        )
-
-    # nested_three_region 只允许 artificial_outer；配 lcfs/first_wall/array_file 禁止。
-    if p == "nested_three_region" and b in ("lcfs", "first_wall", "array_file"):
-        raise ConfigError(
-            f"禁止的组合（{_combo(cfg)}）：nested_three_region 的 profile 与 "
-            f"boundary_source={b} 不匹配"
-        )
-
-    # single_region 不使用人工外框。
-    if p == "single_region" and b == "artificial_outer":
-        raise ConfigError(
-            f"禁止的组合（{_combo(cfg)}）：single_region 不使用 artificial_outer"
-        )
-
-    # LCFS reference 只适用于 array_file 实际计算域边界。
-    if cfg.plot_lcfs and b != "array_file":
+    """Validate root-command combinations without a profile dimension."""
+    if cfg.plot_lcfs and cfg.boundary_source != "array_file":
         raise ConfigError(
             f"禁止的组合（{_combo(cfg)}）：plot_lcfs 只适用于 "
             "boundary_source=array_file"
@@ -1272,7 +1140,7 @@ def _validate_required_fields(cfg: EffectiveConfig) -> None:
     """
     b = cfg.boundary_source
 
-    if b in ("lcfs", "first_wall", "artificial_outer"):
+    if b in ("lcfs", "first_wall"):
         if cfg.gfile_path is None:
             raise ConfigError(
                 f"boundary_source={b} 需要 gfile_path（--gfile 或 [input].gfile）"
@@ -1325,49 +1193,31 @@ def _validate_required_fields(cfg: EffectiveConfig) -> None:
 # 当前阶段实现边界（输入层 I + 输入层 II）                                       #
 # --------------------------------------------------------------------------- #
 
-# 当前已实现的 single_region 来源：lcfs 与 array_file。
+# 当前已实现的根命令单区域来源：lcfs 与 array_file。
 # first_wall/flux_surface 仍明确未实现。
-_IMPLEMENTED_M3DC1_PROFILE = "single_region"
 _IMPLEMENTED_M3DC1_SOURCES = ("lcfs", "array_file")
 _IMPLEMENTED_SINGLE_REGION_SOURCES = ("lcfs", "array_file")
 
 
 def _validate_current_stage(cfg: EffectiveConfig) -> None:
-    """当前阶段（输入层 I + 输入层 II）业务能力边界校验。
-
-    - flux_surface：首批明确未实现（第 6A.8 节，禁止缩放 LCFS 伪造磁面）；
-    - target=m3dc1：允许 single_region + lcfs/array_file；
-    - single_region：已实现 lcfs 与 array_file；
-      first_wall 仍明确报未实现，不回退 artificial_outer。
-
-    当前进入业务执行的组合：
-        - target ∈ {trimeg, mesh_only} + nested_three_region + artificial_outer
-          （已实现回归路径）；
-        - target ∈ {trimeg, mesh_only} + single_region + lcfs/array_file；
-        - target=m3dc1 + single_region + lcfs/array_file。
-    """
+    """Validate the currently implemented root single-region sources."""
     if cfg.boundary_source == "flux_surface":
         raise NotImplementedError(
             f"boundary_source=flux_surface 尚未实现（{_combo(cfg)}）："
             "真实磁通面提取未实现，禁止径向缩放 LCFS 伪造磁面"
         )
 
-    if cfg.target == "m3dc1":
-        if not (
-            cfg.profile == _IMPLEMENTED_M3DC1_PROFILE
-            and cfg.boundary_source in _IMPLEMENTED_M3DC1_SOURCES
-        ):
-            raise NotImplementedError(
-                "target=m3dc1 当前仅支持 single_region + lcfs/array_file"
-                f"（{_combo(cfg)}）"
-            )
-        return
+    if (
+        cfg.target == "m3dc1"
+        and cfg.boundary_source not in _IMPLEMENTED_M3DC1_SOURCES
+    ):
+        raise NotImplementedError(
+            "target=m3dc1 当前仅支持 lcfs/array_file 单区域来源"
+            f"（{_combo(cfg)}）"
+        )
 
-    if cfg.profile == "single_region":
-        if cfg.boundary_source not in _IMPLEMENTED_SINGLE_REGION_SOURCES:
-            raise NotImplementedError(
-                f"profile=single_region + boundary_source={cfg.boundary_source} "
-                f"尚未实现（{_combo(cfg)}）："
-                "single_region + first_wall 当前阶段未实现，"
-                "不回退 artificial_outer"
-            )
+    if cfg.boundary_source not in _IMPLEMENTED_SINGLE_REGION_SOURCES:
+        raise NotImplementedError(
+            f"boundary_source={cfg.boundary_source} 尚未实现（{_combo(cfg)}）："
+            "first_wall 当前阶段未实现，不回退其他边界来源"
+        )

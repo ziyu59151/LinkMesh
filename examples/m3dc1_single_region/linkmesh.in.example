@@ -11,11 +11,10 @@ target = "m3dc1"
 gfile = "equilibrium.gfile"
 
 [domain]
-profile = "single_region"
 boundary_source = "lcfs"
 
 [mesh]
-plasma_dx = 0.08
+mesh_dx = 0.08
 
 [output]
 model = "mesh.txt"

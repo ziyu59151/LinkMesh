@@ -4,7 +4,7 @@ cli.py —— LinkMesh 命令行入口。
 职责：
     - 解析命令行参数（argparse），标记用户显式输入
     - 调用 config.load_effective_config() 完成「内建默认值 < linkmesh.in < 显式 CLI」合并
-    - 按 profile/boundary_source 选择已实现路径，调用 reader → mesher（OFT Adapter）
+    - 按 boundary_source 选择唯一实际边界，调用 reader → single-region mesher
       → writer → plotter
     - 捕获异常并打印友好错误信息
 
@@ -12,34 +12,20 @@ cli.py —— LinkMesh 命令行入口。
     - 不得包含任何业务逻辑（Domain/区域/边界/种子/数组转换）
     - 不得直接解析 TOML（交给 config.py）
     - 不得自行维护第二套配置默认值（默认值集中在 config.py）
-    - 不得把 profile/source 判断放入 Reader 或 Writer
-    - 未实现组合不得回退到 nested_three_region
+    - 不得把 boundary-source 判断放入 Reader 或 Writer
+    - 未实现来源不得回退
 
 数据流（v2.3 输入层 I/II 正式路径）：
     CLI 参数 → CliOverrides（仅显式输入）→ load_effective_config() → EffectiveConfig
-         → read_gfile() → GFileData
-         → oft_adapter.generate_mesh(..., profile=, boundary_source=) → Mesh2D
+         → Reader 取得唯一实际边界
+         → oft_adapter.generate_mesh(boundary, mesh_dx=...) → Mesh2D
          → target=trimeg：write_hdf5()（且未 --no-hdf5）
          → target=m3dc1：build_single_face_model_spec() →
            write_m3dc1_model() + write_smb()（SMB 除非 --no-smb）
          → plot_mesh()（若配置 plot_path）
 
-网格尺度参数：
-    - --mesh-dx：single_region 唯一目标网格长度尺度（单位 m）；
-    - --plasma-dx / --vacuum-dx / --outer-dx：仅用于 nested_three_region。
-    CLI 只负责解析、标记显式输入并把值交给 config 合并；有限正数和 profile
-    适用性校验集中在 config.py。
-
-输入层 I（v2.3）新增参数（蓝图第 6A.5 节）：
-    --config / --no-config（互斥）、--target、--profile、--boundary-source、--array-file。
-    旧参数全部保留，旧命令无配置时行为不变。
-
-输入层 II（v2.3）新增业务分派：
-    - nested_three_region + artificial_outer：原路径（有壁三区域 / 无壁两区域）；
-    - single_region + lcfs：单 polygon Region，LCFS 为唯一计算域边界，
-      single-region 网格尺度用 plasma_dx；不消费 vacuum_dx/outer_dx。
-
-参见 LinkMesh_Architecture_Plan.md v2.3 第 6、6A 节。
+根命令只提供 --mesh-dx，表示唯一单 Region 的目标网格尺度（单位 m）。
+多区域尺度和 transition 参数只存在于 regions generate 子命令。
 """
 
 from __future__ import annotations
@@ -75,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
             "LinkMesh 用于生成二维 R-Z 非结构三角网格，并输出 TRIMEG 或 "
             "M3D-C1 所需文件。\n\n"
             "工作流：\n"
-            "  标准网格\n"
+            "  单区域网格\n"
             "    适用于 GFile/EQDSK 或单轮廓边界，使用 linkmesh [options]。\n"
             "  多区域网格\n"
             "    适用于包含多个 counted R-Z blocks 的输入，先执行\n"
@@ -109,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # ------------------------------------------------------------------ #
-    # 输入层 I 新增：target / profile / boundary_source / array_file      #
+    # 根命令任务、边界来源与输入                                            #
     # 默认值交给 config.py；此处 default=UNSET 表示未显式提供。            #
     # ------------------------------------------------------------------ #
     task_group.add_argument(
@@ -117,12 +103,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         choices=list(config_mod.TARGETS),
         help="选择输出目标；覆盖配置文件中的值",
-    )
-    task_group.add_argument(
-        "--profile",
-        default=UNSET,
-        choices=list(config_mod.PROFILES),
-        help="选择区域配置方案；覆盖配置文件中的值",
     )
     task_group.add_argument(
         "--boundary-source",
@@ -198,31 +178,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=UNSET,
         metavar="FLOAT",
-        help="single_region 的目标网格尺度，单位 m（默认：0.08）",
-    )
-    mesh_group.add_argument(
-        "--plasma-dx",
-        dest="plasma_dx",
-        type=float,
-        default=UNSET,
-        metavar="FLOAT",
-        help="仅用于 nested_three_region 的 plasma 区域尺度，单位 m（默认：0.08）",
-    )
-    mesh_group.add_argument(
-        "--vacuum-dx",
-        dest="vacuum_dx",
-        type=float,
-        default=UNSET,
-        metavar="FLOAT",
-        help="仅用于 nested_three_region 的 vacuum 区域尺度，单位 m（默认：0.10）",
-    )
-    mesh_group.add_argument(
-        "--outer-dx",
-        dest="outer_dx",
-        type=float,
-        default=UNSET,
-        metavar="FLOAT",
-        help="仅用于 nested_three_region 的 outer 区域尺度，单位 m（默认：0.15）",
+        help="唯一单 Region 的目标网格尺度，单位 m（默认：0.08）",
     )
 
     # ------------------------------------------------------------------ #
@@ -452,8 +408,8 @@ def main() -> None:
         0. 解析 CLI，拦截历史参数
         1. 收集用户显式输入 → CliOverrides
         2. load_effective_config()（发现/读取/校验/合并 linkmesh.in 与 CLI）
-        3. read_gfile() → GFileData
-        4. oft_adapter.generate_mesh(..., profile=, boundary_source=) → Mesh2D
+        3. Reader 取得唯一实际计算域边界
+        4. oft_adapter.generate_mesh(boundary, mesh_dx=...) → Mesh2D
         5. target=trimeg 时写出 HDF5
         6. target=m3dc1 时构造一次 M3DC1ModelSpec，并写出 TXT 与可选 SMB
         7. plot_mesh()（若配置 plot_path）
@@ -495,14 +451,10 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
     """
     overrides = CliOverrides(
         target=args.target,
-        profile=args.profile,
         boundary_source=args.boundary_source,
         gfile=args.gfile,
         array_file=args.array_file,
         mesh_dx=args.mesh_dx,
-        plasma_dx=args.plasma_dx,
-        vacuum_dx=args.vacuum_dx,
-        outer_dx=args.outer_dx,
         hdf5=args.hdf5,
         plot=args.plot,
         model=args.model,
@@ -551,7 +503,7 @@ def _run(args: argparse.Namespace) -> None:
         else:
             print("[LinkMesh] 未加载配置文件（使用内建默认值与 CLI 显式参数）")
         print(
-            f"[LinkMesh] 有效配置：target={cfg.target}, profile={cfg.profile}, "
+            f"[LinkMesh] 有效配置：target={cfg.target}, "
             f"boundary_source={cfg.boundary_source}"
         )
 
@@ -592,7 +544,9 @@ def _run(args: argparse.Namespace) -> None:
             print(f"[LinkMesh] 读取 GFile：{gfile_path}")
 
         gfile_data = read_gfile(gfile_path)
-        mesh_input = gfile_data
+        mesh_input = np.column_stack(
+            (gfile_data.lcfs_r, gfile_data.lcfs_z)
+        )
 
         if verbose:
             print(f"  LCFS 点数: {len(gfile_data.lcfs_r)}")
@@ -606,38 +560,18 @@ def _run(args: argparse.Namespace) -> None:
                 print("  第一壁: 无（GFile 不含 limiter 数据）")
 
     # ------------------------------------------------------------------ #
-    # Step 3：生成网格（M2 正式路径：OFT Adapter）                          #
-    # 按 profile/boundary_source 分派已实现路径；Adapter 自身也校验组合。    #
-    # single_region + lcfs 只使用 plasma_dx；vacuum_dx/outer_dx 仍传入      #
-    # （Adapter 在 single-region 分支忽略之），配置字段不删除。              #
+    # Step 3：使用唯一实际边界生成单区域网格                                #
     # ------------------------------------------------------------------ #
     from linkmesh.mesher.oft_adapter import generate_mesh
 
     if verbose:
-        if cfg.profile == "single_region":
-            print(
-                "[LinkMesh] 调用 OFT gs_Domain 生成 single-region "
-                f"{cfg.boundary_source} 二维三角网格..."
-            )
-            print(f"  网格尺度: mesh_dx={cfg.mesh_dx} m")
-        else:
-            print("[LinkMesh] 调用 OFT gs_Domain 生成 nested-three-region 二维三角网格...")
-            print(
-                f"  网格尺度: plasma_dx={cfg.plasma_dx} m, "
-                f"vacuum_dx={cfg.vacuum_dx} m, outer_dx={cfg.outer_dx} m"
-            )
+        print(
+            "[LinkMesh] 调用 OFT gs_Domain 生成 single-region "
+            f"{cfg.boundary_source} 二维三角网格..."
+        )
+        print(f"  网格尺度: mesh_dx={cfg.mesh_dx} m")
 
-    adapter_plasma_dx = (
-        cfg.mesh_dx if cfg.profile == "single_region" else cfg.plasma_dx
-    )
-    mesh = generate_mesh(
-        mesh_input,
-        plasma_dx=adapter_plasma_dx,
-        vacuum_dx=cfg.vacuum_dx,
-        outer_dx=cfg.outer_dx,
-        profile=cfg.profile,
-        boundary_source=cfg.boundary_source,
-    )
+    mesh = generate_mesh(mesh_input, mesh_dx=cfg.mesh_dx)
 
     if verbose:
         print(f"  节点数: {mesh.n_nodes}")

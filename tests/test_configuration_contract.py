@@ -481,22 +481,11 @@ def test_regions_generate_rejects_path_collision_and_missing_resolution(
 
 
 def test_builtin_defaults_and_target_conditional_output(tmp_path):
-    config = _load(
-        tmp_path,
-        profile="nested_three_region",
-        boundary_source="artificial_outer",
-        gfile="eq.gfile",
-    )
+    config = _load(tmp_path, gfile="eq.gfile")
 
     assert config.target == "trimeg"
-    assert config.profile == "nested_three_region"
-    assert config.boundary_source == "artificial_outer"
-    assert (config.mesh_dx, config.plasma_dx, config.vacuum_dx, config.outer_dx) == (
-        0.08,
-        0.08,
-        0.10,
-        0.15,
-    )
+    assert config.boundary_source == "lcfs"
+    assert config.mesh_dx == 0.08
     assert config.hdf5_path == (tmp_path / "mesh.h5").resolve()
     assert config.plot_path is None
     assert config.verbose is False
@@ -511,22 +500,21 @@ def test_toml_cli_priority_and_distinct_path_bases(tmp_path):
         "schema_version = 1\n"
         "[task]\ntarget = 'trimeg'\n"
         "[input]\ngfile = 'toml.gfile'\n"
-        "[domain]\nprofile = 'nested_three_region'\n"
-        "boundary_source = 'artificial_outer'\n"
-        "[mesh]\nplasma_dx = 0.04\n"
+        "[domain]\nboundary_source = 'lcfs'\n"
+        "[mesh]\nmesh_dx = 0.04\n"
         "[output]\nhdf5 = 'toml.h5'\n",
         encoding="utf-8",
     )
 
     config = load_effective_config(
-        CliOverrides(gfile="cli.gfile", plasma_dx=0.06),
+        CliOverrides(gfile="cli.gfile", mesh_dx=0.06),
         config_arg=str(config_path),
         cwd=tmp_path,
     )
 
     assert config.gfile_path == (tmp_path / "cli.gfile").resolve()
     assert config.hdf5_path == (config_dir / "toml.h5").resolve()
-    assert config.plasma_dx == 0.06
+    assert config.mesh_dx == 0.06
 
 
 @pytest.mark.parametrize(
@@ -545,11 +533,7 @@ def test_strict_toml_rejects_distinct_schema_failures(tmp_path, text, message):
 
     with pytest.raises(ConfigError, match=message):
         load_effective_config(
-            CliOverrides(
-                profile="nested_three_region",
-                boundary_source="artificial_outer",
-                gfile="eq.gfile",
-            ),
+            CliOverrides(gfile="eq.gfile"),
             cwd=tmp_path,
         )
 
@@ -559,19 +543,16 @@ def test_strict_toml_rejects_distinct_schema_failures(tmp_path, text, message):
     [
         {
             "target": "mesh_only",
-            "profile": "single_region",
             "boundary_source": "lcfs",
             "gfile": "eq.gfile",
         },
         {
             "target": "trimeg",
-            "profile": "single_region",
             "boundary_source": "array_file",
             "array_file": "boundary",
         },
         {
             "target": "m3dc1",
-            "profile": "single_region",
             "boundary_source": "array_file",
             "array_file": "boundary",
             "model": "model.txt",
@@ -581,7 +562,7 @@ def test_strict_toml_rejects_distinct_schema_failures(tmp_path, text, message):
 )
 def test_current_legal_workflows(tmp_path, overrides):
     config = _load(tmp_path, **overrides)
-    assert config.profile == "single_region"
+    assert not hasattr(config, "profile")
 
 
 @pytest.mark.parametrize(
@@ -589,34 +570,6 @@ def test_current_legal_workflows(tmp_path, overrides):
     [
         (
             {
-                "profile": "nested_three_region",
-                "boundary_source": "lcfs",
-                "gfile": "eq.gfile",
-            },
-            ConfigError,
-        ),
-        (
-            {
-                "profile": "single_region",
-                "boundary_source": "artificial_outer",
-                "gfile": "eq.gfile",
-            },
-            ConfigError,
-        ),
-        (
-            {
-                "target": "m3dc1",
-                "profile": "nested_three_region",
-                "boundary_source": "artificial_outer",
-                "gfile": "eq.gfile",
-                "model": "model.txt",
-                "smb": "mesh.smb",
-            },
-            ConfigError,
-        ),
-        (
-            {
-                "profile": "single_region",
                 "boundary_source": "first_wall",
                 "gfile": "eq.gfile",
             },
@@ -638,14 +591,12 @@ def test_forbidden_and_unimplemented_combinations(
     [
         (
             {
-                "profile": "single_region",
                 "boundary_source": "lcfs",
             },
             "gfile",
         ),
         (
             {
-                "profile": "single_region",
                 "boundary_source": "array_file",
             },
             "array_file",
@@ -653,7 +604,6 @@ def test_forbidden_and_unimplemented_combinations(
         (
             {
                 "target": "m3dc1",
-                "profile": "single_region",
                 "boundary_source": "lcfs",
                 "gfile": "eq.gfile",
                 "smb": "mesh.smb",
@@ -663,7 +613,6 @@ def test_forbidden_and_unimplemented_combinations(
         (
             {
                 "target": "mesh_only",
-                "profile": "single_region",
                 "boundary_source": "array_file",
                 "array_file": "boundary",
                 "plot_lcfs": True,
@@ -678,33 +627,62 @@ def test_required_fields(tmp_path, overrides, message):
         _load(tmp_path, **overrides)
 
 
+def test_effective_config_has_exact_single_region_fields(tmp_path):
+    config = _load(tmp_path, gfile="eq.gfile")
+
+    assert tuple(config.__dataclass_fields__) == (
+        "schema_version",
+        "config_path",
+        "target",
+        "boundary_source",
+        "gfile_path",
+        "array_file_path",
+        "mesh_dx",
+        "hdf5_path",
+        "plot_path",
+        "model_path",
+        "smb_path",
+        "verbose",
+        "plot_lcfs",
+    )
+
+
 @pytest.mark.parametrize(
-    "overrides",
-    [
-        {
-            "target": "mesh_only",
-            "profile": "single_region",
-            "boundary_source": "lcfs",
-            "gfile": "eq.gfile",
-            "plasma_dx": 0.03,
-        },
-        {
-            "profile": "nested_three_region",
-            "boundary_source": "artificial_outer",
-            "gfile": "eq.gfile",
-            "mesh_dx": 0.03,
-        },
-        {
-            "profile": "nested_three_region",
-            "boundary_source": "artificial_outer",
-            "gfile": "eq.gfile",
-            "outer_dx": float("inf"),
-        },
-    ],
+    "removed_key",
+    (
+        "[domain]\nprofile = 'single_region'\n",
+        "[domain]\nprofile = 'nested_three_region'\n",
+        "[mesh]\nplasma_dx = 0.03\n",
+        "[mesh]\nvacuum_dx = 0.04\n",
+        "[mesh]\nouter_dx = 0.05\n",
+    ),
 )
-def test_mesh_scale_applicability_and_finite_positive_values(
-    tmp_path,
-    overrides,
-):
-    with pytest.raises(ConfigError):
-        _load(tmp_path, **overrides)
+def test_removed_root_toml_fields_are_rejected(tmp_path, removed_key):
+    path = tmp_path / "linkmesh.in"
+    path.write_text(
+        "schema_version = 1\n" + removed_key,
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="未知键"):
+        load_effective_config(CliOverrides(), cwd=tmp_path)
+
+
+def test_root_mesh_dx_default_toml_and_cli_priority(tmp_path):
+    path = tmp_path / "linkmesh.in"
+    path.write_text(
+        "schema_version = 1\n"
+        "[input]\ngfile = 'eq.gfile'\n"
+        "[domain]\nboundary_source = 'lcfs'\n"
+        "[mesh]\nmesh_dx = 0.06\n",
+        encoding="utf-8",
+    )
+
+    toml_config = load_effective_config(CliOverrides(), cwd=tmp_path)
+    cli_config = load_effective_config(
+        CliOverrides(mesh_dx=0.04),
+        cwd=tmp_path,
+    )
+
+    assert toml_config.mesh_dx == 0.06
+    assert cli_config.mesh_dx == 0.04

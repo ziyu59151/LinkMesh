@@ -10,7 +10,6 @@ from linkmesh import mesh_quality
 from linkmesh.mesher import oft_adapter
 from linkmesh.mesher.oft_adapter import (
     _OUTER_REGION_ATTR,
-    build_oft_domain_from_gfile,
     build_single_region_domain_from_boundary,
     generate_multi_region_mesh,
     inspect_multi_region_ids,
@@ -527,7 +526,7 @@ def test_single_region_boundary_strategy_creates_one_region(monkeypatch):
 
     result = build_single_region_domain_from_boundary(
         boundary,
-        plasma_dx=0.04,
+        mesh_dx=0.04,
     )
 
     assert result is domain
@@ -740,34 +739,3 @@ def test_multi_region_full_build_rejects_changed_final_mapping(
         )
 
 
-class _NestedDomain:
-    def __init__(self):
-        self.regions = []
-        self.define_region = MagicMock()
-        self.add_polygon = MagicMock()
-        self.add_annulus = MagicMock()
-
-    def add_rectangle(self, *_args, **_kwargs):
-        self.regions.append(_Region())
-
-
-def test_nested_strategy_captures_artificial_outer_region(monkeypatch):
-    domain = _NestedDomain()
-    monkeypatch.setattr(
-        oft_adapter,
-        "_load_gs_domain_class",
-        lambda: lambda: domain,
-    )
-    gfile = SimpleNamespace(
-        lcfs_r=np.array([0.0, 1.0, 1.0, 0.0]),
-        lcfs_z=np.array([0.0, 0.0, 1.0, 1.0]),
-        wall_r=None,
-        wall_z=None,
-    )
-
-    result = build_oft_domain_from_gfile(gfile)
-
-    assert result is domain
-    assert len(domain.regions) == 1
-    assert getattr(domain, _OUTER_REGION_ATTR) is domain.regions[0]
-    assert domain.add_polygon.call_count == 1

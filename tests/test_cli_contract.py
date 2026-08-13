@@ -104,7 +104,12 @@ def test_top_level_help_describes_both_workflows_and_group_order(capsys):
 
     assert captured.value.code == 0
     help_text = capsys.readouterr().out
-    assert "标准网格" in help_text
+    assert "单区域网格" in help_text
+    assert "nested_three_region" not in help_text
+    assert "--profile" not in help_text
+    assert "--plasma-dx" not in help_text
+    assert "--vacuum-dx" not in help_text
+    assert "--outer-dx" not in help_text
     assert "多区域网格" in help_text
     assert "linkmesh regions inspect" in help_text
     assert "linkmesh regions generate" in help_text
@@ -115,15 +120,11 @@ def test_top_level_help_describes_both_workflows_and_group_order(capsys):
         "--config",
         "--no-config",
         "--target",
-        "--profile",
         "--boundary-source",
         "--gfile",
         "--array-file",
         "--plot-lcfs",
         "--mesh-dx",
-        "--plasma-dx",
-        "--vacuum-dx",
-        "--outer-dx",
         "--hdf5",
         "--h5",
         "--model",
@@ -170,8 +171,6 @@ def test_regions_help_hierarchy_and_old_parser_scope(capsys):
             "--no-config",
             "--target",
             "mesh_only",
-            "--profile",
-            "single_region",
             "--boundary-source",
             "lcfs",
             "--gfile",
@@ -179,6 +178,28 @@ def test_regions_help_hierarchy_and_old_parser_scope(capsys):
         ]
     )
     assert old.command is None
+
+
+@pytest.mark.parametrize(
+    "removed_option",
+    ("--profile", "--plasma-dx", "--vacuum-dx", "--outer-dx"),
+)
+def test_root_rejects_removed_legacy_options(removed_option):
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as captured:
+        parser.parse_args([removed_option, "legacy"])
+
+    assert captured.value.code != 0
+
+
+def test_root_rejects_artificial_outer_boundary_source():
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit) as captured:
+        parser.parse_args(["--boundary-source", "artificial_outer"])
+
+    assert captured.value.code != 0
 
 
 def test_regions_inspect_help_is_scoped_and_grouped(capsys):
@@ -1157,8 +1178,6 @@ def test_mesh_only_selects_mesher_without_writers(monkeypatch, tmp_path):
             "--no-config",
             "--target",
             "mesh_only",
-            "--profile",
-            "single_region",
             "--boundary-source",
             "lcfs",
             "--gfile",
@@ -1181,8 +1200,6 @@ def test_trimeg_passes_same_mesh_to_hdf5_only(monkeypatch, tmp_path):
             "--no-config",
             "--target",
             "trimeg",
-            "--profile",
-            "single_region",
             "--boundary-source",
             "lcfs",
             "--gfile",
@@ -1209,8 +1226,6 @@ def test_m3dc1_reuses_one_model_spec_and_skips_hdf5(
             "--no-config",
             "--target",
             "m3dc1",
-            "--profile",
-            "single_region",
             "--boundary-source",
             "lcfs",
             "--gfile",
@@ -1241,8 +1256,6 @@ def test_array_lcfs_reference_never_enters_mesher_or_writer(
             "--no-config",
             "--target",
             "trimeg",
-            "--profile",
-            "single_region",
             "--boundary-source",
             "array_file",
             "--array-file",
@@ -1277,8 +1290,6 @@ def test_configuration_failure_precedes_reader_and_mesher(
         "--no-config",
         "--target",
         "mesh_only",
-        "--profile",
-        "single_region",
         "--boundary-source",
         "array_file",
         "--array-file",
