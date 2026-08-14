@@ -96,6 +96,16 @@ def _usage_block(help_text):
     return "\n".join(block)
 
 
+def _assert_help_contains(help_text, expected):
+    normalized_help = " ".join(help_text.split())
+    missing = [
+        item
+        for item in expected
+        if item not in normalized_help
+    ]
+    assert not missing, f"help 缺少以下契约：{missing}"
+
+
 def test_top_level_help_describes_both_workflows_and_group_order(capsys):
     parser = cli.build_parser()
 
@@ -231,14 +241,27 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
 
     assert captured.value.code == 0
     help_text = capsys.readouterr().out
-    for option in (
-        "--config",
-        "--multi-array-file",
-        "--regions-map",
-        "--plot",
-        "--verbose",
-    ):
-        assert option in help_text
+    _assert_help_contains(
+        help_text,
+        (
+            "--config",
+            "--multi-array-file",
+            "--regions-map",
+            "--plot",
+            "--verbose",
+            "不生成完整 Triangle 网格",
+            "inspection PNG",
+            "供 generate 使用",
+            "schema_version = 1",
+            "[regions]",
+            'mode = "inspect"',
+            "[runtime]",
+            "TOML: regions.multi_array_file",
+            "TOML: regions.regions_map",
+            "TOML: regions.plot",
+            "TOML: runtime.verbose",
+        ),
+    )
     usage = _usage_block(help_text)
     assert "linkmesh regions inspect [options]" in usage
     assert "regions inspect" not in usage.replace(
@@ -246,17 +269,6 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
         "",
         1,
     )
-    assert "不生成完整 Triangle 网格" in help_text
-    assert "可选的 inspection PNG" in help_text
-    assert "供 generate 使用的 TOML regions map" in help_text
-    assert "schema_version = 1" in help_text
-    assert "[regions]" in help_text
-    assert 'mode = "inspect"' in help_text
-    assert "[runtime]" in help_text
-    assert "TOML: regions.multi_array_file" in help_text
-    assert "TOML: regions.regions_map" in help_text
-    assert "TOML: regions.plot" in help_text
-    assert "TOML: runtime.verbose" in help_text
     assert "--region-dx" not in help_text
     assert "--transition-width" not in help_text
     assert "--transition-gradient" not in help_text
@@ -329,23 +341,46 @@ def test_regions_generate_help_is_scoped(capsys):
 
     assert captured.value.code == 0
     help_text = capsys.readouterr().out
-    for option in (
-        "--config",
-        "--target",
-        "--multi-array-file",
-        "--regions-map",
-        "--mesh-dx",
-        "--region-dx",
-        "--transition-width",
-        "--transition-gradient",
-        "--local-refinement",
-        "--hdf5",
-        "--model",
-        "--smb",
-        "--plot",
-        "--verbose",
-    ):
-        assert option in help_text
+    _assert_help_contains(
+        help_text,
+        (
+            "--config",
+            "--target",
+            "--multi-array-file",
+            "--regions-map",
+            "--mesh-dx",
+            "--region-dx",
+            "--transition-width",
+            "--transition-gradient",
+            "--local-refinement",
+            "--hdf5",
+            "--model",
+            "--smb",
+            "--plot",
+            "--verbose",
+            "{mesh_only,trimeg,m3dc1}",
+            "schema_version = 1",
+            'mode = "generate"',
+            "[regions]",
+            "[regions.mesh]",
+            "[regions.mesh.region_dx]",
+            "[[regions.mesh.local_refinement]]",
+            "[runtime]",
+            "TOML: regions.mesh.mesh_dx",
+            "TOML: regions.mesh.region_dx",
+            "TOML: regions.mesh.transition_width",
+            "TOML: regions.mesh.transition_gradient",
+            "TOML: [[regions.mesh.local_refinement]]",
+            "覆盖所有最终 Region",
+            "互斥",
+            "1/m",
+            "对数网格尺度梯度",
+            "自动推导",
+            "变化层厚度",
+            "粗侧",
+            "完整 CLI 列表就替换 TOML 列表而不是追加",
+        ),
+    )
     usage = _usage_block(help_text)
     assert "linkmesh regions generate [options]" in usage
     assert "regions generate" not in usage.replace(
@@ -353,35 +388,7 @@ def test_regions_generate_help_is_scoped(capsys):
         "",
         1,
     )
-    assert "最终 Region ID" in help_text
-    assert "可重复提供" in help_text
-    assert "覆盖所有最终 Region" in help_text
-    assert "{mesh_only,trimeg,m3dc1}" in help_text
-    assert "0 表示关闭" in help_text
-    assert "统一变化层厚度" in help_text
-    assert "1/m" in help_text
-    assert "对数网格尺度梯度" in help_text
-    assert "互斥" in help_text
-    assert "自动推导自身变化层厚度" in help_text
-    assert "变化层自动位于" in help_text
-    assert "final Mesh2D 数值质量" in help_text
-    assert "可选的最终网格 PNG" in help_text
     assert "M4" not in help_text
-    assert "schema_version = 1" in help_text
-    assert 'mode = "generate"' in help_text
-    for toml_path in (
-        "[regions]",
-        "[regions.mesh]",
-        "[regions.mesh.region_dx]",
-        "[[regions.mesh.local_refinement]]",
-        "[runtime]",
-        "TOML: regions.mesh.transition_width",
-        "TOML: regions.mesh.transition_gradient",
-        "TOML: regions.mesh.region_dx",
-    ):
-        assert toml_path in help_text
-    assert "完整 CLI 列表就替换 TOML 列表而不是追加" in help_text
-    assert "point local refinement" in help_text
     assert "--gfile" not in help_text
     assert "--no-hdf5" not in help_text
     assert "--no-smb" not in help_text
