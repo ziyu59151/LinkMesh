@@ -3,11 +3,11 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.5**（根命令 legacy nested 源码收口已经完成；User 批准为
-  `regions generate` 增加第二种全局 transition 控制模式
-  `--transition-gradient`。现有 `transition_width` 保留并已实现；
-  `transition_gradient` 的数学、配置、CLI、诊断、实施和验收契约已经批准，
-  业务源码实现仍为 PENDING）
+- 文档状态：正式版 **5.6**（根命令 legacy nested 源码收口已经完成；全局
+  `transition_width` 与 `transition_gradient` 均已实现，gradient 真实生成侧案例、
+  公式、诊断、面积约束、结构质量和 PNG 人工检查已经通过；User 进一步批准同时适用于
+  根单区域命令和 `regions generate` 的可重复 R-Z point local refinement 技术契约，
+  其源码实现仍为 PENDING）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -197,11 +197,17 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `case_002` TXT+SMB 同门交付 | **DELIVERED；LOADED PENDING** |
 | OFT/Triangle transition refinement 调查 | **COMPLETED** |
 | native ABI / ownership / runtime exports | **CONFIRMED** |
-| `transition_width` CLI/TOML 与低层 Adapter | **IMPLEMENTED / 保留** |
-| `transition_gradient` 设计 | **DESIGNED / USER-APPROVED / NOT IMPLEMENTED** |
-| `transition_gradient` CLI/TOML | **APPROVED / SOURCE IMPLEMENTATION PENDING** |
-| gradient 模式 per-interface `W_i` | **DESIGNED / NOT IMPLEMENTED** |
-| R-Z local refinement | **SEQUENCED AFTER TASK 1 / TECHNICAL CONTRACT PENDING** |
+| `transition_width` CLI/TOML 与低层 Adapter | **IMPLEMENTED / PRESERVED** |
+| `transition_gradient` CLI/TOML | **IMPLEMENTED** |
+| gradient 模式 global `G` → per-interface `W_i` | **IMPLEMENTED / FORMULA CHECKED** |
+| gradient diagnostics | **IMPLEMENTED** |
+| 真实 gradient 案例 | **RUN / GENERATED / USER-CHECKED PASSED** |
+| M3D-C1 gradient-refined mesh 消费 | **PENDING** |
+| R-Z point local refinement 设计 | **DESIGNED / USER-APPROVED / NOT IMPLEMENTED** |
+| `--local-refinement R,Z,DX,W` | **APPROVED / SOURCE IMPLEMENTATION PENDING** |
+| root local refinement | **DESIGNED / NOT IMPLEMENTED** |
+| regions generate local refinement | **DESIGNED / NOT IMPLEMENTED** |
+| combined interface + point refinement | **DESIGNED / NOT IMPLEMENTED** |
 | 自动 interface 发现与粗细侧 refinement | **IMPLEMENTED** |
 | 指数 profile 与逐 triangle `Amax` | **IMPLEMENTED** |
 | `rpqazQ` 目标服务器真实调用 | **RUN / GENERATED** |
@@ -641,7 +647,9 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
 - `triangulate`/`trifree` 运行时导出：**CONFIRMED**；
 - 动态依赖：**CHECKED / COMPLETE**；
 - 可行性：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**；
-- `transition_width` 与低层 Adapter：**IMPLEMENTED**；
+- `transition_width` 与低层 Adapter：**IMPLEMENTED / PRESERVED**；
+- `transition_gradient` CLI/TOML、global G 到 per-interface `W_i` 和 gradient
+  diagnostics：**IMPLEMENTED**；
 - 自动 interface 发现、粗细侧判定、指数 profile 和逐 triangle `Amax`：
   **IMPLEMENTED**；
 - attributes、PSLG 与有限迭代：**IMPLEMENTED；真实服务器运行完成**；
@@ -650,8 +658,12 @@ OFT 私有接口是版本锁定、范围受控、失败即停止的兼容接口�
   **GENERATED / PNG USER-CHECKED PASSED**；
 - 全局单一 `transition_width` 产品设计：**FINALIZED**；
 - final `Mesh2D` verbose 数值质量报告：**IMPLEMENTED / USER ACCEPTED**；
-- refined mesh 的 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性：
-  **PENDING CONSUMER VALIDATION**。
+- 真实 gradient 案例：**RUN / GENERATED / FORMULA AND DIAGNOSTICS CHECKED /
+  FINAL AREA CONSTRAINTS PASSED / STRUCTURAL QUALITY PASSED /
+  PNG USER-CHECKED PASSED**；
+- M3D-C1 gradient-refined mesh 的加载、初始化、时间推进、稳定性和物理正确性：
+  **PENDING CONSUMER VALIDATION**；
+- R-Z point local refinement：**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**。
 
 #### 4.6.1 参数与编排
 
@@ -1060,10 +1072,12 @@ initial Mesh2D
 
 状态：
 
-- `transition_width`：**IMPLEMENTED / 保留**；
-- `transition_gradient` 设计：**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
-- gradient CLI/TOML：**APPROVED / SOURCE IMPLEMENTATION PENDING**；
-- per-interface `W_i`：**DESIGNED / NOT IMPLEMENTED**。
+- `transition_width`：**IMPLEMENTED / PRESERVED**；
+- `transition_gradient` CLI/TOML：**IMPLEMENTED**；
+- global `G` 到 per-interface `W_i`：**IMPLEMENTED / FORMULA CHECKED**；
+- gradient diagnostics：**IMPLEMENTED**；
+- 真实 gradient 案例：**RUN / GENERATED / USER-CHECKED PASSED**；
+- M3D-C1 gradient-refined mesh 消费：**PENDING**。
 
 `transition_gradient` 是现有指数 transition profile 的第二种全局控制模式，不是
 新 profile。正式 CLI 名称固定为：
@@ -1189,9 +1203,40 @@ gradient 模式不得打印虚假的全局 W，至少表达：
 verbose 关闭时不增加普通输出。diagnostics 不得写入 `Mesh2D`、Writer 文件、
 regions map 或 native exchange。
 
-**下一轮最小源码范围**
+**实现与真实生成侧证据**
 
-原则上只修改：
+该模式已经按上述契约落入现有配置、CLI、refinement、diagnostics 和测试职责边界，
+未增加 interface 级用户参数，也未修改 `Mesh2D`、regions map、Writer、helper、
+OFT/Triangle、native ABI 或目标格式。
+
+User 提供的服务器直接证据：
+
+- 服务器自动测试全部通过；未提供精确 passed 数，不得猜测；
+- 真实命令
+  `python -m linkmesh regions generate --config generate.toml --transition-gradient 10.0`
+  成功完成；
+- 全局 `G=10 1/m`；
+- interface Regions `(1,3)`：`h_f=0.02 m`、`h_c=0.09 m`、
+  `W_i=0.150408 m`；
+- interface Regions `(2,3)`：`h_f=0.02 m`、`h_c=0.11 m`、
+  `W_i=0.170475 m`；
+- 两个 `W_i` 均符合 `ln(h_c/h_f)/G`；
+- refinement 执行 3 轮，initial 为 4833 nodes / 9572 triangles，final 为
+  6612 nodes / 13130 triangles；
+- final maximum area excess 为 0，final violations 为 0；
+- degenerate、duplicate、non-manifold 计数均为 0；
+- minimum angle 为 20.8893 degree；
+- minimum Q 为 0.420755，Q P01/P05/median 分别为
+  0.644581/0.733944/0.914118；
+- adjacent size ratio maximum/P95/P99 分别为
+  2.87059/1.38773/1.58888；
+- final PNG 已由 User 人工检查通过。
+
+minimum Q 和 maximum adjacent size ratio 是已批准的报告指标，不因缺少另行批准的
+失败阈值而自动构成失败。上述证据只关闭 gradient 生成侧验收，不证明
+M3D-C1 加载、时间推进、稳定性或物理正确性。
+
+**已完成源码范围**
 
 - `src/linkmesh/config.py`：解析和校验 gradient，实施同层互斥、跨层模式覆盖并形成
   effective transition mode；
@@ -1207,9 +1252,9 @@ regions map 或 native exchange。
 不得修改 `Mesh2D`、regions map、Reader、Plotter、Writer、M3D-C1 ModelSpec、
 helper、OFT/Triangle、native ABI 或 HDF5/TXT/SMB schema。
 
-**下一轮测试与真实验收**
+**已完成自动测试与真实验收设计**
 
-自动测试至少覆盖：
+自动测试覆盖：
 
 - 默认 disabled；width/gradient TOML；同层 TOML 冲突；
 - CLI width 覆盖 TOML gradient、CLI gradient 覆盖 TOML width；
@@ -1225,14 +1270,282 @@ helper、OFT/Triangle、native ABI 或 HDF5/TXT/SMB schema。
 - gradient 模式 initial `Mesh2D` 只生成一次，全部 targets 复用 final `Mesh2D`；
 - verbose 显示 G 和 per-interface `W_i`，width 输出不回归，disabled 不打印虚假摘要。
 
-真实验收候选必须至少包含两个 `h_c/h_f` 比不同的 interfaces，使用同一个 G，确认
-日志中不同 `W_i` 符合公式、final violations 为零，degenerate/duplicate/
-non-manifold 均为零，并生成 PNG 供 User 检查。自动测试与真实运行状态必须分开记录。
+真实验收已经使用两个 `h_c/h_f` 比不同的 interfaces 和同一个 G，确认不同 `W_i`
+符合公式、final violations 为零、degenerate/duplicate/non-manifold 均为零，并由
+User 检查 PNG。自动测试与真实运行状态继续分开记录。
 
-R-Z 点局部加密不属于本任务。本轮不定义 `--local-refinement R,Z,DX,W`、点定位、
-连通分量、点距离 profile、多点约束或根命令/regions 局部加密。该能力按 User 决定
-排在 gradient 实现与验收之后，状态为
-**SEQUENCED AFTER TASK 1 / TECHNICAL CONTRACT PENDING**。
+#### 4.6.13 R-Z point local refinement
+
+状态：
+
+- 技术设计：**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
+- `--local-refinement R,Z,DX,W`：**APPROVED / SOURCE IMPLEMENTATION PENDING**；
+- root local refinement：**DESIGNED / NOT IMPLEMENTED**；
+- regions generate local refinement：**DESIGNED / NOT IMPLEMENTED**；
+- combined interface + point refinement：**DESIGNED / NOT IMPLEMENTED**。
+
+该能力是在既有初始 `Mesh2D` 上施加静态空间尺寸约束。用户给出的 R-Z 坐标是尺寸场
+源点，不是新 Region、几何 point insertion 或强制 mesh node；最终网格不保证包含
+该坐标。它不是动态自适应、求解结果驱动 refinement、磁面对齐、第二网格引擎或
+coarsening。
+
+**CLI 作用域与四元组**
+
+正式参数为可重复的单值四元组：
+
+```text
+linkmesh --local-refinement R,Z,DX,W
+linkmesh regions generate --local-refinement R,Z,DX,W
+```
+
+示例：
+
+```text
+--local-refinement 1.50,0.00,0.015,0.25
+--local-refinement 2.10,-0.40,0.020,0.30
+```
+
+每次出现定义一个独立 point source：
+
+- `R`：大半径坐标 [m]；
+- `Z`：垂直坐标 [m]；
+- `DX`：点附近目标网格尺度 [m]；
+- `W`：从 DX 恢复到 source Region baseline dx 的物理宽度 [m]。
+
+不得拆成四个松散参数，不得增加 point gradient 或用户输入 Region ID。该参数不得
+加入 `regions` 父命令或 `regions inspect`。同一次 CLI 的多个记录保留出现顺序以便
+诊断，但最终数学结果必须与顺序无关。
+
+**TOML 与列表合并**
+
+实时配置层级允许的正式结构为：
+
+```toml
+[[mesh.local_refinement]]
+r = 1.50
+z = 0.00
+dx = 0.015
+width = 0.25
+```
+
+以及独立 regions generate 配置：
+
+```toml
+[[regions.mesh.local_refinement]]
+r = 1.50
+z = 0.00
+dx = 0.015
+width = 0.25
+```
+
+每条记录只允许 `r`、`z`、`dx`、`width`，四项全部必需。未知或缺失字段、错误类型、
+bool、NaN 和 Inf 必须失败。根标准配置不得接受 `regions.mesh` 结构，inspect 配置
+不得接受任一 local-refinement 结构，regions map 不得保存 point source。
+
+列表采用整体覆盖：
+
+1. 没有 CLI `--local-refinement` 时，使用 TOML 完整列表。
+2. 提供一个或多个 CLI 记录时，CLI 完整列表替换 TOML 列表，不追加。
+3. 内建默认值为空 tuple；空列表表示关闭。
+4. 不增加 `--no-local-refinement`。
+5. 不按重复坐标去重；坐标相同的记录仍分别参与约束并取最严格尺寸。
+6. effective point source records 必须不可变；不得把 argparse 或 TOML 可变对象直接
+   保存进冻结配置。
+
+若需关闭 TOML 点源，用户使用不含该列表的配置或现有配置选择机制；本轮不扩大 CLI。
+
+**受限生产几何与 Region 作用域**
+
+LinkMesh 当前主要处理托卡马克装置中的简单闭合 R-Z 轮廓，正式输入继续要求曲线
+非交叉、非相切、非重合，且包含或分离关系清晰。在该受限生产前提下，final Region ID
+可作为 point source 的局部加密作用域。
+
+Region ID 在 `Mesh2D` 和目标数据流中仍是离散物理区域标签，不是一般数学意义上的
+连通分量编号。本功能只在上述生产几何约束下将同一 Region ID 视为可接受的作用区域。
+不得为此建设 triangle 邻接 BFS、图论连通分量、通用拓扑证明、Shapely/GEOS、
+polygon boolean、DE-9IM 或通用计算几何系统。
+
+**Point source Region 定位**
+
+每个 source 只在 initial `Mesh2D` 上定位一次。使用带尺度相关浮点容差的二维
+point-in-triangle/barycentric 判定，查找包含或接触 `(R,Z)` 的 triangle candidates：
+
+1. 无候选：点在计算域外，失败。
+2. candidates 的 Region ID 集合恰有一个值：该值为 source Region ID。
+3. 多个 candidates 但 Region ID 全相同：允许，覆盖同 Region 内部 edge/vertex。
+4. candidates 含多个不同 Region ID：点位于或数值上无法区分于 Region interface，
+   失败并要求用户移动点。
+5. 点位于计算域外边界但只对应一个 Region ID：允许。
+6. 不从 regions map 曲线名、`physical_label`、technical role、颜色或输入顺序猜测。
+7. source Region ID 在所有 refinement rounds 中固定；正式 refinement 必须继续
+   保持 Region attributes 和集合。
+8. 不为定位修改 `Mesh2D`、Region ID、triangle connectivity 或 PSLG。
+
+根单区域也必须读取 initial `Mesh2D.region_ids` 的唯一实际值，不得写死 Region ID 1。
+
+**局部指数 profile**
+
+对 source `p=(R_p,Z_p)` 和 current triangle K 的 centroid
+`c_K=(R_K,Z_K)`：
+
+```text
+d_p(K) = sqrt((R_K-R_p)^2 + (Z_K-Z_p)^2)
+```
+
+point source 只作用于 `region_id(K) == source_region_id` 的 triangles。设：
+
+- `h_p` 为 source `DX`；
+- `h_r` 为 source Region effective baseline dx；
+- `W_p` 为 source `W`。
+
+正式 profile：
+
+```text
+h_p(d) = h_p * (h_r / h_p) ** min(d / W_p, 1)
+```
+
+因此 `d=0` 时为 `h_p`，`0<d<W_p` 时按既有指数 profile 恢复，`d>=W_p` 时不比
+`h_r` 更严格。约束按 triangle centroid 离散采样，所以 final mesh 只要求在 source
+附近逼近 `h_p`，不保证存在 centroid 恰位于 source 或 triangle 恰取得 `h_p`。
+
+每条 source 必须满足：
+
+- R、Z 有限；
+- DX、W 有限且严格正；
+- source Region baseline dx 有限且严格正；
+- `DX < baseline dx`。
+
+`DX >= baseline dx` 必须失败，不得静默 no-op 或尝试 coarsening。不得增加坐标范围
+硬编码、DX/W 任意上下限、source 数量上限、mesh 增长阈值或运行时间阈值；继续受现有
+最多三轮、规模不变但仍违规和 final violations 失败规则约束。
+
+**统一约束与 refinement 循环**
+
+对 current triangle K：
+
+```text
+h_target(K) = min(
+    h_region(K),
+    all applicable interface transition constraints,
+    all applicable same-Region point-source constraints,
+)
+Amax(K) = h_target(K)^2 / 2
+```
+
+规则：
+
+- point sources 重叠时取最细约束；
+- point 与 interface transition 重叠时取最细约束；
+- source 顺序不影响结果；
+- 只 refine，不 coarsen；
+- 每轮基于 current `Mesh2D` 重新计算 centroid、距离、profile 和 combined Amax；
+- source 坐标与初始定位得到的 Region ID 保持不变；
+- 不保存或复用旧 triangle index；
+- initial `Mesh2D` 只生成一次；
+- 全部 targets 消费同一个 final `Mesh2D`；
+- point source 不加入 PSLG；现有外边界/interface PSLG、Region attributes、native
+  ownership、`rpqazQ` option 和 ABI 不变。
+
+根命令数据流：
+
+```text
+single-region initial Mesh2D
+  → 定位 point source Region
+  → unified spatial refinement
+  → RefinementResult
+  → final Mesh2D quality
+  → Plotter / Writer
+```
+
+根命令 baseline dx 为 effective `mesh_dx`，不获得 transition width/gradient。没有
+point sources 时，现有单区域路径和输出保持不变，不恢复 legacy nested。
+
+regions generate baseline dx 来自现有 resolved Region-ID-to-dx mapping。
+disabled/width/gradient transition 与 local sources 可独立启用，但必须进入同一个
+combined Amax 和同一 refinement 循环。不得先 transition 后 local，也不得连续调用
+两套独立 `rpqazQ` 流程。现有 transition 命名的内部入口可做最小收口或保留兼容
+wrapper，但不得建设 plugin、通用 size-field DSL 或复制第二套循环。
+
+**Diagnostics 与 verbose**
+
+不可变 diagnostics 至少新增：
+
+- local refinement enabled 和 source count；
+- 每个 source 的 R、Z、DX、W；
+- source Region ID 和 baseline dx；
+- affected triangle count；
+- per-source maximum area excess；
+- combined iteration count；
+- initial/final node 与 triangle counts；
+- combined final maximum area excess 和 violating triangle count。
+
+transition 与 local 同时启用时，transition diagnostics 保留，local diagnostics 单独
+分组，但 iteration/growth/final violations 来自同一 combined refinement。CLI 在
+verbose 模式增加紧凑的：
+
+```text
+Local refinement:
+  point=(R,Z) m, Region=..., hp=... m, hr=... m, W=... m,
+  affected=..., maximum area excess=...
+```
+
+不得逐 triangle 打印。verbose 关闭时不增加普通输出。diagnostics 不得进入
+`Mesh2D`、regions map、Writer、helper exchange 或目标文件。
+
+`mesh_quality.py` 只合并不可变 local diagnostics，不重新定位 point，不重新计算
+distance、profile、Amax 或 refinement。
+
+**下一轮最小源码范围**
+
+原则上只修改：
+
+- `src/linkmesh/config.py`：定义不可变 point source record，解析根/regions TOML 与
+  CLI 四元组，执行严格校验和 CLI-list-over-TOML-list 整体覆盖；
+- `src/linkmesh/cli.py`：在根命令和 regions generate 注册可重复参数，将 effective
+  sources 传给统一 refinement 并格式化 diagnostics；
+- `src/linkmesh/mesher/triangle_refinement.py`：唯一负责 source 定位、Region
+  归属、距离、profile、combined Amax、`rpqazQ` 和统一有限迭代；
+- `src/linkmesh/mesh_quality.py`：只合并 local diagnostics；
+- 对应现有配置、CLI 和 refinement 测试。
+
+不得修改 `Mesh2D`、regions map、Reader、Plotter、Writer、M3D-C1 ModelSpec、
+helper、OFT/Triangle、native ABI 或 HDF5/TXT/SMB schema。
+
+**下一轮测试与真实验收**
+
+自动测试至少覆盖：
+
+- 根/regions 配置单个与多个 sources、默认空 tuple、不可变 records；
+- CLI 列表整体覆盖 TOML 列表；
+- 缺失/未知字段和非法 R/Z/DX/W；
+- inspect 拒绝 local refinement；
+- 根命令和 regions generate 可重复 CLI、负 Z 和错误四元组；
+- 无 source 时旧路径不回归，verbose local 分组；
+- point 在 triangle 内、同 Region edge、外边界、域外和跨 Region interface；
+- source Region ID 不写死，`DX>=baseline` 失败；
+- 已知距离 profile、`d>=W` 恢复 baseline；
+- 多 sources、point/interface 约束取最小值且 source 顺序无关；
+- 每轮重新计算 centroid；
+- Region IDs、PSLG、outer boundary 和现有面积容差保持；
+- root 与 regions 使用同一 refinement 实现；
+- initial Mesh2D 只生成一次，全部 targets 消费同一 final Mesh2D。
+
+真实验收至少分层覆盖：
+
+1. 根单区域一个 source：Regions=1、violations=0、结构计数为 0、PNG 显示局部细化并
+   由 User 检查。
+2. regions generate 至少两个不同 Region 的 sources，且一个与 interface transition
+   重叠：Region 定位正确、violations=0、结构计数为 0、PNG 由 User 检查。
+3. 域外点与 interface 点：真实 CLI 明确失败且不生成误导性 final 输出。
+
+自动测试、真实生成、PNG 检查和外部消费必须分层记录。
+
+**明确不开放**
+
+本任务不开放用户指定 Region ID、local gradient、方向性或椭圆范围、沿曲线或 box
+refinement、geodesic distance、邻接图连通分量、动态自适应、求解反馈、磁面对齐、
+coarsening、强制 point insertion、通用 size-field 表达式或 plugin system。以后新增
+任一能力必须再次蓝图先行。
 
 ---
 
@@ -1438,6 +1751,7 @@ schema_version = 1
 | `--model PATH` | `model` | 覆盖 `[output].model` |
 | `--smb PATH` | `smb` | 覆盖 `[output].smb`，表示未插 rank 的基础路径 |
 | `--plot-lcfs` | `plot_lcfs` | 显式出现时覆盖 `[output].plot_lcfs` 为 `True`；已实现 |
+| `--local-refinement R,Z,DX,W` | `local_refinement` | 根命令可重复；完整 CLI 列表整体覆盖 `[[mesh.local_refinement]]` |
 | `--verbose` | `verbose` | 显式出现时覆盖为 `True` |
 
 参与合并的 CLI 参数必须使用 `UNSET` 区分未提供与显式提供。CLI 层不得通过业务默认
@@ -1533,7 +1847,9 @@ EffectiveConfig.mesh_dx
 
 - `--mesh-dx`：全部最终 Region 的默认尺度；
 - `--region-dx ID=DX`：按最终 Region ID 覆盖；
-- `--transition-width`：全局变化层厚度。
+- `--transition-width`：全局变化层厚度；
+- `--transition-gradient`：全局对数网格尺度梯度；
+- `--local-refinement R,Z,DX,W`：可重复的局部 point source，设计已批准但源码尚未实现。
 
 两个 `--mesh-dx` 同名但作用域隔离。删除根命令 legacy dx 不得改变 regions 的
 任何尺度、transition、Region ID 或验证契约，也不得把旧区域 dx 自动映射为
@@ -1964,7 +2280,9 @@ mesh_dx = 0.08
 13. 同一 TOML 层不得同时定义 `transition_width` 与 `transition_gradient`，即使
     width 为零；CLI/TOML 跨层覆盖按第 4.6.12 节的 effective transition mode
     整体执行。
-14. 配置层不读取边界或 map 内容，不构造 `Mesh2D`，不调用 OFT/Writer，也不打开或
+14. `[[regions.mesh.local_refinement]]` 为可选 point-source array-of-tables，每条
+    记录字段精确为 `r/z/dx/width`；只属于 generate，不得进入 inspect 或 regions map。
+15. 配置层不读取边界或 map 内容，不构造 `Mesh2D`，不调用 OFT/Writer，也不打开或
     创建 HDF5。
 
 #### 5.7B.7 regions map 和 dx
@@ -2050,6 +2368,11 @@ regions generate 的尺度与 transition 参数：
 时不得覆盖 TOML。effective transition mode、跨层覆盖、数学定义和 diagnostics
 统一遵循第 4.6.12 节。
 
+可重复 `--local-refinement R,Z,DX,W` 与
+`[[regions.mesh.local_refinement]]` 的四元组、整体列表覆盖、Region 定位、point
+profile、combined Amax、diagnostics 和失败边界统一遵循第 4.6.13 节。local sources
+与 transition mode 相互独立，但进入同一个 refinement 循环。
+
 正式规则：
 
 1. 只提供 `--mesh-dx`：全部 Region 使用统一值。
@@ -2127,6 +2450,8 @@ dataset/shape 检测细节，也不将该证据提升为标准 MATLAB/TRIMEG con
 共同规则：
 
 - 根命令每次任务只有一个计算域外边界来源并只生成一个 Region。
+- 根命令可在 initial single-region `Mesh2D` 后使用已批准但尚未实现的
+  `--local-refinement R,Z,DX,W`；不得因此建立第二个 Region 或恢复 nested。
 - `lcfs`、`first_wall` 需要 GFile。
 - `array_file` v1 需要 array file。纯 array 工作流继续禁止 GFile；已批准但尚未实现的
   `plot_lcfs=True` 例外允许额外 `gfile_path`，且该 GFile 只能提供 PNG LCFS
@@ -3611,10 +3936,13 @@ Release 构建、launcher、bootstrap、分层检查器和静态结构回归为
 ### 10.4 当前禁止事项
 
 - 第二网格引擎、三维网格、环向或并行分区；
-- 未经本蓝图批准的局部加密；求解过程动态自适应或磁面对齐；
+- 未经第 4.6.13 节批准范围之外的局部加密；求解过程动态自适应或磁面对齐；
 - 把 refined mesh 的 PNG 人工检查写成数值质量、M3D-C1 消费、稳定性或物理验证；
 - 允许用户修改 Region/interface 级 W、profile、Triangle option、minimum angle、
   max iterations、quality-report 输出路径或 native 库路径；
+- local refinement 用户指定 Region ID、local gradient、方向性/椭圆范围、曲线/box/
+  geodesic refinement、邻接图连通分量、coarsening、强制 point insertion、通用
+  size-field DSL 或 plugin system；
 - 未经生成侧探针和后续 C1/classification 调查批准的 LinkMesh M3D-C1 多区域或多
   geometric face；M3D-C1 求解器本身具备多区域模拟能力不自动开放 LinkMesh 输出；
 - 在 schema v2 获 User 批准且 native probe 前修改 helper exchange schema；
@@ -3796,9 +4124,18 @@ v5.5 保留已实现的全局 `transition_width`，并批准第二种全局
 `transition_gradient` 控制模式。正式名称为 `--transition-gradient`，其
 `G=d(ln h)/dd`、单位 `1/m`，每条不同 dx interface 自动派生
 `W_i=ln(h_c,i/h_f,i)/G`。width 与 gradient 同层互斥，跨层按 effective mode 整体
-覆盖。gradient 仍为 **NOT IMPLEMENTED**，不增加 interface 级用户参数，也不修改
-`Mesh2D`、Writer、helper、OFT/Triangle 或 native ABI。R-Z 局部加密留待任务二
-单独建立技术契约。
+覆盖。
+
+v5.6 根据服务器自动测试全通过和真实 `G=10 1/m` 案例，将
+`transition_gradient`、per-interface `W_i` 和 gradient diagnostics 更新为
+**IMPLEMENTED**，真实生成侧状态为 **RUN / GENERATED / USER-CHECKED PASSED**；
+M3D-C1 gradient-refined mesh 消费仍为 PENDING。同期批准可重复
+`--local-refinement R,Z,DX,W`，同时作用于根单区域和 `regions generate`，自动从
+initial `Mesh2D` 定位 source Region，并与 interface transition 共享 combined Amax
+和同一 refinement 循环。local refinement 状态仍为
+**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**，不增加用户 Region ID，不建设
+triangle 邻接或通用连通性系统，也不修改 `Mesh2D`、Writer、helper、OFT/Triangle
+或 native ABI。
 旧 `--min-angle` 与 `--max-area` 继续不属于 CLI。array reference PNG 仅绘制
 Mesh boundary 与 LCFS reference，不绘制参考 GFile 的 limiter、First wall 或
 Magnetic axis。

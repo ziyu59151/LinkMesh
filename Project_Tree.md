@@ -2,9 +2,10 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.5；根命令及 legacy nested 源码收口已经完成，
-  `regions inspect/generate` 是唯一多区域入口；现有全局 `transition_width` 保留并
-  已实现，全局 `transition_gradient` 已批准设计但尚未实现）
+- 文档状态：当前有效（对应技术蓝图 v5.6；根命令及 legacy nested 源码收口已经完成，
+  `regions inspect/generate` 是唯一多区域入口；全局 `transition_width` 和
+  `transition_gradient` 均已实现，R-Z point local refinement 已获 User 批准但尚未
+  实现）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -95,9 +96,12 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维�
 | LinkMesh 多区域 TXT+SMB | `case_002` GENERATED / DELIVERED |
 | LinkMesh 多区域 M3D-C1 消费验证 | PENDING |
 | OFT/Triangle transition refinement | IMPLEMENTED；真实 `rpqazQ` 已在目标服务器运行 |
-| 全局 `transition_width` | IMPLEMENTED / 保留；所有不同 dx interfaces 共享同一 W |
-| 全局 `transition_gradient` | APPROVED / NOT IMPLEMENTED；每条 interface 将按尺寸比派生自己的 W，详细契约见当前蓝图 |
-| R-Z local refinement | SEQUENCED AFTER TASK 1 / TECHNICAL CONTRACT PENDING |
+| 全局 `transition_width` | IMPLEMENTED / PRESERVED；所有不同 dx interfaces 共享同一 W |
+| 全局 `transition_gradient` | IMPLEMENTED；真实 G=10 案例 GENERATED / USER-CHECKED PASSED |
+| global G → per-interface Wi 与 gradient diagnostics | IMPLEMENTED / CHECKED |
+| M3D-C1 gradient-refined mesh 消费 | PENDING |
+| R-Z point local refinement | DESIGNED / USER-APPROVED / NOT IMPLEMENTED |
+| 可重复 `--local-refinement R,Z,DX,W` | APPROVED / SOURCE IMPLEMENTATION PENDING；规划同时支持根单区域与 regions generate |
 | 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
 | final `Mesh2D` verbose 数值质量报告 | IMPLEMENTED / USER ACCEPTED |
 | refined mesh 的 M3D-C1 消费 | PENDING |
@@ -538,13 +542,14 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 
 ### `src/linkmesh/mesher/triangle_refinement.py`
 
-- **状态**：IMPLEMENTED；真实 `rpqazQ` 已在目标服务器运行。
+- **状态**：IMPLEMENTED；真实 `rpqazQ` 和 global-gradient 案例已在目标服务器运行。
 - **职责**：自动提取 transition interfaces、判断粗细侧、计算指数 profile 和逐
   triangle 面积约束、管理 native ownership、执行有限 refinement并返回 final
   `Mesh2D`。
-- **产品语义**：已实现的 width 模式使用一个全局 W；多个变化层重叠时采用最严格
-  尺寸。已批准但尚未实现的 gradient 模式将使用一个全局对数尺度梯度，并由本模块
-  为每条 interface 派生不同的 W。详细数学、互斥、诊断和验收契约见当前技术蓝图。
+- **产品语义**：width 模式使用一个全局 W；gradient 模式使用一个全局对数尺度梯度，
+  并为每条 interface 派生不同的 W。下一轮已批准由本模块继续作为 interface 与 R-Z
+  point constraints 的唯一实现位置，共享 combined Amax 和同一 refinement 循环；
+  point local refinement 尚未实现。详细契约见当前技术蓝图。
 - **不负责**：CLI 打印、Writer、Plotter、PUMI 或把诊断保存到 `Mesh2D`。
 
 ### `src/linkmesh/mesh_quality.py`
@@ -800,7 +805,10 @@ M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
 - User 最新直接证据确认 legacy nested 源码收口完成后服务器 pytest 全部通过，
   根单区域和 regions 功能运行验收通过；未提供精确 passed 数，不得猜测，也不得将
   较早不含 release packaging 测试的 123 passed 记录冒充当前完整数量。
-- transition refinement、自动 interface/粗细侧和真实 `rpqazQ` 已实现并运行。
+- transition refinement、自动 interface/粗细侧和真实 `rpqazQ` 已实现并运行；
+  gradient 真实案例的公式、diagnostics、final area constraints 和结构质量已检查，
+  PNG 已由 User 人工检查通过。
+- R-Z point local refinement 已获 User 批准但尚未实现；不得把文档设计写成源码能力。
 - `case_002` 与复杂合成压力案例 PNG 已由 User 人工检查通过，但定量数值质量报告
   尚未实现，refined mesh 的 M3D-C1 消费仍为 PENDING。
 - 真实 DIII-D GFile 的单区域 M3D-C1 CLI 最小闭环已经成功。

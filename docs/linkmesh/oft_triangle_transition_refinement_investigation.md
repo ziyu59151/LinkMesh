@@ -11,8 +11,9 @@
 - `trifree` 运行时导出：**CONFIRMED**
 - 动态依赖：**CHECKED / COMPLETE**
 - 最终裁决：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**
-- 业务实现：`transition_width` **IMPLEMENTED / 保留**；
-  `transition_gradient` **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**
+- 业务实现：`transition_width` **IMPLEMENTED / PRESERVED**；
+  `transition_gradient` **IMPLEMENTED / REAL CASE GENERATED / USER-CHECKED**；
+  R-Z point local refinement **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**
 - 真实 `rpqazQ` 调用：**RUN / GENERATED**
 - 调查对象：LinkMesh、OpenFUSIONToolkit/TokaMaker 26.6、随附 Triangle
 - 修改范围：仅生成本报告；未修改业务源码、蓝图、测试、配置、CLI、OFT/Triangle
@@ -69,12 +70,28 @@ W_i = ln(h_c,i / h_f,i) / G      [m]
 ```
 
 所有不同 dx interfaces 共享同一个 G，并按各自尺寸比派生不同 `W_i`。width 与
-gradient 同层互斥、跨层按 transition mode 整体覆盖；gradient 的源码实现仍为
-**PENDING**。该设计不修改 ABI、Triangle option、`Mesh2D`、Writer、regions map、
-helper 或目标格式，也不增加 interface 级配置。完整契约以当前
-`LinkMesh_Architecture_Plan.md` 第 4.6.12 节为准。
+gradient 同层互斥、跨层按 transition mode 整体覆盖。gradient 源码、CLI/TOML、
+per-interface `W_i` 和 diagnostics 均已实现，且未修改 ABI、Triangle option、
+`Mesh2D`、Writer、regions map、helper 或目标格式，也未增加 interface 级配置。
 
-R-Z 点局部加密排在 gradient 实现与验收之后，本报告不设计其 CLI、数学或模块契约。
+User 提供的真实服务器案例使用 `G=10 1/m`：Regions `(1,3)` 的
+`h_f/h_c/W_i=0.02/0.09/0.150408 m`，Regions `(2,3)` 的
+`0.02/0.11/0.170475 m`，均符合 `W_i=ln(h_c/h_f)/G`。refinement 3 轮后由
+4833 nodes / 9572 triangles 增至 6612 nodes / 13130 triangles；final maximum area
+excess 和 violations 均为 0，degenerate/duplicate/non-manifold 均为 0，PNG 由
+User 检查通过。minimum Q=0.420755 和 maximum adjacent size ratio=2.87059 是报告
+指标，不自动构成失败。M3D-C1 gradient-refined mesh 消费仍为 PENDING。
+
+User 随后批准 R-Z point local refinement。正式参数为可重复
+`--local-refinement R,Z,DX,W`，同时属于根单区域命令和 `regions generate`，不属于
+`regions inspect`。point source 只是逐 triangle Amax 的新增来源：initial
+`Mesh2D` 通过 point-in-triangle 定位 source Region，current triangle centroid 到
+source 的欧氏距离进入同一指数 profile；point、多个 sources 和 interface constraints
+统一取最严格目标尺寸，并进入现有同一个 `rpqazQ`/PSLG/attributes/ownership/三轮
+循环。它不插入强制节点，不增加 Region，不修改 Triangle ABI，不建设第二套
+refinement 循环、邻接图连通分量或通用拓扑系统。完整实施契约见当前
+`LinkMesh_Architecture_Plan.md` 第 4.6.13 节；当前状态为
+**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**。
 
 下文第 1 至第 24 节保留实施前的源码调查、设计推导和 ABI 证据。其
 `NOT IMPLEMENTED`、`NOT RUN` 或“候选”措辞描述调查发生时的阶段状态；本节和当前
@@ -1896,11 +1913,14 @@ PNG 人工检查只能证明可视几何结果获得 User 接受，不能替代�
 ### 24.2 最终状态
 
 ```text
-TRANSITION_WIDTH IMPLEMENTED / RETAINED
-TRANSITION_GRADIENT DESIGNED / USER-APPROVED / NOT IMPLEMENTED
+TRANSITION_WIDTH IMPLEMENTED / PRESERVED
+TRANSITION_GRADIENT IMPLEMENTED / REAL CASE GENERATED / USER-CHECKED
+GRADIENT FORMULA / DIAGNOSTICS / FINAL AREA CONSTRAINTS CHECKED
+R-Z POINT LOCAL REFINEMENT DESIGNED / USER-APPROVED / NOT IMPLEMENTED
+COMBINED INTERFACE + POINT LOOP DESIGNED / NOT IMPLEMENTED
 RPQAZQ RUN / GENERATED
 VERBOSE NUMERICAL QUALITY REPORT IMPLEMENTED / USER ACCEPTED
-M3D-C1 REFINED-MESH CONSUMPTION PENDING
+M3D-C1 GRADIENT-REFINED MESH CONSUMPTION PENDING
 ```
 
 最终实现裁决：
@@ -1923,7 +1943,8 @@ M3D-C1 REFINED-MESH CONSUMPTION PENDING
 -真实 `rpqazQ` 已在目标服务器运行，`case_002` 和复杂合成压力案例均已生成；
 -User 已完成 PNG 人工检查并正式收口全局单一 W 产品设计；
 -final `Mesh2D` verbose 定量质量报告为 **IMPLEMENTED / USER ACCEPTED**；
--全局 `transition_gradient` 及 per-interface `W_i` 为
-  **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
+-全局 `transition_gradient`、per-interface `W_i` 和 gradient diagnostics 为
+  **IMPLEMENTED**，真实案例为 **RUN / GENERATED / USER-CHECKED PASSED**；
+-R-Z point local refinement 为 **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
 -refined mesh 的 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性仍为
   **PENDING**。
