@@ -334,6 +334,13 @@ def test_point_and_interface_constraints_use_strictest_bound():
         0.5,
         topology,
     )
+    local_only = triangle_refinement._triangle_area_bounds(
+        mesh,
+        effective_dx,
+        0.0,
+        topology,
+        local_sources=located,
+    )
     combined = triangle_refinement._triangle_area_bounds(
         mesh,
         effective_dx,
@@ -344,6 +351,8 @@ def test_point_and_interface_constraints_use_strictest_bound():
 
     assert np.all(combined <= interface_only)
     assert np.any(combined < interface_only)
+    assert np.all(combined <= local_only)
+    assert np.any(combined < local_only)
 
 
 def test_equal_dx_and_zero_width_do_not_call_native(monkeypatch):

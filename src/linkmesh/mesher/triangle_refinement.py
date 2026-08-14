@@ -646,8 +646,18 @@ def _triangle_area_bounds(
     )
     target_size = np.array(region_dx, dtype=np.float64, copy=True)
     centroids = np.mean(mesh.nodes[mesh.triangles], axis=1)
+    transition_enabled = (
+        transition_gradient is not None
+        or (
+            transition_width is not None
+            and transition_width > 0.0
+        )
+    )
+    active_interfaces = (
+        topology.interfaces if transition_enabled else ()
+    )
 
-    for interface in topology.interfaces:
+    for interface in active_interfaces:
         interface_width = _interface_transition_width(
             interface,
             transition_width,
@@ -769,6 +779,9 @@ def _refinement_diagnostics(
             or (transition_width is not None and transition_width > 0.0)
         )
     )
+    active_interfaces = (
+        topology.interfaces if transition_enabled else ()
+    )
     enabled = transition_enabled or bool(local_sources)
     if not enabled:
         return RefinementDiagnostics(
@@ -804,7 +817,7 @@ def _refinement_diagnostics(
 
     affected_indices: set[int] = set()
     interface_diagnostics: list[InterfaceRefinementDiagnostics] = []
-    for interface in topology.interfaces:
+    for interface in active_interfaces:
         interface_width = _interface_transition_width(
             interface,
             transition_width,
@@ -915,7 +928,7 @@ def _refinement_diagnostics(
         initial_triangle_count=initial_mesh.n_triangles,
         final_node_count=final_mesh.n_nodes,
         final_triangle_count=final_mesh.n_triangles,
-        transition_interface_count=len(topology.interfaces),
+        transition_interface_count=len(active_interfaces),
         affected_coarse_triangle_count=len(affected_indices),
         final_violating_triangle_count=int(np.count_nonzero(violations)),
         final_maximum_area_excess=_maximum_area_excess(areas, area_bounds),

@@ -934,6 +934,8 @@ def test_regions_generate_verbose_quality_uses_final_mesh(
                     maximum_area_excess=0.0,
                 ),
             ),
+            local_refinement_enabled=False,
+            local_sources=(),
         ),
     )
     calculate = MagicMock(return_value=quality_report)
@@ -1065,6 +1067,8 @@ def test_gradient_verbose_prints_global_gradient_and_interface_width(capsys):
                     maximum_area_excess=0.0,
                 ),
             ),
+            local_refinement_enabled=False,
+            local_sources=(),
         ),
     )
 
