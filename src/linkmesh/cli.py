@@ -313,8 +313,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="PATH",
         help=(
-            "包含多个重复 counted R-Z 闭合轮廓的输入文件；"
-            "TOML: regions.multi_array_file"
+            "TOML: regions.multi_array_file；"
+            "包含多个重复 counted R-Z 闭合轮廓的输入文件"
         ),
     )
     inspect_output_group.add_argument(
@@ -456,8 +456,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="FLOAT",
         help=(
-            "全局对数网格尺度梯度 d(ln h)/dd，单位 1/m；与 width 互斥，"
-            "每条 interface 自动派生 Wi；TOML: regions.mesh.transition_gradient"
+            "每条不同尺度 interface 自动推导自身变化层厚度；"
+            "全局对数网格尺度梯度 d(ln h)/dd，单位 1/m；与 width 互斥；"
+            "TOML: regions.mesh.transition_gradient"
         ),
     )
     generate_mesh_group.add_argument(
