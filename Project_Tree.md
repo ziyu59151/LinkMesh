@@ -2,10 +2,10 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.6；根命令及 legacy nested 源码收口已经完成，
-  `regions inspect/generate` 是唯一多区域入口；全局 `transition_width` 和
-  `transition_gradient` 均已实现，R-Z point local refinement 已获 User 批准但尚未
-  实现）
+- 文档状态：当前有效（对应技术蓝图 v5.7；根命令及 legacy nested 源码收口已经完成，
+  `regions inspect/generate` 是唯一多区域入口；全局 `transition_width`、
+  `transition_gradient` 及根/regions R-Z point local refinement 均已实现并完成
+  生成侧真实验收）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -100,8 +100,8 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维�
 | 全局 `transition_gradient` | IMPLEMENTED；真实 G=10 案例 GENERATED / USER-CHECKED PASSED |
 | global G → per-interface Wi 与 gradient diagnostics | IMPLEMENTED / CHECKED |
 | M3D-C1 gradient-refined mesh 消费 | PENDING |
-| R-Z point local refinement | DESIGNED / USER-APPROVED / NOT IMPLEMENTED |
-| 可重复 `--local-refinement R,Z,DX,W` | APPROVED / SOURCE IMPLEMENTATION PENDING；规划同时支持根单区域与 regions generate |
+| R-Z point local refinement | IMPLEMENTED；root 与 regions generate 均已真实生成并由 User 检查 |
+| 可重复 `--local-refinement R,Z,DX,W` | IMPLEMENTED；根与 regions 使用不同严格 TOML 路径，CLI 列表整体覆盖 TOML 列表 |
 | 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
 | final `Mesh2D` verbose 数值质量报告 | IMPLEMENTED / USER ACCEPTED |
 | refined mesh 的 M3D-C1 消费 | PENDING |
@@ -457,7 +457,7 @@ TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric
 - **输入**：命令行参数。
 - **职责**：根命令编排单区域 Reader、Mesher、Writer 和 Plotter；`regions
   inspect/generate` 是作用域隔离的唯一多区域入口。legacy nested 参数和分支已经
-  删除。
+  删除；四层 CLI help 提供严格 TOML 路径提示和 `schema_version = 1` 入口说明。
 - **输出**：标准工作流按目标生成 HDF5 或配套 TXT/SMB/PNG；多区域 generate 默认
   输出 mesh PNG，选择 `target=trimeg` 时把同一个 N-region `Mesh2D` 交给既有 HDF5
   Writer 并继续输出 PNG。
@@ -474,8 +474,10 @@ python -m linkmesh
 ### `src/linkmesh/config.py`
 
 - **输入**：内建默认值、`linkmesh.in` 和显式 CLI 覆盖。
-- **职责**：读取并严格校验根命令单区域配置及独立 regions 配置。profile 和三个
-  legacy 区域 dx 已从正式契约及实时源码删除；详细契约见蓝图。
+- **职责**：读取并严格校验根命令单区域配置及独立 regions 配置，是当前严格 TOML
+  schema、允许 section/key 和路径映射的唯一实现位置。profile 和三个 legacy 区域
+  dx 已从正式契约及实时源码删除；详细配置示例见 `docs/linkmesh/plan.md`，技术契约
+  见蓝图。
 - **输出**：不可变的标准有效配置对象或独立 regions 配置对象。
 - **不负责**：读取 GFile、生成网格或写出任何目标文件。
 
@@ -547,16 +549,16 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
   triangle 面积约束、管理 native ownership、执行有限 refinement并返回 final
   `Mesh2D`。
 - **产品语义**：width 模式使用一个全局 W；gradient 模式使用一个全局对数尺度梯度，
-  并为每条 interface 派生不同的 W。下一轮已批准由本模块继续作为 interface 与 R-Z
-  point constraints 的唯一实现位置，共享 combined Amax 和同一 refinement 循环；
-  point local refinement 尚未实现。详细契约见当前技术蓝图。
+  并为每条 interface 派生不同的 W。R-Z point sources 与 interface constraints
+  共享 combined Amax 和同一 refinement 循环；root 与 regions local refinement
+  均已实现并完成生成侧验收。详细契约见当前技术蓝图。
 - **不负责**：CLI 打印、Writer、Plotter、PUMI 或把诊断保存到 `Mesh2D`。
 
 ### `src/linkmesh/mesh_quality.py`
 
 - **状态**：IMPLEMENTED / USER ACCEPTED。
-- **职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 refinement 的最小诊断
-  形成现有 `--verbose` 人类可读摘要。
+- **职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 transition 与 local
+  refinement diagnostics，形成现有 `--verbose` 人类可读摘要。
 - **不负责**：修改 mesh、调用 Triangle、定义新 CLI/TOML 参数或新增质量失败阈值。
 - 详细指标、单位、数据流和失败边界统一查阅当前技术蓝图。
 
@@ -808,7 +810,8 @@ M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
 - transition refinement、自动 interface/粗细侧和真实 `rpqazQ` 已实现并运行；
   gradient 真实案例的公式、diagnostics、final area constraints 和结构质量已检查，
   PNG 已由 User 人工检查通过。
-- R-Z point local refinement 已获 User 批准但尚未实现；不得把文档设计写成源码能力。
+- R-Z point local refinement 已实现；服务器自动测试为 160 passed，root 与 regions
+  真实生成侧案例及 PNG 已由 User 检查。该证据不等于外部消费或物理验证。
 - `case_002` 与复杂合成压力案例 PNG 已由 User 人工检查通过，但定量数值质量报告
   尚未实现，refined mesh 的 M3D-C1 消费仍为 PENDING。
 - 真实 DIII-D GFile 的单区域 M3D-C1 CLI 最小闭环已经成功。

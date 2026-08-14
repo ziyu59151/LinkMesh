@@ -116,6 +116,20 @@ def test_top_level_help_describes_both_workflows_and_group_order(capsys):
     assert "regions {inspect,generate}" in help_text
     assert "linkmesh mesh" not in help_text
     assert "M4" not in help_text
+    assert "schema_version = 1" in help_text
+    for toml_path in (
+        "[task]",
+        "[input]",
+        "[domain]",
+        "[mesh]",
+        "[[mesh.local_refinement]]",
+        "[output]",
+        "[runtime]",
+        "TOML: output.plot_lcfs",
+    ):
+        assert toml_path in help_text
+    assert "input.plot_lcfs" not in help_text
+    assert "帮助分组仅用于阅读" in help_text
     for option in (
         "--config",
         "--no-config",
@@ -138,12 +152,13 @@ def test_top_level_help_describes_both_workflows_and_group_order(capsys):
         assert option in help_text
     _assert_group_order(
         help_text,
-        "Configuration",
-        "Task",
-        "Input",
-        "Mesh Resolution",
-        "Output",
-        "Runtime",
+        "Configuration Loading",
+        "Task ([task])",
+        "Domain ([domain])",
+        "Input ([input])",
+        "Mesh ([mesh])",
+        "Output ([output])",
+        "Runtime ([runtime])",
     )
 
 
@@ -166,6 +181,11 @@ def test_regions_help_hierarchy_and_old_parser_scope(capsys):
     assert "--gfile" not in help_text
     assert "--hdf5" not in help_text
     assert "--smb" not in help_text
+    assert "不同的严格 TOML schema" in help_text
+    assert "schema_version = 1" in help_text
+    assert "inspect -h" in help_text
+    assert "generate -h" in help_text
+    assert "[regions.mesh.region_dx]" not in help_text
 
     old = parser.parse_args(
         [
@@ -229,6 +249,14 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
     assert "不生成完整 Triangle 网格" in help_text
     assert "可选的 inspection PNG" in help_text
     assert "供 generate 使用的 TOML regions map" in help_text
+    assert "schema_version = 1" in help_text
+    assert "[regions]" in help_text
+    assert 'mode = "inspect"' in help_text
+    assert "[runtime]" in help_text
+    assert "TOML: regions.multi_array_file" in help_text
+    assert "TOML: regions.regions_map" in help_text
+    assert "TOML: regions.plot" in help_text
+    assert "TOML: runtime.verbose" in help_text
     assert "--region-dx" not in help_text
     assert "--transition-width" not in help_text
     assert "--transition-gradient" not in help_text
@@ -339,6 +367,21 @@ def test_regions_generate_help_is_scoped(capsys):
     assert "final Mesh2D 数值质量" in help_text
     assert "可选的最终网格 PNG" in help_text
     assert "M4" not in help_text
+    assert "schema_version = 1" in help_text
+    assert 'mode = "generate"' in help_text
+    for toml_path in (
+        "[regions]",
+        "[regions.mesh]",
+        "[regions.mesh.region_dx]",
+        "[[regions.mesh.local_refinement]]",
+        "[runtime]",
+        "TOML: regions.mesh.transition_width",
+        "TOML: regions.mesh.transition_gradient",
+        "TOML: regions.mesh.region_dx",
+    ):
+        assert toml_path in help_text
+    assert "完整 CLI 列表就替换 TOML 列表而不是追加" in help_text
+    assert "point local refinement" in help_text
     assert "--gfile" not in help_text
     assert "--no-hdf5" not in help_text
     assert "--no-smb" not in help_text

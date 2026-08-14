@@ -13,7 +13,8 @@
 - 最终裁决：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**
 - 业务实现：`transition_width` **IMPLEMENTED / PRESERVED**；
   `transition_gradient` **IMPLEMENTED / REAL CASE GENERATED / USER-CHECKED**；
-  R-Z point local refinement **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**
+  R-Z point local refinement **IMPLEMENTED / ROOT AND REGIONS GENERATED /
+  USER-CHECKED**
 - 真实 `rpqazQ` 调用：**RUN / GENERATED**
 - 调查对象：LinkMesh、OpenFUSIONToolkit/TokaMaker 26.6、随附 Triangle
 - 修改范围：仅生成本报告；未修改业务源码、蓝图、测试、配置、CLI、OFT/Triangle
@@ -82,16 +83,29 @@ excess 和 violations 均为 0，degenerate/duplicate/non-manifold 均为 0，PN
 User 检查通过。minimum Q=0.420755 和 maximum adjacent size ratio=2.87059 是报告
 指标，不自动构成失败。M3D-C1 gradient-refined mesh 消费仍为 PENDING。
 
-User 随后批准 R-Z point local refinement。正式参数为可重复
+R-Z point local refinement 已按批准契约实现。正式参数为可重复
 `--local-refinement R,Z,DX,W`，同时属于根单区域命令和 `regions generate`，不属于
-`regions inspect`。point source 只是逐 triangle Amax 的新增来源：initial
-`Mesh2D` 通过 point-in-triangle 定位 source Region，current triangle centroid 到
-source 的欧氏距离进入同一指数 profile；point、多个 sources 和 interface constraints
-统一取最严格目标尺寸，并进入现有同一个 `rpqazQ`/PSLG/attributes/ownership/三轮
-循环。它不插入强制节点，不增加 Region，不修改 Triangle ABI，不建设第二套
-refinement 循环、邻接图连通分量或通用拓扑系统。完整实施契约见当前
-`LinkMesh_Architecture_Plan.md` 第 4.6.13 节；当前状态为
-**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**。
+`regions inspect`。point source 是逐 triangle Amax 的新增来源：initial `Mesh2D`
+通过 point-in-triangle 定位 source Region，current triangle centroid 到 source 的
+欧氏距离进入同一指数 profile；point、多个 sources 和 interface constraints 统一取
+最严格目标尺寸，并进入同一个 `rpqazQ`/PSLG/attributes/ownership/三轮循环。它不
+插入强制节点，不增加 Region，不修改 Triangle ABI，也不建设第二套 refinement 循环、
+邻接图连通分量或通用拓扑系统。
+
+服务器自动测试为 **160 passed**。根单区域真实案例已 RUN / GENERATED，Regions=1；
+User 在约 X-point 位置肉眼选择 source，PNG 显示局部加密并检查通过。该使用方式不
+表示 LinkMesh 自动识别物理 X-point，也不证明严格磁拓扑对应。
+
+多区域 Case 009 使用 `G=5.0 1/m`、Region 1/2/3 dx=
+`0.030/0.150/0.070 m`，以及 `(1.10,0.00,0.010,0.10) m` 和
+`(1.50,1.00,0.015,0.30) m` 两个 sources。两个 sources 自动定位到 Region 1 和
+Region 2；interfaces `(1,2)`、`(2,3)` 的 `Wi` 为 `0.321888/0.152428 m`。
+网格由 1263 nodes / 2457 triangles 增至 2092 nodes / 4115 triangles，3 轮后
+maximum area excess=0、violations=0，degenerate/duplicate/non-manifold 均为 0，
+PNG 由 User 检查通过。minimum Q=0.469967 和 maximum adjacent size ratio=2.23736
+是报告指标，不是当前失败阈值；OFT Sliver/Small feature warning 也不等同于 final
+`Mesh2D` 结构失败。M3D-C1 local-refined mesh 消费、时间推进、稳定性和物理正确性
+继续 PENDING。
 
 下文第 1 至第 24 节保留实施前的源码调查、设计推导和 ABI 证据。其
 `NOT IMPLEMENTED`、`NOT RUN` 或“候选”措辞描述调查发生时的阶段状态；本节和当前
@@ -1916,8 +1930,8 @@ PNG 人工检查只能证明可视几何结果获得 User 接受，不能替代�
 TRANSITION_WIDTH IMPLEMENTED / PRESERVED
 TRANSITION_GRADIENT IMPLEMENTED / REAL CASE GENERATED / USER-CHECKED
 GRADIENT FORMULA / DIAGNOSTICS / FINAL AREA CONSTRAINTS CHECKED
-R-Z POINT LOCAL REFINEMENT DESIGNED / USER-APPROVED / NOT IMPLEMENTED
-COMBINED INTERFACE + POINT LOOP DESIGNED / NOT IMPLEMENTED
+R-Z POINT LOCAL REFINEMENT IMPLEMENTED / ROOT AND REGIONS USER-CHECKED
+COMBINED INTERFACE + POINT LOOP IMPLEMENTED / AREA CONSTRAINTS PASSED
 RPQAZQ RUN / GENERATED
 VERBOSE NUMERICAL QUALITY REPORT IMPLEMENTED / USER ACCEPTED
 M3D-C1 GRADIENT-REFINED MESH CONSUMPTION PENDING

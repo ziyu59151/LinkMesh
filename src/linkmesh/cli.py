@@ -63,20 +63,31 @@ def build_parser() -> argparse.ArgumentParser:
             "工作流：\n"
             "  单区域网格\n"
             "    适用于 GFile/EQDSK 或单轮廓边界，使用 linkmesh [options]。\n"
+            "    可重复提供 R-Z point local refinement。\n"
             "  多区域网格\n"
             "    适用于包含多个 counted R-Z blocks 的输入，先执行\n"
             "    linkmesh regions inspect，再执行 linkmesh regions generate。\n"
-            "    使用 linkmesh regions -h 查看多区域工作流。"
+            "    使用 linkmesh regions -h 查看多区域工作流。\n\n"
+            "配置：\n"
+            "  TOML 配置文件必须以 schema_version = 1 开头；该整数位于顶层，\n"
+            "  不得省略、写成字符串或放入任何 section。\n"
+            "  标准单区域 TOML 结构索引：\n"
+            "    schema_version = 1\n"
+            "    [task]  [input]  [domain]  [mesh]\n"
+            "    [[mesh.local_refinement]]  [output]  [runtime]\n"
+            "  CLI 显式参数覆盖 TOML。帮助分组仅用于阅读，不自动定义 TOML\n"
+            "  section；请以参数 help 中的 TOML 路径和严格 schema 为准。"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    configuration_group = parser.add_argument_group("Configuration")
-    task_group = parser.add_argument_group("Task")
-    input_group = parser.add_argument_group("Input")
-    mesh_group = parser.add_argument_group("Mesh Resolution")
-    output_group = parser.add_argument_group("Output")
-    runtime_group = parser.add_argument_group("Runtime")
+    configuration_group = parser.add_argument_group("Configuration Loading")
+    task_group = parser.add_argument_group("Task ([task])")
+    domain_group = parser.add_argument_group("Domain ([domain])")
+    input_group = parser.add_argument_group("Input ([input])")
+    mesh_group = parser.add_argument_group("Mesh ([mesh])")
+    output_group = parser.add_argument_group("Output ([output])")
+    runtime_group = parser.add_argument_group("Runtime ([runtime])")
 
     # ------------------------------------------------------------------ #
     # 配置发现                                                            #
@@ -102,14 +113,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--target",
         default=UNSET,
         choices=list(config_mod.TARGETS),
-        help="选择输出目标；覆盖配置文件中的值",
+        help="选择输出目标；TOML: task.target",
     )
-    task_group.add_argument(
+    domain_group.add_argument(
         "--boundary-source",
         dest="boundary_source",
         default=UNSET,
         choices=list(config_mod.BOUNDARY_SOURCES),
-        help="选择计算域边界来源；覆盖配置文件中的值",
+        help="选择计算域边界来源；TOML: domain.boundary_source",
     )
     # ------------------------------------------------------------------ #
     # 既有：GFile 输入                                                     #
@@ -120,7 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help=(
             "GFile/EQDSK 路径；用于网格输入，或在 array_file + "
-            "--plot-lcfs 时仅提供 LCFS 参考线"
+            "--plot-lcfs 时仅提供 LCFS 参考线；TOML: input.gfile"
         ),
     )
     input_group.add_argument(
@@ -128,7 +139,10 @@ def build_parser() -> argparse.ArgumentParser:
         dest="array_file",
         default=UNSET,
         metavar="PATH",
-        help="counted R-Z 单轮廓边界文件（boundary_source=array_file）",
+        help=(
+            "counted R-Z 单轮廓边界文件（boundary_source=array_file）；"
+            "TOML: input.array_file"
+        ),
     )
 
     # ------------------------------------------------------------------ #
@@ -140,33 +154,43 @@ def build_parser() -> argparse.ArgumentParser:
         dest="hdf5",
         default=UNSET,
         metavar="PATH",
-        help="TRIMEG HDF5 输出路径；仅 target=trimeg 时使用（默认：mesh.h5）",
+        help=(
+            "TRIMEG HDF5 输出路径；仅 target=trimeg 时使用（默认：mesh.h5）；"
+            "TOML: output.hdf5"
+        ),
     )
-    input_group.add_argument(
+    output_group.add_argument(
         "--plot-lcfs",
         action="store_true",
         help=(
-            "仅用于 boundary_source=array_file：在 PNG 中叠加 LCFS 参考线，"
-            "不改变实际网格边界"
+            "仅用于 boundary_source=array_file：从 input.gfile 读取 LCFS，"
+            "只在 PNG 中叠加参考线，不改变实际网格边界；"
+            "TOML: output.plot_lcfs"
         ),
     )
     output_group.add_argument(
         "--model",
         default=UNSET,
         metavar="PATH",
-        help="M3D-C1 model TXT 输出路径；仅 target=m3dc1 时使用",
+        help=(
+            "M3D-C1 model TXT 输出路径；仅 target=m3dc1 时使用；"
+            "TOML: output.model"
+        ),
     )
     output_group.add_argument(
         "--smb",
         default=UNSET,
         metavar="PATH",
-        help="PUMI SMB 输出路径；仅 target=m3dc1 时使用",
+        help=(
+            "PUMI SMB 输出路径；仅 target=m3dc1 时使用；"
+            "TOML: output.smb"
+        ),
     )
     output_group.add_argument(
         "--plot",
         default=UNSET,
         metavar="PATH",
-        help="可选的网格自检 PNG 输出路径",
+        help="可选的网格自检 PNG 输出路径；TOML: output.plot",
     )
 
     # ------------------------------------------------------------------ #
@@ -178,7 +202,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=UNSET,
         metavar="FLOAT",
-        help="唯一单 Region 的目标网格尺度，单位 m（默认：0.08）",
+        help=(
+            "唯一单 Region 的目标网格尺度，单位 m（默认：0.08）；"
+            "TOML: mesh.mesh_dx"
+        ),
     )
     mesh_group.add_argument(
         "--local-refinement",
@@ -187,7 +214,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="R,Z,DX,W",
         help=(
-            "R-Z 点局部加密，可重复；R/Z、目标 DX 和恢复宽度 W 的单位均为 m"
+            "R-Z 尺寸场源，可重复；自动识别 Region，不要求源点成为 mesh node；"
+            "R/Z/DX/W 均为 m，DX 必须小于所属 Region baseline dx，W 必须为正；"
+            "TOML: [[mesh.local_refinement]]"
         ),
     )
 
@@ -197,12 +226,12 @@ def build_parser() -> argparse.ArgumentParser:
     output_group.add_argument(
         "--no-hdf5",
         action="store_true",
-        help="跳过 HDF5 文件生成",
+        help="跳过 HDF5 文件生成；仅 CLI，无 TOML 字段",
     )
     output_group.add_argument(
         "--no-smb",
         action="store_true",
-        help="跳过 .smb 文件生成",
+        help="跳过 .smb 文件生成；仅 CLI，无 TOML 字段",
     )
 
     # ------------------------------------------------------------------ #
@@ -212,8 +241,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help=(
-            "打印配置、网格规模和写入状态；regions generate 还会打印 "
-            "final Mesh2D 质量摘要"
+            "打印配置、网格规模和写入状态；根命令启用 local refinement 时还打印 "
+            "final Mesh2D 质量与 Local refinement 摘要；TOML: runtime.verbose"
         ),
     )
 
@@ -234,7 +263,11 @@ def build_parser() -> argparse.ArgumentParser:
             "     regions map；不生成完整 Triangle 网格。\n"
             "  2. generate\n"
             "     读取同一输入和经用户确认的 regions map，应用分区域尺度并生成\n"
-            "     最终网格。提供相应 --plot 路径时可生成 PNG。"
+            "     最终网格。提供相应 --plot 路径时可生成 PNG。\n\n"
+            "配置：\n"
+            "  inspect 与 generate 使用不同的严格 TOML schema，两类配置都必须以\n"
+            "  schema_version = 1 开头。分别使用 inspect -h 和 generate -h 查看\n"
+            "  对应 section、key 与 CLI 参数映射。"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -250,7 +283,15 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "读取重复 counted R-Z blocks，推导 Region 包含关系，并通过 OFT "
             "setup-only 取得最终 Region ID。输出 regions map，可选输出 "
-            "inspection PNG；不生成完整 Triangle 网格。"
+            "inspection PNG；不生成完整 Triangle 网格。\n\n"
+            "配置：\n"
+            "  TOML 配置文件必须以 schema_version = 1 开头；该整数位于顶层，\n"
+            "  不得省略、写成字符串或放入 [regions] 等 section。\n"
+            "  regions inspect TOML 结构索引：\n"
+            "    schema_version = 1\n"
+            "    [regions]  # mode = \"inspect\"\n"
+            "    [runtime]\n"
+            "  inspect 不接受 [regions.mesh] 或 local refinement。"
         ),
     )
     inspect_configuration_group = inspect_parser.add_argument_group(
@@ -264,32 +305,38 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         metavar="PATH",
-        help="仅加载指定的 regions inspect 配置文件",
+        help="加载严格的 regions inspect TOML 配置；仅 CLI，不是 TOML 字段",
     )
     inspect_input_group.add_argument(
         "--multi-array-file",
         dest="multi_array_file",
         default=UNSET,
         metavar="PATH",
-        help="包含多个重复 counted R-Z 闭合轮廓的输入文件",
+        help=(
+            "包含多个重复 counted R-Z 闭合轮廓的输入文件；"
+            "TOML: regions.multi_array_file"
+        ),
     )
     inspect_output_group.add_argument(
         "--regions-map",
         dest="regions_map",
         default=UNSET,
         metavar="PATH",
-        help="供 generate 使用的 TOML regions map 输出路径",
+        help=(
+            "供 generate 使用的 TOML regions map 输出路径；"
+            "TOML: regions.regions_map"
+        ),
     )
     inspect_output_group.add_argument(
         "--plot",
         default=UNSET,
         metavar="PATH",
-        help="可选的 inspection PNG 输出路径",
+        help="inspection PNG 输出路径；TOML: regions.plot",
     )
     inspect_runtime_group.add_argument(
         "--verbose",
         action="store_true",
-        help="打印 inspect 过程摘要",
+        help="打印 inspect 过程摘要；TOML: runtime.verbose",
     )
 
     generate_parser = regions_actions.add_parser(
@@ -297,15 +344,28 @@ def build_parser() -> argparse.ArgumentParser:
         usage="linkmesh regions generate [options]",
         help="应用分区域尺度并生成最终多区域网格",
         description=(
-            "读取 multi-array 输入和经用户确认的 regions map，应用全局默认尺度与 "
-            "Region 覆盖，可选执行 transition refinement，生成一个最终多区域 "
-            "Triangle 网格，并按 target 写出目标格式。"
+            "读取 multi-array 输入和经用户确认的 regions map，应用分 Region 尺度、"
+            "interface transition refinement 与 R-Z point local refinement，统一"
+            "生成一个 final 多区域 Triangle 网格，并按 target 写出目标格式。\n\n"
+            "配置：\n"
+            "  TOML 配置文件必须以 schema_version = 1 开头；该整数位于顶层，\n"
+            "  不得省略、写成字符串或放入 [regions] 等 section。\n"
+            "  regions generate TOML 结构索引：\n"
+            "    schema_version = 1\n"
+            "    [regions]  # mode = \"generate\"\n"
+            "    [regions.mesh]\n"
+            "    [regions.mesh.region_dx]\n"
+            "    [[regions.mesh.local_refinement]]\n"
+            "    [runtime]"
         ),
         epilog=(
             "尺度规则：--mesh-dx 提供默认值，--region-dx ID=DX 可重复并覆盖对应的"
-            "最终 Region ID；未提供 --mesh-dx 时，--region-dx 必须覆盖所有最终 "
-            "Region。单位均为 m。transition width 与 transition gradient 互斥；"
-            "变化层自动位于不同尺度 interface 的粗侧。"
+            "最终 Region ID；TOML 的 [regions.mesh.region_dx] 使用 Region ID "
+            "字符串键。不提供默认尺度时必须完整覆盖。transition_width 与 "
+            "transition_gradient 在 [regions.mesh] 同层互斥，派生 Wi 不写入配置。"
+            "TOML local_refinement 是可重复 array-of-tables；只要 CLI 出现任意 "
+            "--local-refinement，完整 CLI 列表就替换 TOML 列表而不是追加。"
+            "regions map 不保存 mesh 尺度、transition 或 local refinement。"
         ),
     )
     generate_configuration_group = generate_parser.add_argument_group(
@@ -323,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         metavar="PATH",
-        help="仅加载指定的 regions generate 配置文件",
+        help="加载严格的 regions generate TOML 配置；仅 CLI，不是 TOML 字段",
     )
     generate_task_group.add_argument(
         "--target",
@@ -331,7 +391,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("mesh_only", "trimeg", "m3dc1"),
         help=(
             "选择输出目标（默认：mesh_only）：mesh_only 不写求解器格式，"
-            "trimeg 写 HDF5，m3dc1 写 model TXT 和 SMB"
+            "trimeg 写 HDF5，m3dc1 写 model TXT 和 SMB；TOML: regions.target"
         ),
     )
     generate_input_group.add_argument(
@@ -339,14 +399,20 @@ def build_parser() -> argparse.ArgumentParser:
         dest="multi_array_file",
         default=UNSET,
         metavar="PATH",
-        help="与 inspect 使用相同的重复 counted R-Z blocks 输入文件",
+        help=(
+            "与 inspect 使用相同的重复 counted R-Z blocks 输入文件；"
+            "TOML: regions.multi_array_file"
+        ),
     )
     generate_input_group.add_argument(
         "--regions-map",
         dest="regions_map",
         default=UNSET,
         metavar="PATH",
-        help="由 inspect 生成并经用户确认的 TOML regions map",
+        help=(
+            "由 inspect 生成并经用户确认的 TOML regions map；"
+            "TOML: regions.regions_map"
+        ),
     )
     generate_mesh_group.add_argument(
         "--mesh-dx",
@@ -354,7 +420,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=UNSET,
         metavar="FLOAT",
-        help="全部最终 Region 的默认目标网格尺度，单位 m",
+        help=(
+            "全部最终 Region 的默认目标网格尺度，单位 m；"
+            "TOML: regions.mesh.mesh_dx"
+        ),
     )
     generate_mesh_group.add_argument(
         "--region-dx",
@@ -362,7 +431,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="ID=DX",
-        help="按最终 Region ID 覆盖尺度；格式 ID=DX，可重复提供，单位 m",
+        help=(
+            "按最终 Region ID 覆盖尺度；格式 ID=DX，可重复提供，单位 m；"
+            "TOML: regions.mesh.region_dx"
+        ),
     )
     transition_group = generate_mesh_group.add_mutually_exclusive_group()
     transition_group.add_argument(
@@ -372,8 +444,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="FLOAT",
         help=(
-            "不同网格尺度的内部 Region interface 在粗侧使用的统一变化层厚度，"
-            "单位 m；0 表示关闭；与 --transition-gradient 互斥"
+            "不同尺度 interface 粗侧的统一变化层厚度，单位 m；0 表示关闭；"
+            "与 gradient 互斥；TOML: regions.mesh.transition_width"
         ),
     )
     transition_group.add_argument(
@@ -383,8 +455,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=UNSET,
         metavar="FLOAT",
         help=(
-            "全局对数网格尺度梯度 d(ln h)/dd，单位 1/m；与 "
-            "--transition-width 互斥，每条不同尺度 interface 自动推导自身变化层厚度"
+            "全局对数网格尺度梯度 d(ln h)/dd，单位 1/m；与 width 互斥，"
+            "每条 interface 自动派生 Wi；TOML: regions.mesh.transition_gradient"
         ),
     )
     generate_mesh_group.add_argument(
@@ -394,39 +466,50 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="R,Z,DX,W",
         help=(
-            "R-Z 点局部加密，可重复；R/Z、目标 DX 和恢复宽度 W 的单位均为 m"
+            "R-Z 尺寸场源，可重复；自动识别 Region，不要求源点成为 mesh node；"
+            "R/Z/DX/W 均为 m，DX 必须小于所属 Region baseline dx，W 必须为正；"
+            "TOML: [[regions.mesh.local_refinement]]"
         ),
     )
     generate_output_group.add_argument(
         "--hdf5",
         default=UNSET,
         metavar="PATH",
-        help="TRIMEG HDF5 输出路径；仅 target=trimeg 时需要",
+        help=(
+            "TRIMEG HDF5 输出路径；仅 target=trimeg 时需要；"
+            "TOML: regions.hdf5"
+        ),
     )
     generate_output_group.add_argument(
         "--model",
         default=UNSET,
         metavar="PATH",
-        help="M3D-C1 model TXT 输出路径；仅 target=m3dc1 时需要",
+        help=(
+            "M3D-C1 model TXT 输出路径；仅 target=m3dc1 时需要；"
+            "TOML: regions.model"
+        ),
     )
     generate_output_group.add_argument(
         "--smb",
         default=UNSET,
         metavar="PATH",
-        help="PUMI SMB 基础输出路径；仅 target=m3dc1 时需要",
+        help=(
+            "PUMI SMB 基础输出路径；仅 target=m3dc1 时需要；"
+            "TOML: regions.smb"
+        ),
     )
     generate_output_group.add_argument(
         "--plot",
         default=UNSET,
         metavar="PATH",
-        help="可选的最终网格 PNG 输出路径",
+        help="最终网格 PNG 输出路径；TOML: regions.plot",
     )
     generate_runtime_group.add_argument(
         "--verbose",
         action="store_true",
         help=(
-            "打印 Region 与网格规模、final Mesh2D 数值质量；启用 transition "
-            "且存在不同尺度界面时还打印 transition 质量摘要"
+            "打印 Region、写出状态和 final Mesh2D 质量；启用相应约束时还打印 "
+            "Transition quality 与 Local refinement 摘要；TOML: runtime.verbose"
         ),
     )
 

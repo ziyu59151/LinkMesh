@@ -1,7 +1,19 @@
 # LinkMesh 组内使用说明
 
 本文面向日常 Case 使用。正式字段、兼容矩阵和迁移边界以根目录
-`LinkMesh_Architecture_Plan.md` 为准。
+`LinkMesh_Architecture_Plan.md` 为准，严格配置 schema 的实现以
+`src/linkmesh/config.py` 为准。
+
+所有根命令、`regions inspect` 和 `regions generate` 配置都必须在 TOML 顶层以
+整数形式显式写出：
+
+```toml
+schema_version = 1
+```
+
+不得省略、写成字符串或放入 `[task]`、`[regions]` 等 section。CLI help 的 argument
+group 只是阅读分组，不会自动定义 TOML section；维护配置时应以参数 help 中的
+`TOML:` 路径和严格 schema 为依据。显式 CLI 参数继续覆盖 TOML 配置值。
 
 ## 1. 工作流选择
 
@@ -46,9 +58,29 @@ model = "mesh/model.txt"
 smb = "mesh/mesh.smb"
 plot = "mesh/mesh.png"
 
+[[mesh.local_refinement]]
+r = 1.50
+z = 0.00
+dx = 0.015
+width = 0.25
+
+[output]
+model = "mesh/model.txt"
+smb = "mesh/mesh.smb"
+plot = "mesh/mesh.png"
+plot_lcfs = false
+
 [runtime]
 verbose = true
 ```
+
+`[[mesh.local_refinement]]` 可重复；R、Z、DX、width 单位均为 m。DX 必须严格小于
+点所属 Region 的 `mesh_dx`，width 必须为正，Region 由 LinkMesh 自动识别。点是尺寸
+场源，不保证成为 mesh node。只要命令行出现任意 `--local-refinement`，完整 CLI
+列表就替换 TOML 列表，而不是追加。
+
+`plot_lcfs` 的正式路径是 `[output].plot_lcfs`，不是 `[input].plot_lcfs`。它只用于
+`array_file` 实际边界配 GFile LCFS PNG 参考线，不改变实际网格边界。
 
 运行：
 
@@ -81,6 +113,61 @@ python -m linkmesh regions inspect --config regions-inspect.in
 python -m linkmesh regions generate --config regions-generate.in
 ```
 
+最小 inspect 配置：
+
+```toml
+schema_version = 1
+
+[regions]
+mode = "inspect"
+multi_array_file = "boundaries.rz"
+regions_map = "regions.toml"
+plot = "regions-inspection.png"
+
+[runtime]
+verbose = true
+```
+
+最小 generate 配置：
+
+```toml
+schema_version = 1
+
+[regions]
+mode = "generate"
+target = "mesh_only"
+multi_array_file = "boundaries.rz"
+regions_map = "regions.toml"
+plot = "mesh.png"
+
+[regions.mesh]
+mesh_dx = 0.08
+transition_gradient = 5.0
+
+[regions.mesh.region_dx]
+1 = 0.03
+2 = 0.15
+
+[[regions.mesh.local_refinement]]
+r = 1.10
+z = 0.00
+dx = 0.01
+width = 0.10
+
+[runtime]
+verbose = true
+```
+
+`inspect` 只接受 `[regions]` 与 `[runtime]`，其中
+`[regions].mode = "inspect"`；它不接受 `[regions.mesh]` 或 local refinement。
+`generate` 使用 `[regions].mode = "generate"`，并允许 `[regions.mesh]`、
+`[regions.mesh.region_dx]` 和 `[[regions.mesh.local_refinement]]`。
+
+`transition_width` 与 `transition_gradient` 位于同一个 `[regions.mesh]`，二者互斥；
+派生的每 interface `Wi` 不写入配置。`region_dx` 是最终 Region ID 字符串键到 dx
+的 TOML table。regions map 不保存 mesh 尺度、transition 或 local refinement。
+命令行出现任意 `--local-refinement` 时，完整 CLI point 列表整体替换 TOML 列表。
+
 `inspect` 读取多轮廓输入、建立当前支持的包含关系并生成 regions map 和检查图。
 用户确认 map 后，`generate` 重新读取输入和 map，并生成最终多区域网格。
 
@@ -88,7 +175,9 @@ python -m linkmesh regions generate --config regions-generate.in
 
 - `regions generate --mesh-dx`：全部最终 Region 的默认尺度；
 - `regions generate --region-dx ID=DX`：按 regions map 的最终 Region ID 覆盖；
-- `regions generate --transition-width`：可选全局变化层厚度。
+- `regions generate --transition-width`：可选全局变化层厚度；
+- `regions generate --transition-gradient`：可选全局对数尺度梯度，与 width 互斥；
+- `regions generate --local-refinement R,Z,DX,W`：可重复的 R-Z point 尺寸场源。
 
 根命令的 `--mesh-dx` 与 regions 的 `--mesh-dx` 名称相同但作用域不同。不要把旧
 `plasma_dx/vacuum_dx/outer_dx` 自动换算为 `region_dx`。
