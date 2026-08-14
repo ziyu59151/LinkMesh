@@ -61,7 +61,7 @@ _ALLOWED_SECTION_KEYS = {
     "task": {"target"},
     "input": {"gfile", "array_file"},
     "domain": {"boundary_source"},
-    "mesh": {"mesh_dx"},
+    "mesh": {"mesh_dx", "local_refinement"},
     "output": {"hdf5", "plot", "model", "smb", "plot_lcfs"},
     "runtime": {"verbose"},
 }
@@ -78,6 +78,16 @@ class ConfigError(ValueError):
 # --------------------------------------------------------------------------- #
 # EffectiveConfig（frozen dataclass，13 字段）                                 #
 # --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class LocalRefinementConfig:
+    """One immutable R-Z point local-refinement configuration record."""
+
+    r: float
+    z: float
+    dx: float
+    width: float
+
 
 @dataclass(frozen=True)
 class EffectiveConfig:
@@ -102,6 +112,7 @@ class EffectiveConfig:
     smb_path: Optional[Path]
     verbose: bool
     plot_lcfs: bool
+    local_refinement: tuple[LocalRefinementConfig, ...]
 
 
 # --------------------------------------------------------------------------- #
@@ -163,6 +174,7 @@ class RegionsGenerateOverrides:
     region_dx: Any = UNSET
     transition_width: Any = UNSET
     transition_gradient: Any = UNSET
+    local_refinement: Any = UNSET
     verbose: Any = UNSET
 
 
@@ -185,6 +197,7 @@ class RegionsGenerateConfig:
     transition_mode: Literal["disabled", "width", "gradient"]
     transition_width: Optional[float]
     transition_gradient: Optional[float]
+    local_refinement: tuple[LocalRefinementConfig, ...]
     verbose: bool
 
 
@@ -213,6 +226,7 @@ class CliOverrides:
     smb: Any = UNSET
     verbose: Any = UNSET
     plot_lcfs: Any = UNSET
+    local_refinement: Any = UNSET
 
 
 # --------------------------------------------------------------------------- #
@@ -256,6 +270,114 @@ def _check_nonnegative_float(
     if not (math.isfinite(numeric) and numeric >= 0.0):
         _fail(config_path, name, f"必须是有限非负数，实际={value}")
     return numeric
+
+
+def _check_finite_float(
+    value: Any,
+    name: str,
+    config_path: Optional[Path],
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _fail(config_path, name, f"必须是数值，实际类型={type(value).__name__}")
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        _fail(config_path, name, f"必须是有限数，实际={value}")
+    return numeric
+
+
+def _parse_local_refinement_records(
+    records: Any,
+    name: str,
+    config_path: Optional[Path],
+) -> tuple[LocalRefinementConfig, ...]:
+    if records is None:
+        return ()
+    if not isinstance(records, list):
+        _fail(config_path, name, "必须是 TOML array-of-tables")
+
+    expected_keys = {"r", "z", "dx", "width"}
+    parsed: list[LocalRefinementConfig] = []
+    for index, record in enumerate(records, start=1):
+        item_name = f"{name}[{index}]"
+        if not isinstance(record, dict):
+            _fail(config_path, item_name, "必须是 TOML table")
+        actual_keys = set(record)
+        if actual_keys != expected_keys:
+            missing = sorted(expected_keys - actual_keys)
+            unknown = sorted(actual_keys - expected_keys)
+            _fail(
+                config_path,
+                item_name,
+                f"字段必须精确为 {sorted(expected_keys)}；"
+                f"缺失={missing}，未知={unknown}",
+            )
+        parsed.append(
+            LocalRefinementConfig(
+                r=_check_finite_float(
+                    record["r"], f"{item_name}.r", config_path
+                ),
+                z=_check_finite_float(
+                    record["z"], f"{item_name}.z", config_path
+                ),
+                dx=_check_positive_float(
+                    record["dx"], f"{item_name}.dx", config_path
+                ),
+                width=_check_positive_float(
+                    record["width"], f"{item_name}.width", config_path
+                ),
+            )
+        )
+    return tuple(parsed)
+
+
+def _parse_local_refinement_tokens(
+    tokens: Any,
+    config_path: Optional[Path],
+) -> tuple[LocalRefinementConfig, ...]:
+    if tokens is UNSET or tokens is None:
+        return ()
+    if not isinstance(tokens, (list, tuple)):
+        _fail(config_path, "--local-refinement", "内部值必须是 token 序列")
+
+    records: list[LocalRefinementConfig] = []
+    for token in tokens:
+        if not isinstance(token, str):
+            _fail(
+                config_path,
+                "--local-refinement",
+                f"必须使用 R,Z,DX,W 格式，实际={token!r}",
+            )
+        parts = token.split(",")
+        if len(parts) != 4 or any(part.strip() == "" for part in parts):
+            _fail(
+                config_path,
+                "--local-refinement",
+                f"必须使用 R,Z,DX,W 格式，实际={token!r}",
+            )
+        try:
+            r, z, dx, width = (float(part.strip()) for part in parts)
+        except ValueError as exc:
+            raise ConfigError(
+                "--local-refinement：必须使用四个浮点数 R,Z,DX,W，"
+                f"实际={token!r}"
+            ) from exc
+        records.append(
+            LocalRefinementConfig(
+                r=_check_finite_float(
+                    r, "--local-refinement R", config_path
+                ),
+                z=_check_finite_float(
+                    z, "--local-refinement Z", config_path
+                ),
+                dx=_check_positive_float(
+                    dx, "--local-refinement DX", config_path
+                ),
+                width=_check_positive_float(
+                    width, "--local-refinement W", config_path
+                ),
+            )
+        )
+    return tuple(records)
 
 
 def _check_bool(value: Any, name: str, config_path: Optional[Path]) -> bool:
@@ -358,6 +480,12 @@ def _load_toml(config_path: Path) -> dict:
     if "mesh_dx" in mesh:
         out["mesh_dx"] = _check_positive_float(
             mesh["mesh_dx"], "[mesh].mesh_dx", config_path
+        )
+    if "local_refinement" in mesh:
+        out["local_refinement"] = _parse_local_refinement_records(
+            mesh["local_refinement"],
+            "[[mesh.local_refinement]]",
+            config_path,
         )
 
     output = raw.get("output", {})
@@ -619,6 +747,7 @@ def _load_regions_generate_toml(
         "region_dx",
         "transition_width",
         "transition_gradient",
+        "local_refinement",
     }
     if unknown_mesh:
         _fail(
@@ -651,6 +780,12 @@ def _load_regions_generate_toml(
         values["transition_gradient"] = _check_positive_float(
             mesh["transition_gradient"],
             "[regions.mesh].transition_gradient",
+            config_path,
+        )
+    if "local_refinement" in mesh:
+        values["local_refinement"] = _parse_local_refinement_records(
+            mesh["local_refinement"],
+            "[[regions.mesh.local_refinement]]",
             config_path,
         )
 
@@ -950,6 +1085,15 @@ def load_regions_generate_config(
             "disabled" if transition_width == 0.0 else "width"
         )
 
+    local_refinement = (
+        _parse_local_refinement_tokens(
+            overrides.local_refinement,
+            config_path,
+        )
+        if overrides.local_refinement is not UNSET
+        else tuple(values.get("local_refinement", ()))
+    )
+
     verbose = _check_bool(
         merged("verbose", False),
         "verbose",
@@ -971,6 +1115,7 @@ def load_regions_generate_config(
         transition_mode=transition_mode,
         transition_width=transition_width,
         transition_gradient=transition_gradient,
+        local_refinement=local_refinement,
         verbose=verbose,
     )
 
@@ -1101,6 +1246,14 @@ def load_effective_config(
     mesh_dx = _merge_scalar("mesh_dx", DEFAULT_MESH_DX)
     verbose = _merge_scalar("verbose", DEFAULT_VERBOSE)
     plot_lcfs = _merge_scalar("plot_lcfs", DEFAULT_PLOT_LCFS)
+    local_refinement = (
+        _parse_local_refinement_tokens(
+            overrides.local_refinement,
+            config_path,
+        )
+        if overrides.local_refinement is not UNSET
+        else tuple(toml_values.get("local_refinement", ()))
+    )
 
     # 枚举/类型再校验（覆盖 CLI 直接注入的情况；TOML 侧已在 _load_toml 校验）。
     target = _check_enum(target, TARGETS, "target", config_path)
@@ -1157,6 +1310,7 @@ def load_effective_config(
         smb_path=smb_path,
         verbose=verbose,
         plot_lcfs=plot_lcfs,
+        local_refinement=local_refinement,
     )
 
     # required-field 校验发生在路径合并完成之后。

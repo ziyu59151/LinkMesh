@@ -180,6 +180,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FLOAT",
         help="唯一单 Region 的目标网格尺度，单位 m（默认：0.08）",
     )
+    mesh_group.add_argument(
+        "--local-refinement",
+        dest="local_refinement",
+        action="append",
+        default=None,
+        metavar="R,Z,DX,W",
+        help=(
+            "R-Z 点局部加密，可重复；R/Z、目标 DX 和恢复宽度 W 的单位均为 m"
+        ),
+    )
 
     # ------------------------------------------------------------------ #
     # 既有：跳过开关（保持旧行为）                                          #
@@ -377,6 +387,16 @@ def build_parser() -> argparse.ArgumentParser:
             "--transition-width 互斥，每条不同尺度 interface 自动推导自身变化层厚度"
         ),
     )
+    generate_mesh_group.add_argument(
+        "--local-refinement",
+        dest="local_refinement",
+        action="append",
+        default=None,
+        metavar="R,Z,DX,W",
+        help=(
+            "R-Z 点局部加密，可重复；R/Z、目标 DX 和恢复宽度 W 的单位均为 m"
+        ),
+    )
     generate_output_group.add_argument(
         "--hdf5",
         default=UNSET,
@@ -471,6 +491,11 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
         plot=args.plot,
         model=args.model,
         smb=args.smb,
+        local_refinement=(
+            args.local_refinement
+            if args.local_refinement is not None
+            else UNSET
+        ),
     )
     # store_true 配置项仅在显式为 True 时覆盖，否则保持 UNSET，不覆盖 TOML。
     if args.verbose:
@@ -585,11 +610,38 @@ def _run(args: argparse.Namespace) -> None:
 
     mesh = generate_mesh(mesh_input, mesh_dx=cfg.mesh_dx)
 
+    refinement_diagnostics = None
+    if cfg.local_refinement:
+        from linkmesh.mesher.triangle_refinement import refine_transition_mesh
+
+        actual_region_ids = {
+            int(region_id)
+            for region_id in np.asarray(mesh.region_ids).reshape(-1).tolist()
+        }
+        refinement_result = refine_transition_mesh(
+            mesh,
+            {
+                region_id: cfg.mesh_dx
+                for region_id in actual_region_ids
+            },
+            0.0,
+            local_sources=cfg.local_refinement,
+        )
+        mesh = refinement_result.mesh
+        refinement_diagnostics = refinement_result.diagnostics
+
     if verbose:
         print(f"  节点数: {mesh.n_nodes}")
         print(f"  三角形数: {mesh.n_triangles}")
     else:
         print(f"节点数: {mesh.n_nodes}，三角形数: {mesh.n_triangles}")
+
+    if verbose and refinement_diagnostics is not None:
+        from linkmesh.mesh_quality import calculate_mesh_quality
+
+        _print_mesh_quality_report(
+            calculate_mesh_quality(mesh, refinement_diagnostics)
+        )
 
     # ------------------------------------------------------------------ #
     # Step 4：写出 HDF5（M3；target=trimeg 且未 --no-hdf5）                 #
@@ -695,11 +747,7 @@ def _print_mesh_quality_report(report) -> None:
     )
 
     diagnostics = report.refinement
-    if (
-        diagnostics is None
-        or not diagnostics.enabled
-        or diagnostics.transition_interface_count == 0
-    ):
+    if diagnostics is None or not diagnostics.enabled:
         return
 
     node_growth = (
@@ -709,21 +757,38 @@ def _print_mesh_quality_report(report) -> None:
         diagnostics.final_triangle_count
         / diagnostics.initial_triangle_count
     )
-    print("Transition quality:")
-    if diagnostics.transition_mode == "gradient":
-        control_summary = (
-            f"mode=gradient, G [1/m]="
-            f"{diagnostics.transition_gradient:.6g}"
+    if diagnostics.transition_interface_count:
+        print("Transition quality:")
+        if diagnostics.transition_mode == "gradient":
+            control_summary = (
+                f"mode=gradient, G [1/m]="
+                f"{diagnostics.transition_gradient:.6g}"
+            )
+        else:
+            control_summary = (
+                f"mode=width, W [m]={diagnostics.transition_width:.6g}"
+            )
+        print(
+            f"  {control_summary}, "
+            f"interfaces={diagnostics.transition_interface_count}, "
+            f"iterations={diagnostics.iteration_count}"
         )
-    else:
-        control_summary = (
-            f"mode=width, W [m]={diagnostics.transition_width:.6g}"
+        print(
+            f"  affected coarse triangles="
+            f"{diagnostics.affected_coarse_triangle_count}"
         )
-    print(
-        f"  {control_summary}, "
-        f"interfaces={diagnostics.transition_interface_count}, "
-        f"iterations={diagnostics.iteration_count}"
-    )
+        for interface in diagnostics.interfaces:
+            print(
+                f"  interface Regions={interface.region_ids}: "
+                f"fine={interface.fine_region_id} "
+                f"(hf={interface.fine_dx:.6g} m), "
+                f"coarse={interface.coarse_region_id} "
+                f"(hc={interface.coarse_dx:.6g} m), "
+                f"Wi={interface.transition_width:.6g} m, "
+                f"affected={interface.affected_coarse_triangle_count}, "
+                f"maximum area excess={interface.maximum_area_excess:.6g}"
+            )
+
     print(
         "  mesh growth: "
         f"nodes={diagnostics.initial_node_count}"
@@ -732,23 +797,20 @@ def _print_mesh_quality_report(report) -> None:
         f"->{diagnostics.final_triangle_count} ({triangle_growth:.6g}x)"
     )
     print(
-        f"  affected coarse triangles="
-        f"{diagnostics.affected_coarse_triangle_count}, "
-        f"maximum area excess="
+        f"  maximum area excess="
         f"{diagnostics.final_maximum_area_excess:.6g}, "
         f"violations={diagnostics.final_violating_triangle_count}"
     )
-    for interface in diagnostics.interfaces:
-        print(
-            f"  interface Regions={interface.region_ids}: "
-            f"fine={interface.fine_region_id} "
-            f"(hf={interface.fine_dx:.6g} m), "
-            f"coarse={interface.coarse_region_id} "
-            f"(hc={interface.coarse_dx:.6g} m), "
-            f"Wi={interface.transition_width:.6g} m, "
-            f"affected={interface.affected_coarse_triangle_count}, "
-            f"maximum area excess={interface.maximum_area_excess:.6g}"
-        )
+    if diagnostics.local_refinement_enabled:
+        print("Local refinement:")
+        for source in diagnostics.local_sources:
+            print(
+                f"  point=({source.r:.6g},{source.z:.6g}) m, "
+                f"Region={source.region_id}, hp={source.dx:.6g} m, "
+                f"hr={source.baseline_dx:.6g} m, W={source.width:.6g} m, "
+                f"affected={source.affected_triangle_count}, "
+                f"maximum area excess={source.maximum_area_excess:.6g}"
+            )
 
 
 def _run_regions_inspect(args: argparse.Namespace) -> None:
@@ -813,6 +875,11 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         ),
         transition_width=args.transition_width,
         transition_gradient=args.transition_gradient,
+        local_refinement=(
+            args.local_refinement
+            if args.local_refinement is not None
+            else UNSET
+        ),
         verbose=True if args.verbose else UNSET,
     )
     cfg = config_mod.load_regions_generate_config(
@@ -854,6 +921,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         resolved_dx,
         cfg.transition_width,
         transition_gradient=cfg.transition_gradient,
+        local_sources=cfg.local_refinement,
     )
     mesh = refinement_result.mesh
 

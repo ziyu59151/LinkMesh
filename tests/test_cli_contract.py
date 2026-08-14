@@ -125,6 +125,7 @@ def test_top_level_help_describes_both_workflows_and_group_order(capsys):
         "--array-file",
         "--plot-lcfs",
         "--mesh-dx",
+        "--local-refinement",
         "--hdf5",
         "--h5",
         "--model",
@@ -231,6 +232,7 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
     assert "--region-dx" not in help_text
     assert "--transition-width" not in help_text
     assert "--transition-gradient" not in help_text
+    assert "--local-refinement" not in help_text
     assert "--hdf5" not in help_text
     assert "--smb" not in help_text
     _assert_group_order(
@@ -308,6 +310,7 @@ def test_regions_generate_help_is_scoped(capsys):
         "--region-dx",
         "--transition-width",
         "--transition-gradient",
+        "--local-refinement",
         "--hdf5",
         "--model",
         "--smb",
@@ -348,6 +351,38 @@ def test_regions_generate_help_is_scoped(capsys):
         "Output",
         "Runtime",
     )
+
+
+def test_local_refinement_cli_scope_repetition_and_format():
+    parser = cli.build_parser()
+
+    root = parser.parse_args(
+        [
+            "--local-refinement",
+            "1.5,-0.4,0.015,0.25",
+            "--local-refinement",
+            "2.1,0.2,0.02,0.3",
+        ]
+    )
+    assert root.local_refinement == [
+        "1.5,-0.4,0.015,0.25",
+        "2.1,0.2,0.02,0.3",
+    ]
+
+    regions = parser.parse_args(
+        [
+            "regions",
+            "generate",
+            "--local-refinement",
+            "1.5,-0.4,0.015,0.25",
+        ]
+    )
+    assert regions.local_refinement == ["1.5,-0.4,0.015,0.25"]
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["regions", "inspect", "--local-refinement", "1,0,0.01,0.2"]
+        )
 
 
 def test_transition_gradient_scope_and_cli_mutual_exclusion():
@@ -687,6 +722,7 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         {1: 0.03, 2: 0.08},
         0.12,
         transition_gradient=None,
+        local_sources=(),
     )
     plot.assert_called_once_with(
         final_mesh,
@@ -796,6 +832,7 @@ def test_regions_generate_zero_transition_returns_disabled_result(
         {1: 0.03, 2: 0.08},
         0.0,
         transition_gradient=None,
+        local_sources=(),
     )
     plot.assert_called_once_with(
         mesh,
@@ -1300,6 +1337,59 @@ def test_mesh_only_selects_mesher_without_writers(monkeypatch, tmp_path):
     assert mocks["hdf5"].call_count == 0
     assert mocks["model"].call_count == 0
     assert mocks["smb"].call_count == 0
+
+
+def test_root_local_refinement_reuses_one_initial_and_final_mesh(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    mocks = _install_boundaries(monkeypatch)
+    initial_mesh = Mesh2D(
+        nodes=np.array(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            dtype=np.float64,
+        ),
+        triangles=np.array([[0, 1, 2]], dtype=np.int32),
+        region_ids=np.array([7], dtype=np.int32),
+    )
+    final_mesh = SimpleNamespace(
+        n_nodes=4,
+        n_triangles=3,
+        region_ids=np.array([7, 7, 7], dtype=np.int32),
+    )
+    mocks["generate"].return_value = initial_mesh
+    refine = MagicMock(
+        return_value=SimpleNamespace(
+            mesh=final_mesh,
+            diagnostics=SimpleNamespace(enabled=True),
+        )
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        refine,
+    )
+
+    cli._run(
+        _parse(
+            "--no-config",
+            "--target",
+            "trimeg",
+            "--boundary-source",
+            "lcfs",
+            "--gfile",
+            "eq.gfile",
+            "--hdf5",
+            "mesh.h5",
+            "--local-refinement",
+            "0.2,0.2,0.01,0.2",
+        )
+    )
+
+    mocks["generate"].assert_called_once()
+    assert refine.call_args.args[:3] == (initial_mesh, {7: 0.08}, 0.0)
+    assert len(refine.call_args.kwargs["local_sources"]) == 1
+    assert mocks["hdf5"].call_args.args[0] is final_mesh
 
 
 def test_trimeg_passes_same_mesh_to_hdf5_only(monkeypatch, tmp_path):

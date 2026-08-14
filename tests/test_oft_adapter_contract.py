@@ -227,6 +227,125 @@ def test_multiple_interfaces_use_strictest_size():
     assert np.all(bounds[1:] < 0.5)
 
 
+def test_local_source_location_scope_profile_and_order():
+    mesh = _two_region_mesh()
+    effective_dx = {1: 0.25, 2: 1.0}
+    sources = triangle_refinement._normalize_local_sources(
+        (
+            SimpleNamespace(r=0.25, z=0.25, dx=0.1, width=0.5),
+            SimpleNamespace(r=1.75, z=0.25, dx=0.2, width=0.4),
+        )
+    )
+    located = triangle_refinement._locate_local_sources(
+        mesh,
+        effective_dx,
+        sources,
+    )
+
+    assert [source.region_id for source in located] == [1, 2]
+    first_bounds = triangle_refinement._triangle_area_bounds(
+        mesh,
+        effective_dx,
+        0.0,
+        local_sources=located,
+    )
+    second_bounds = triangle_refinement._triangle_area_bounds(
+        mesh,
+        effective_dx,
+        0.0,
+        local_sources=tuple(reversed(located)),
+    )
+
+    np.testing.assert_allclose(first_bounds, second_bounds)
+    assert first_bounds[0] < 0.5 * effective_dx[1] ** 2
+    assert first_bounds[2] < 0.5 * effective_dx[2] ** 2
+
+
+def test_local_source_allows_same_region_edge_and_outer_boundary():
+    mesh = _two_region_mesh()
+    effective_dx = {1: 0.25, 2: 1.0}
+    sources = triangle_refinement._normalize_local_sources(
+        (
+            SimpleNamespace(r=0.5, z=0.5, dx=0.1, width=0.5),
+            SimpleNamespace(r=0.0, z=0.5, dx=0.1, width=0.5),
+        )
+    )
+
+    located = triangle_refinement._locate_local_sources(
+        mesh,
+        effective_dx,
+        sources,
+    )
+
+    assert [source.region_id for source in located] == [1, 1]
+
+
+def test_local_source_rejects_outside_interface_and_nonrefining_dx():
+    mesh = _two_region_mesh()
+    effective_dx = {1: 0.25, 2: 1.0}
+
+    for source, message in (
+        (
+            SimpleNamespace(r=3.0, z=0.5, dx=0.1, width=0.5),
+            "计算域外",
+        ),
+        (
+            SimpleNamespace(r=1.0, z=0.5, dx=0.1, width=0.5),
+            "Region interface",
+        ),
+        (
+            SimpleNamespace(r=0.25, z=0.25, dx=0.25, width=0.5),
+            "严格小于",
+        ),
+    ):
+        normalized = triangle_refinement._normalize_local_sources((source,))
+        with pytest.raises(ValueError, match=message):
+            triangle_refinement._locate_local_sources(
+                mesh,
+                effective_dx,
+                normalized,
+            )
+
+
+def test_point_and_interface_constraints_use_strictest_bound():
+    mesh = _two_region_mesh()
+    effective_dx = {1: 0.25, 2: 1.0}
+    topology = triangle_refinement._extract_edge_topology(
+        mesh,
+        effective_dx,
+    )
+    located = triangle_refinement._locate_local_sources(
+        mesh,
+        effective_dx,
+        triangle_refinement._normalize_local_sources(
+            (
+                SimpleNamespace(
+                    r=1.75,
+                    z=0.25,
+                    dx=0.1,
+                    width=0.5,
+                ),
+            )
+        ),
+    )
+    interface_only = triangle_refinement._triangle_area_bounds(
+        mesh,
+        effective_dx,
+        0.5,
+        topology,
+    )
+    combined = triangle_refinement._triangle_area_bounds(
+        mesh,
+        effective_dx,
+        0.5,
+        topology,
+        local_sources=located,
+    )
+
+    assert np.all(combined <= interface_only)
+    assert np.any(combined < interface_only)
+
+
 def test_equal_dx_and_zero_width_do_not_call_native(monkeypatch):
     mesh = _two_region_mesh()
     native = MagicMock()
@@ -278,6 +397,36 @@ def test_gradient_diagnostics_record_per_interface_width(monkeypatch):
     assert diagnostics.interfaces[0].transition_width == pytest.approx(
         np.log(4.0) / gradient
     )
+    assert diagnostics.local_refinement_enabled is False
+    assert diagnostics.local_sources == ()
+
+
+def test_local_only_diagnostics_and_owned_outer_boundary(monkeypatch):
+    mesh = _two_region_mesh()
+    mesh.outer_boundary = None
+    monkeypatch.setattr(
+        triangle_refinement,
+        "_area_violations",
+        MagicMock(return_value=np.zeros(mesh.n_triangles, dtype=bool)),
+    )
+
+    result = triangle_refinement.refine_transition_mesh(
+        mesh,
+        {1: 0.25, 2: 1.0},
+        0.0,
+        local_sources=(
+            SimpleNamespace(r=0.25, z=0.25, dx=0.1, width=0.5),
+        ),
+    )
+
+    diagnostics = result.diagnostics
+    assert diagnostics.enabled is True
+    assert diagnostics.transition_mode == "disabled"
+    assert diagnostics.transition_interface_count == 0
+    assert diagnostics.local_refinement_enabled is True
+    assert len(diagnostics.local_sources) == 1
+    assert diagnostics.local_sources[0].region_id == 1
+    assert diagnostics.final_violating_triangle_count == 0
 
 
 def test_transition_refinement_preserves_input_and_owned_final_mesh(monkeypatch):

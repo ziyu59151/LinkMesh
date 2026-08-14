@@ -194,6 +194,7 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
     assert config.transition_mode == "disabled"
     assert config.transition_width == 0.0
     assert config.transition_gradient is None
+    assert config.local_refinement == ()
 
 
 def test_regions_generate_transition_width_merges_and_validates(tmp_path):
@@ -411,6 +412,101 @@ def test_root_config_rejects_transition_gradient(tmp_path):
 
     with pytest.raises(ConfigError, match="未知键"):
         load_effective_config(CliOverrides(), cwd=tmp_path)
+
+
+def test_local_refinement_toml_and_cli_list_override(tmp_path):
+    root_path = tmp_path / "linkmesh.in"
+    root_path.write_text(
+        "schema_version = 1\n"
+        "[input]\n"
+        "gfile = 'eq.gfile'\n"
+        "[[mesh.local_refinement]]\n"
+        "r = 1.5\nz = -0.2\ndx = 0.015\nwidth = 0.25\n"
+        "[[mesh.local_refinement]]\n"
+        "r = 1.8\nz = 0.3\ndx = 0.02\nwidth = 0.30\n",
+        encoding="utf-8",
+    )
+    root = load_effective_config(CliOverrides(), cwd=tmp_path)
+    assert len(root.local_refinement) == 2
+    assert root.local_refinement[0].z == -0.2
+
+    overridden = load_effective_config(
+        CliOverrides(local_refinement=["2.0,-0.4,0.01,0.2"]),
+        cwd=tmp_path,
+    )
+    assert len(overridden.local_refinement) == 1
+    assert overridden.local_refinement[0].r == 2.0
+
+    regions_path = tmp_path / "regions-local.toml"
+    regions_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n"
+        "[[regions.mesh.local_refinement]]\n"
+        "r = 1.5\nz = 0.0\ndx = 0.015\nwidth = 0.25\n",
+        encoding="utf-8",
+    )
+    regions = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            local_refinement=[
+                "2.1,-0.4,0.02,0.3",
+                "1.7,0.2,0.01,0.2",
+            ]
+        ),
+        config_arg=str(regions_path),
+        cwd=tmp_path,
+    )
+    assert len(regions.local_refinement) == 2
+    assert regions.local_refinement[0].z == -0.4
+
+
+@pytest.mark.parametrize(
+    "record",
+    (
+        "r = 1.0\nz = 0.0\ndx = 0.01\n",
+        "r = 1.0\nz = 0.0\ndx = 0.01\nwidth = 0.2\nextra = 1\n",
+        "r = nan\nz = 0.0\ndx = 0.01\nwidth = 0.2\n",
+        "r = 1.0\nz = 0.0\ndx = 0.0\nwidth = 0.2\n",
+        "r = 1.0\nz = 0.0\ndx = 0.01\nwidth = -0.2\n",
+    ),
+)
+def test_root_rejects_invalid_local_refinement_record(tmp_path, record):
+    path = tmp_path / "linkmesh.in"
+    path.write_text(
+        "schema_version = 1\n"
+        "[input]\ngfile = 'eq.gfile'\n"
+        "[[mesh.local_refinement]]\n"
+        + record,
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_effective_config(CliOverrides(), cwd=tmp_path)
+
+
+def test_regions_inspect_rejects_local_refinement(tmp_path):
+    path = tmp_path / "regions.toml"
+    path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[[regions.mesh.local_refinement]]\n"
+        "r = 1.0\nz = 0.0\ndx = 0.01\nwidth = 0.2\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="未知"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            config_arg=str(path),
+            cwd=tmp_path,
+        )
 
 
 def test_regions_generate_target_defaults_and_hdf5_contract(tmp_path):
@@ -786,6 +882,7 @@ def test_effective_config_has_exact_single_region_fields(tmp_path):
         "smb_path",
         "verbose",
         "plot_lcfs",
+        "local_refinement",
     )
 
 

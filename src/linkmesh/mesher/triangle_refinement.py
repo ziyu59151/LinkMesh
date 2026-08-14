@@ -47,6 +47,42 @@ class EdgeTopology:
 
 
 @dataclass(frozen=True)
+class LocalRefinementSource:
+    """One validated physical R-Z point size-field source."""
+
+    r: float
+    z: float
+    dx: float
+    width: float
+
+
+@dataclass(frozen=True)
+class LocatedLocalRefinementSource:
+    """One point source with its initial-mesh Region assignment."""
+
+    r: float
+    z: float
+    dx: float
+    width: float
+    region_id: int
+    baseline_dx: float
+
+
+@dataclass(frozen=True)
+class LocalRefinementDiagnostics:
+    """Immutable final diagnostics for one R-Z point source."""
+
+    r: float
+    z: float
+    dx: float
+    width: float
+    region_id: int
+    baseline_dx: float
+    affected_triangle_count: int
+    maximum_area_excess: float
+
+
+@dataclass(frozen=True)
 class InterfaceRefinementDiagnostics:
     """Immutable final diagnostics for one different-dx Region interface."""
 
@@ -78,6 +114,8 @@ class RefinementDiagnostics:
     final_violating_triangle_count: int | None
     final_maximum_area_excess: float | None
     interfaces: tuple[InterfaceRefinementDiagnostics, ...]
+    local_refinement_enabled: bool
+    local_sources: tuple[LocalRefinementDiagnostics, ...]
 
 
 @dataclass(frozen=True)
@@ -357,6 +395,126 @@ def _extract_edge_topology(
     )
 
 
+def _normalize_local_sources(
+    sources: Any,
+) -> tuple[LocalRefinementSource, ...]:
+    normalized: list[LocalRefinementSource] = []
+    for source in sources:
+        try:
+            r = float(source.r)
+            z = float(source.z)
+            dx = float(source.dx)
+            width = float(source.width)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "local refinement source 必须提供 r、z、dx、width"
+            ) from exc
+        if not (math.isfinite(r) and math.isfinite(z)):
+            raise ValueError("local refinement R/Z 必须有限")
+        if not (math.isfinite(dx) and dx > 0.0):
+            raise ValueError("local refinement DX 必须是有限正数")
+        if not (math.isfinite(width) and width > 0.0):
+            raise ValueError("local refinement W 必须是有限正数")
+        normalized.append(
+            LocalRefinementSource(r=r, z=z, dx=dx, width=width)
+        )
+    return tuple(normalized)
+
+
+def _locate_local_sources(
+    mesh: Mesh2D,
+    effective_dx: Mapping[int, float],
+    sources: tuple[LocalRefinementSource, ...],
+) -> tuple[LocatedLocalRefinementSource, ...]:
+    if not sources:
+        return ()
+
+    points = np.array(
+        [[source.r, source.z] for source in sources],
+        dtype=np.float64,
+    )
+    triangle_points = mesh.nodes[mesh.triangles]
+    first = triangle_points[:, 0]
+    second = triangle_points[:, 1]
+    third = triangle_points[:, 2]
+    denominator = (
+        (second[:, 0] - first[:, 0]) * (third[:, 1] - first[:, 1])
+        - (second[:, 1] - first[:, 1]) * (third[:, 0] - first[:, 0])
+    )
+
+    r_span = float(np.ptp(mesh.nodes[:, 0]))
+    z_span = float(np.ptp(mesh.nodes[:, 1]))
+    absolute_magnitude = float(np.max(np.abs(mesh.nodes)))
+    length_scale = max(1.0, r_span, z_span, absolute_magnitude)
+    orientation_tolerance = (
+        64.0 * np.finfo(np.float64).eps * length_scale * length_scale
+    )
+
+    located: list[LocatedLocalRefinementSource] = []
+    for source, point in zip(sources, points):
+        first_cross = (
+            (second[:, 0] - first[:, 0]) * (point[1] - first[:, 1])
+            - (second[:, 1] - first[:, 1]) * (point[0] - first[:, 0])
+        )
+        second_cross = (
+            (third[:, 0] - second[:, 0]) * (point[1] - second[:, 1])
+            - (third[:, 1] - second[:, 1]) * (point[0] - second[:, 0])
+        )
+        third_cross = (
+            (first[:, 0] - third[:, 0]) * (point[1] - third[:, 1])
+            - (first[:, 1] - third[:, 1]) * (point[0] - third[:, 0])
+        )
+        positive = denominator > 0.0
+        candidates = np.flatnonzero(
+            np.where(
+                positive,
+                (first_cross >= -orientation_tolerance)
+                & (second_cross >= -orientation_tolerance)
+                & (third_cross >= -orientation_tolerance),
+                (first_cross <= orientation_tolerance)
+                & (second_cross <= orientation_tolerance)
+                & (third_cross <= orientation_tolerance),
+            )
+        )
+        if candidates.size == 0:
+            raise ValueError(
+                "local refinement point 位于计算域外："
+                f"({source.r}, {source.z})"
+            )
+
+        candidate_regions = {
+            int(region_id)
+            for region_id in mesh.region_ids[candidates].tolist()
+        }
+        if len(candidate_regions) != 1:
+            raise ValueError(
+                "local refinement point 位于或无法区分于 Region interface："
+                f"({source.r}, {source.z})，候选 Region={sorted(candidate_regions)}"
+            )
+        region_id = next(iter(candidate_regions))
+        baseline_dx = float(effective_dx[region_id])
+        if not (
+            math.isfinite(baseline_dx)
+            and baseline_dx > 0.0
+            and source.dx < baseline_dx
+        ):
+            raise ValueError(
+                "local refinement DX 必须严格小于 source Region baseline dx："
+                f"DX={source.dx}, Region {region_id} baseline={baseline_dx}"
+            )
+        located.append(
+            LocatedLocalRefinementSource(
+                r=source.r,
+                z=source.z,
+                dx=source.dx,
+                width=source.width,
+                region_id=region_id,
+                baseline_dx=baseline_dx,
+            )
+        )
+    return tuple(located)
+
+
 def _centroid_to_segments_distance(
     centroids: np.ndarray,
     nodes: np.ndarray,
@@ -469,6 +627,7 @@ def _triangle_area_bounds(
     topology: EdgeTopology | None = None,
     *,
     transition_gradient: float | None = None,
+    local_sources: tuple[LocatedLocalRefinementSource, ...] = (),
 ) -> np.ndarray:
     """Construct C-contiguous positive per-triangle exponential area bounds."""
     if transition_gradient is not None and not (
@@ -515,6 +674,34 @@ def _triangle_area_bounds(
             candidate_size,
             interface.fine_dx,
             interface.coarse_dx,
+        )
+        target_size[triangle_indices] = np.minimum(
+            target_size[triangle_indices],
+            candidate_size,
+        )
+
+    for source in local_sources:
+        triangle_indices = np.flatnonzero(
+            mesh.region_ids == source.region_id
+        )
+        if triangle_indices.size == 0:
+            raise ValueError(
+                f"local refinement source Region {source.region_id} 没有 triangle"
+            )
+        differences = centroids[triangle_indices] - np.array(
+            [source.r, source.z],
+            dtype=np.float64,
+        )
+        distances = np.linalg.norm(differences, axis=1)
+        exponent = np.minimum(distances / source.width, 1.0)
+        candidate_size = source.dx * np.power(
+            source.baseline_dx / source.dx,
+            exponent,
+        )
+        candidate_size = np.clip(
+            candidate_size,
+            source.dx,
+            source.baseline_dx,
         )
         target_size[triangle_indices] = np.minimum(
             target_size[triangle_indices],
@@ -570,17 +757,19 @@ def _refinement_diagnostics(
     effective_dx: Mapping[int, float],
     transition_width: float | None,
     transition_gradient: float | None,
+    local_sources: tuple[LocatedLocalRefinementSource, ...],
     iteration_count: int,
     topology: EdgeTopology,
 ) -> RefinementDiagnostics:
     """Build final diagnostics from the same topology and area rules."""
-    enabled = (
+    transition_enabled = (
         bool(topology.interfaces)
         and (
             transition_gradient is not None
             or (transition_width is not None and transition_width > 0.0)
         )
     )
+    enabled = transition_enabled or bool(local_sources)
     if not enabled:
         return RefinementDiagnostics(
             enabled=False,
@@ -597,6 +786,8 @@ def _refinement_diagnostics(
             final_violating_triangle_count=None,
             final_maximum_area_excess=None,
             interfaces=(),
+            local_refinement_enabled=False,
+            local_sources=(),
         )
 
     centroids = np.mean(final_mesh.nodes[final_mesh.triangles], axis=1)
@@ -607,6 +798,7 @@ def _refinement_diagnostics(
         transition_width,
         topology,
         transition_gradient=transition_gradient,
+        local_sources=local_sources,
     )
     violations = _area_violations(final_mesh, area_bounds)
 
@@ -667,10 +859,54 @@ def _refinement_diagnostics(
             )
         )
 
+    local_diagnostics: list[LocalRefinementDiagnostics] = []
+    for source in local_sources:
+        source_indices = np.flatnonzero(
+            final_mesh.region_ids == source.region_id
+        )
+        differences = centroids[source_indices] - np.array(
+            [source.r, source.z],
+            dtype=np.float64,
+        )
+        distances = np.linalg.norm(differences, axis=1)
+        affected_mask = distances < source.width
+        affected = source_indices[affected_mask]
+        if affected.size:
+            exponent = np.minimum(
+                distances[affected_mask] / source.width,
+                1.0,
+            )
+            candidate_size = source.dx * np.power(
+                source.baseline_dx / source.dx,
+                exponent,
+            )
+            maximum_excess = _maximum_area_excess(
+                areas[affected],
+                0.5 * candidate_size * candidate_size,
+            )
+        else:
+            maximum_excess = 0.0
+        local_diagnostics.append(
+            LocalRefinementDiagnostics(
+                r=source.r,
+                z=source.z,
+                dx=source.dx,
+                width=source.width,
+                region_id=source.region_id,
+                baseline_dx=source.baseline_dx,
+                affected_triangle_count=int(affected.size),
+                maximum_area_excess=maximum_excess,
+            )
+        )
+
     return RefinementDiagnostics(
         enabled=True,
         transition_mode=(
-            "gradient" if transition_gradient is not None else "width"
+            "gradient"
+            if transition_enabled and transition_gradient is not None
+            else "width"
+            if transition_enabled
+            else "disabled"
         ),
         transition_width=transition_width,
         transition_gradient=transition_gradient,
@@ -684,6 +920,8 @@ def _refinement_diagnostics(
         final_violating_triangle_count=int(np.count_nonzero(violations)),
         final_maximum_area_excess=_maximum_area_excess(areas, area_bounds),
         interfaces=tuple(interface_diagnostics),
+        local_refinement_enabled=bool(local_sources),
+        local_sources=tuple(local_diagnostics),
     )
 
 
@@ -694,6 +932,7 @@ def _result(
     effective_dx: Mapping[int, float],
     transition_width: float | None,
     transition_gradient: float | None,
+    local_sources: tuple[LocatedLocalRefinementSource, ...],
     iteration_count: int,
     topology: EdgeTopology,
 ) -> RefinementResult:
@@ -705,6 +944,7 @@ def _result(
             effective_dx=effective_dx,
             transition_width=transition_width,
             transition_gradient=transition_gradient,
+            local_sources=local_sources,
             iteration_count=iteration_count,
             topology=topology,
         ),
@@ -952,6 +1192,7 @@ def refine_transition_mesh(
     transition_width: float | None = 0.0,
     *,
     transition_gradient: float | None = None,
+    local_sources: Any = (),
 ) -> RefinementResult:
     """Return the unique final Mesh2D and immutable refinement diagnostics.
 
@@ -993,14 +1234,25 @@ def refine_transition_mesh(
         dx_by_region_id,
     )
     initial = _owned_mesh_copy(current)
+    normalized_sources = _normalize_local_sources(local_sources)
+    located_sources = _locate_local_sources(
+        initial,
+        effective_dx,
+        normalized_sources,
+    )
     topology = _extract_edge_topology(current, effective_dx)
-    if (gradient is None and width == 0.0) or not topology.interfaces:
+    transition_enabled = (
+        bool(topology.interfaces)
+        and (gradient is not None or width > 0.0)
+    )
+    if not transition_enabled and not located_sources:
         return _result(
             initial_mesh=initial,
             final_mesh=current,
             effective_dx=effective_dx,
             transition_width=width,
             transition_gradient=gradient,
+            local_sources=located_sources,
             iteration_count=0,
             topology=topology,
         )
@@ -1019,6 +1271,7 @@ def refine_transition_mesh(
             width,
             topology,
             transition_gradient=gradient,
+            local_sources=located_sources,
         )
         if not np.any(_area_violations(current, area_bounds)):
             return _result(
@@ -1027,6 +1280,7 @@ def refine_transition_mesh(
                 effective_dx=effective_dx,
                 transition_width=width,
                 transition_gradient=gradient,
+                local_sources=located_sources,
                 iteration_count=refinement_round - 1,
                 topology=topology,
             )
@@ -1072,6 +1326,7 @@ def refine_transition_mesh(
             width,
             topology,
             transition_gradient=gradient,
+            local_sources=located_sources,
         )
         violations = _area_violations(candidate, next_bounds)
         if not np.any(violations):
@@ -1081,6 +1336,7 @@ def refine_transition_mesh(
                 effective_dx=effective_dx,
                 transition_width=width,
                 transition_gradient=gradient,
+                local_sources=located_sources,
                 iteration_count=refinement_round,
                 topology=topology,
             )
@@ -1100,6 +1356,7 @@ def refine_transition_mesh(
         width,
         topology,
         transition_gradient=gradient,
+        local_sources=located_sources,
     )
     violation_count = int(
         np.count_nonzero(_area_violations(current, final_bounds))
