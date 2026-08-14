@@ -331,7 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--plot",
         default=UNSET,
         metavar="PATH",
-        help="inspection PNG 输出路径；TOML: regions.plot",
+        help="可选的 inspection PNG 输出路径；TOML: regions.plot",
     )
     inspect_runtime_group.add_argument(
         "--verbose",
@@ -361,7 +361,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "尺度规则：--mesh-dx 提供默认值，--region-dx ID=DX 可重复并覆盖对应的"
             "最终 Region ID；TOML 的 [regions.mesh.region_dx] 使用 Region ID "
-            "字符串键。不提供默认尺度时必须完整覆盖。transition_width 与 "
+            "字符串键。未提供 --mesh-dx 时，--region-dx 必须覆盖所有最终 Region。"
+            "尺度单位为 m。transition_width 与 "
             "transition_gradient 在 [regions.mesh] 同层互斥，派生 Wi 不写入配置。"
             "TOML local_refinement 是可重复 array-of-tables；只要 CLI 出现任意 "
             "--local-refinement，完整 CLI 列表就替换 TOML 列表而不是追加。"
