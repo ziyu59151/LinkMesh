@@ -1185,7 +1185,15 @@ def test_mesh_only_selects_mesher_without_writers(monkeypatch, tmp_path):
         )
     )
 
-    assert mocks["generate"].call_args.args[0] is mocks["gfile"]
+    actual_boundary = mocks["generate"].call_args.args[0]
+    expected_boundary = np.column_stack(
+        (
+            mocks["gfile"].lcfs_r,
+            mocks["gfile"].lcfs_z,
+        )
+    )
+    assert actual_boundary.shape == (3, 2)
+    np.testing.assert_array_equal(actual_boundary, expected_boundary)
     assert mocks["hdf5"].call_count == 0
     assert mocks["model"].call_count == 0
     assert mocks["smb"].call_count == 0
