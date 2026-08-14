@@ -162,6 +162,7 @@ class RegionsGenerateOverrides:
     mesh_dx: Any = UNSET
     region_dx: Any = UNSET
     transition_width: Any = UNSET
+    transition_gradient: Any = UNSET
     verbose: Any = UNSET
 
 
@@ -181,7 +182,9 @@ class RegionsGenerateConfig:
     smb_path: Optional[Path]
     mesh_dx: Optional[float]
     region_dx: Mapping[int, float]
-    transition_width: float
+    transition_mode: Literal["disabled", "width", "gradient"]
+    transition_width: Optional[float]
+    transition_gradient: Optional[float]
     verbose: bool
 
 
@@ -615,6 +618,7 @@ def _load_regions_generate_toml(
         "mesh_dx",
         "region_dx",
         "transition_width",
+        "transition_gradient",
     }
     if unknown_mesh:
         _fail(
@@ -628,10 +632,25 @@ def _load_regions_generate_toml(
             "[regions.mesh].mesh_dx",
             config_path,
         )
+    if (
+        "transition_width" in mesh
+        and "transition_gradient" in mesh
+    ):
+        _fail(
+            config_path,
+            "[regions.mesh]",
+            "transition_width 与 transition_gradient 互斥，不能同时定义",
+        )
     if "transition_width" in mesh:
         values["transition_width"] = _check_nonnegative_float(
             mesh["transition_width"],
             "[regions.mesh].transition_width",
+            config_path,
+        )
+    if "transition_gradient" in mesh:
+        values["transition_gradient"] = _check_positive_float(
+            mesh["transition_gradient"],
+            "[regions.mesh].transition_gradient",
             config_path,
         )
 
@@ -891,11 +910,46 @@ def load_regions_generate_config(
             "[regions.mesh.region_dx] 提供完整 Region 覆盖"
         )
 
-    transition_width = _check_nonnegative_float(
-        merged("transition_width", DEFAULT_TRANSITION_WIDTH),
-        "regions transition_width",
-        config_path,
-    )
+    cli_width = overrides.transition_width
+    cli_gradient = overrides.transition_gradient
+    if cli_width is not UNSET and cli_gradient is not UNSET:
+        raise ConfigError(
+            "--transition-width 与 --transition-gradient 互斥，不能同时提供"
+        )
+
+    if cli_width is not UNSET:
+        transition_width = _check_nonnegative_float(
+            cli_width,
+            "regions transition_width",
+            config_path,
+        )
+        transition_gradient = None
+        transition_mode = (
+            "disabled" if transition_width == 0.0 else "width"
+        )
+    elif cli_gradient is not UNSET:
+        transition_width = None
+        transition_gradient = _check_positive_float(
+            cli_gradient,
+            "regions transition_gradient",
+            config_path,
+        )
+        transition_mode = "gradient"
+    elif "transition_gradient" in values:
+        transition_width = None
+        transition_gradient = values["transition_gradient"]
+        transition_mode = "gradient"
+    else:
+        transition_width = _check_nonnegative_float(
+            values.get("transition_width", DEFAULT_TRANSITION_WIDTH),
+            "regions transition_width",
+            config_path,
+        )
+        transition_gradient = None
+        transition_mode = (
+            "disabled" if transition_width == 0.0 else "width"
+        )
+
     verbose = _check_bool(
         merged("verbose", False),
         "verbose",
@@ -914,7 +968,9 @@ def load_regions_generate_config(
         smb_path=smb_path,
         mesh_dx=mesh_dx,
         region_dx=MappingProxyType(dict(sorted(region_dx.items()))),
+        transition_mode=transition_mode,
         transition_width=transition_width,
+        transition_gradient=transition_gradient,
         verbose=verbose,
     )
 

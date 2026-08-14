@@ -294,8 +294,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "尺度规则：--mesh-dx 提供默认值，--region-dx ID=DX 可重复并覆盖对应的"
             "最终 Region ID；未提供 --mesh-dx 时，--region-dx 必须覆盖所有最终 "
-            "Region。单位均为 m。transition width 对所有不同尺度的内部 Region "
-            "界面统一生效，变化层自动位于粗侧。"
+            "Region。单位均为 m。transition width 与 transition gradient 互斥；"
+            "变化层自动位于不同尺度 interface 的粗侧。"
         ),
     )
     generate_configuration_group = generate_parser.add_argument_group(
@@ -354,15 +354,27 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ID=DX",
         help="按最终 Region ID 覆盖尺度；格式 ID=DX，可重复提供，单位 m",
     )
-    generate_mesh_group.add_argument(
+    transition_group = generate_mesh_group.add_mutually_exclusive_group()
+    transition_group.add_argument(
         "--transition-width",
         dest="transition_width",
         type=float,
         default=UNSET,
         metavar="FLOAT",
         help=(
-            "不同网格尺度的内部 Region 界面在粗侧使用的统一变化层厚度，"
-            "单位 m；0 表示关闭"
+            "不同网格尺度的内部 Region interface 在粗侧使用的统一变化层厚度，"
+            "单位 m；0 表示关闭；与 --transition-gradient 互斥"
+        ),
+    )
+    transition_group.add_argument(
+        "--transition-gradient",
+        dest="transition_gradient",
+        type=float,
+        default=UNSET,
+        metavar="FLOAT",
+        help=(
+            "全局对数网格尺度梯度 d(ln h)/dd，单位 1/m；与 "
+            "--transition-width 互斥，每条不同尺度 interface 自动推导自身变化层厚度"
         ),
     )
     generate_output_group.add_argument(
@@ -698,8 +710,17 @@ def _print_mesh_quality_report(report) -> None:
         / diagnostics.initial_triangle_count
     )
     print("Transition quality:")
+    if diagnostics.transition_mode == "gradient":
+        control_summary = (
+            f"mode=gradient, G [1/m]="
+            f"{diagnostics.transition_gradient:.6g}"
+        )
+    else:
+        control_summary = (
+            f"mode=width, W [m]={diagnostics.transition_width:.6g}"
+        )
     print(
-        f"  W [m]={diagnostics.transition_width:.6g}, "
+        f"  {control_summary}, "
         f"interfaces={diagnostics.transition_interface_count}, "
         f"iterations={diagnostics.iteration_count}"
     )
@@ -724,7 +745,7 @@ def _print_mesh_quality_report(report) -> None:
             f"(hf={interface.fine_dx:.6g} m), "
             f"coarse={interface.coarse_region_id} "
             f"(hc={interface.coarse_dx:.6g} m), "
-            f"W={interface.transition_width:.6g} m, "
+            f"Wi={interface.transition_width:.6g} m, "
             f"affected={interface.affected_coarse_triangle_count}, "
             f"maximum area excess={interface.maximum_area_excess:.6g}"
         )
@@ -791,6 +812,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
             else UNSET
         ),
         transition_width=args.transition_width,
+        transition_gradient=args.transition_gradient,
         verbose=True if args.verbose else UNSET,
     )
     cfg = config_mod.load_regions_generate_config(
@@ -831,6 +853,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         initial_mesh,
         resolved_dx,
         cfg.transition_width,
+        transition_gradient=cfg.transition_gradient,
     )
     mesh = refinement_result.mesh
 

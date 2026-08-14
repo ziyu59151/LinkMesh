@@ -230,6 +230,7 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
     assert "供 generate 使用的 TOML regions map" in help_text
     assert "--region-dx" not in help_text
     assert "--transition-width" not in help_text
+    assert "--transition-gradient" not in help_text
     assert "--hdf5" not in help_text
     assert "--smb" not in help_text
     _assert_group_order(
@@ -306,6 +307,7 @@ def test_regions_generate_help_is_scoped(capsys):
         "--mesh-dx",
         "--region-dx",
         "--transition-width",
+        "--transition-gradient",
         "--hdf5",
         "--model",
         "--smb",
@@ -326,7 +328,11 @@ def test_regions_generate_help_is_scoped(capsys):
     assert "{mesh_only,trimeg,m3dc1}" in help_text
     assert "0 表示关闭" in help_text
     assert "统一变化层厚度" in help_text
-    assert "变化层自动位于粗侧" in help_text
+    assert "1/m" in help_text
+    assert "对数网格尺度梯度" in help_text
+    assert "互斥" in help_text
+    assert "自动推导自身变化层厚度" in help_text
+    assert "变化层自动位于" in help_text
     assert "final Mesh2D 数值质量" in help_text
     assert "可选的最终网格 PNG" in help_text
     assert "M4" not in help_text
@@ -342,6 +348,39 @@ def test_regions_generate_help_is_scoped(capsys):
         "Output",
         "Runtime",
     )
+
+
+def test_transition_gradient_scope_and_cli_mutual_exclusion():
+    parser = cli.build_parser()
+
+    parsed = parser.parse_args(
+        [
+            "regions",
+            "generate",
+            "--transition-gradient",
+            "2.5",
+        ]
+    )
+    assert parsed.transition_gradient == 2.5
+    assert parsed.transition_width is cli.UNSET
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--transition-gradient", "2.5"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["regions", "inspect", "--transition-gradient", "2.5"]
+        )
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "regions",
+                "generate",
+                "--transition-width",
+                "0.1",
+                "--transition-gradient",
+                "2.5",
+            ]
+        )
 
 
 def test_regions_error_is_reported_without_traceback(
@@ -647,6 +686,7 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         initial_mesh,
         {1: 0.03, 2: 0.08},
         0.12,
+        transition_gradient=None,
     )
     plot.assert_called_once_with(
         final_mesh,
@@ -755,6 +795,7 @@ def test_regions_generate_zero_transition_returns_disabled_result(
         mesh,
         {1: 0.03, 2: 0.08},
         0.0,
+        transition_gradient=None,
     )
     plot.assert_called_once_with(
         mesh,
@@ -832,7 +873,9 @@ def test_regions_generate_verbose_quality_uses_final_mesh(
         non_manifold_edge_count=0,
         refinement=SimpleNamespace(
             enabled=True,
+            transition_mode="width",
             transition_width=0.12,
+            transition_gradient=None,
             transition_interface_count=1,
             iteration_count=2,
             initial_node_count=5,
@@ -935,6 +978,66 @@ def test_regions_generate_verbose_quality_uses_final_mesh(
     assert "Transition quality:" in output
     assert "angle [degree]" in output
     assert "equivalent size [m]" in output
+
+
+def test_gradient_verbose_prints_global_gradient_and_interface_width(capsys):
+    report = SimpleNamespace(
+        node_count=7,
+        triangle_count=6,
+        region_count=2,
+        minimum_angle=20.0,
+        minimum_angle_p01=21.0,
+        minimum_angle_p05=22.0,
+        maximum_angle=100.0,
+        minimum_shape_quality=0.4,
+        shape_quality_p01=0.45,
+        shape_quality_p05=0.5,
+        median_shape_quality=0.8,
+        minimum_equivalent_size=0.02,
+        median_equivalent_size=0.05,
+        maximum_equivalent_size=0.1,
+        maximum_adjacent_size_ratio=2.0,
+        adjacent_size_ratio_p95=1.8,
+        adjacent_size_ratio_p99=1.9,
+        degenerate_triangle_count=0,
+        duplicate_triangle_count=0,
+        non_manifold_edge_count=0,
+        refinement=SimpleNamespace(
+            enabled=True,
+            transition_mode="gradient",
+            transition_width=None,
+            transition_gradient=2.5,
+            transition_interface_count=1,
+            iteration_count=1,
+            initial_node_count=5,
+            initial_triangle_count=3,
+            final_node_count=7,
+            final_triangle_count=6,
+            affected_coarse_triangle_count=3,
+            final_maximum_area_excess=0.0,
+            final_violating_triangle_count=0,
+            interfaces=(
+                SimpleNamespace(
+                    region_ids=(1, 2),
+                    fine_region_id=1,
+                    coarse_region_id=2,
+                    fine_dx=0.03,
+                    coarse_dx=0.08,
+                    transition_width=0.392331,
+                    affected_coarse_triangle_count=3,
+                    maximum_area_excess=0.0,
+                ),
+            ),
+        ),
+    )
+
+    cli._print_mesh_quality_report(report)
+
+    output = capsys.readouterr().out
+    assert "mode=gradient" in output
+    assert "G [1/m]=2.5" in output
+    assert "Wi=0.392331 m" in output
+    assert "W [m]=" not in output
 
 
 def test_regions_generate_without_verbose_skips_quality(

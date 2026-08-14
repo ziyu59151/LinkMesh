@@ -65,7 +65,9 @@ class RefinementDiagnostics:
     """Immutable bounded-refinement diagnostics for verbose reporting."""
 
     enabled: bool
-    transition_width: float
+    transition_mode: str
+    transition_width: float | None
+    transition_gradient: float | None
     iteration_count: int
     initial_node_count: int
     initial_triangle_count: int
@@ -425,15 +427,54 @@ def _centroid_to_segments_distance(
     return result
 
 
+def _interface_transition_width(
+    interface: InterfaceConstraint,
+    transition_width: float | None,
+    transition_gradient: float | None,
+) -> float:
+    """Return the effective width for one interface and validate the profile."""
+    fine_dx = float(interface.fine_dx)
+    coarse_dx = float(interface.coarse_dx)
+    if not (
+        math.isfinite(fine_dx)
+        and math.isfinite(coarse_dx)
+        and fine_dx > 0.0
+        and coarse_dx > fine_dx
+    ):
+        raise ValueError("transition interface 必须满足有限正数 hc > hf")
+
+    if transition_gradient is not None:
+        logarithmic_ratio = math.log(coarse_dx / fine_dx)
+        width = logarithmic_ratio / transition_gradient
+        if not (
+            math.isfinite(logarithmic_ratio)
+            and logarithmic_ratio > 0.0
+            and math.isfinite(width)
+            and width > 0.0
+        ):
+            raise ValueError("gradient 模式无法得到有限、严格正的 interface Wi")
+        return width
+
+    if transition_width is None or not (
+        math.isfinite(transition_width) and transition_width > 0.0
+    ):
+        raise ValueError("transition_width 必须是有限正数")
+    return transition_width
+
+
 def _triangle_area_bounds(
     mesh: Mesh2D,
     dx_by_region_id: Mapping[int, float],
-    transition_width: float,
+    transition_width: float | None,
     topology: EdgeTopology | None = None,
+    *,
+    transition_gradient: float | None = None,
 ) -> np.ndarray:
     """Construct C-contiguous positive per-triangle exponential area bounds."""
-    if not (math.isfinite(transition_width) and transition_width > 0.0):
-        raise ValueError("transition_width 必须是有限正数")
+    if transition_gradient is not None and not (
+        math.isfinite(transition_gradient) and transition_gradient > 0.0
+    ):
+        raise ValueError("transition_gradient 必须是有限正数")
 
     topology = (
         _extract_edge_topology(mesh, dx_by_region_id)
@@ -448,6 +489,11 @@ def _triangle_area_bounds(
     centroids = np.mean(mesh.nodes[mesh.triangles], axis=1)
 
     for interface in topology.interfaces:
+        interface_width = _interface_transition_width(
+            interface,
+            transition_width,
+            transition_gradient,
+        )
         triangle_indices = np.flatnonzero(
             mesh.region_ids == interface.coarse_region_id
         )
@@ -460,7 +506,7 @@ def _triangle_area_bounds(
             mesh.nodes,
             interface.segments,
         )
-        exponent = np.minimum(distances / transition_width, 1.0)
+        exponent = np.minimum(distances / interface_width, 1.0)
         candidate_size = interface.fine_dx * np.power(
             interface.coarse_dx / interface.fine_dx,
             exponent,
@@ -522,15 +568,25 @@ def _refinement_diagnostics(
     initial_mesh: Mesh2D,
     final_mesh: Mesh2D,
     effective_dx: Mapping[int, float],
-    transition_width: float,
+    transition_width: float | None,
+    transition_gradient: float | None,
     iteration_count: int,
     topology: EdgeTopology,
 ) -> RefinementDiagnostics:
     """Build final diagnostics from the same topology and area rules."""
-    if transition_width <= 0.0 or not topology.interfaces:
+    enabled = (
+        bool(topology.interfaces)
+        and (
+            transition_gradient is not None
+            or (transition_width is not None and transition_width > 0.0)
+        )
+    )
+    if not enabled:
         return RefinementDiagnostics(
             enabled=False,
-            transition_width=float(transition_width),
+            transition_mode="disabled",
+            transition_width=None,
+            transition_gradient=None,
             iteration_count=0,
             initial_node_count=initial_mesh.n_nodes,
             initial_triangle_count=initial_mesh.n_triangles,
@@ -550,12 +606,18 @@ def _refinement_diagnostics(
         effective_dx,
         transition_width,
         topology,
+        transition_gradient=transition_gradient,
     )
     violations = _area_violations(final_mesh, area_bounds)
 
     affected_indices: set[int] = set()
     interface_diagnostics: list[InterfaceRefinementDiagnostics] = []
     for interface in topology.interfaces:
+        interface_width = _interface_transition_width(
+            interface,
+            transition_width,
+            transition_gradient,
+        )
         coarse_indices = np.flatnonzero(
             final_mesh.region_ids == interface.coarse_region_id
         )
@@ -564,13 +626,13 @@ def _refinement_diagnostics(
             final_mesh.nodes,
             interface.segments,
         )
-        affected_mask = distances < transition_width
+        affected_mask = distances < interface_width
         affected = coarse_indices[affected_mask]
         affected_indices.update(int(index) for index in affected.tolist())
 
         if affected.size:
             exponent = np.minimum(
-                distances[affected_mask] / transition_width,
+                distances[affected_mask] / interface_width,
                 1.0,
             )
             candidate_size = interface.fine_dx * np.power(
@@ -599,7 +661,7 @@ def _refinement_diagnostics(
                 coarse_region_id=interface.coarse_region_id,
                 fine_dx=interface.fine_dx,
                 coarse_dx=interface.coarse_dx,
-                transition_width=float(transition_width),
+                transition_width=interface_width,
                 affected_coarse_triangle_count=int(affected.size),
                 maximum_area_excess=maximum_excess,
             )
@@ -607,7 +669,11 @@ def _refinement_diagnostics(
 
     return RefinementDiagnostics(
         enabled=True,
-        transition_width=float(transition_width),
+        transition_mode=(
+            "gradient" if transition_gradient is not None else "width"
+        ),
+        transition_width=transition_width,
+        transition_gradient=transition_gradient,
         iteration_count=iteration_count,
         initial_node_count=initial_mesh.n_nodes,
         initial_triangle_count=initial_mesh.n_triangles,
@@ -626,7 +692,8 @@ def _result(
     initial_mesh: Mesh2D,
     final_mesh: Mesh2D,
     effective_dx: Mapping[int, float],
-    transition_width: float,
+    transition_width: float | None,
+    transition_gradient: float | None,
     iteration_count: int,
     topology: EdgeTopology,
 ) -> RefinementResult:
@@ -637,6 +704,7 @@ def _result(
             final_mesh=final_mesh,
             effective_dx=effective_dx,
             transition_width=transition_width,
+            transition_gradient=transition_gradient,
             iteration_count=iteration_count,
             topology=topology,
         ),
@@ -881,21 +949,40 @@ def _native_refine(
 def refine_transition_mesh(
     mesh: Mesh2D,
     dx_by_region_id: Mapping[int, float],
-    transition_width: float,
+    transition_width: float | None = 0.0,
+    *,
+    transition_gradient: float | None = None,
 ) -> RefinementResult:
     """Return the unique final Mesh2D and immutable refinement diagnostics.
 
     A zero width or absence of different-dx interfaces returns an equivalent
     independently owned Mesh2D without loading or calling the native runtime.
     """
-    if isinstance(transition_width, bool):
-        raise ValueError("transition_width 必须是有限非负数")
-    try:
-        width = float(transition_width)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("transition_width 必须是有限非负数") from exc
-    if not (math.isfinite(width) and width >= 0.0):
-        raise ValueError("transition_width 必须是有限非负数")
+    if transition_width is not None and transition_gradient is not None:
+        raise ValueError("transition_width 与 transition_gradient 互斥")
+
+    width: float | None
+    gradient: float | None
+    if transition_gradient is not None:
+        if isinstance(transition_gradient, bool):
+            raise ValueError("transition_gradient 必须是有限正数")
+        try:
+            gradient = float(transition_gradient)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("transition_gradient 必须是有限正数") from exc
+        if not (math.isfinite(gradient) and gradient > 0.0):
+            raise ValueError("transition_gradient 必须是有限正数")
+        width = None
+    else:
+        gradient = None
+        if isinstance(transition_width, bool):
+            raise ValueError("transition_width 必须是有限非负数")
+        try:
+            width = float(transition_width)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("transition_width 必须是有限非负数") from exc
+        if not (math.isfinite(width) and width >= 0.0):
+            raise ValueError("transition_width 必须是有限非负数")
 
     current = _validate_mesh_arrays(mesh)
     original_region_ids = {
@@ -907,12 +994,13 @@ def refine_transition_mesh(
     )
     initial = _owned_mesh_copy(current)
     topology = _extract_edge_topology(current, effective_dx)
-    if width == 0.0 or not topology.interfaces:
+    if (gradient is None and width == 0.0) or not topology.interfaces:
         return _result(
             initial_mesh=initial,
             final_mesh=current,
             effective_dx=effective_dx,
             transition_width=width,
+            transition_gradient=gradient,
             iteration_count=0,
             topology=topology,
         )
@@ -930,6 +1018,7 @@ def refine_transition_mesh(
             effective_dx,
             width,
             topology,
+            transition_gradient=gradient,
         )
         if not np.any(_area_violations(current, area_bounds)):
             return _result(
@@ -937,6 +1026,7 @@ def refine_transition_mesh(
                 final_mesh=current,
                 effective_dx=effective_dx,
                 transition_width=width,
+                transition_gradient=gradient,
                 iteration_count=refinement_round - 1,
                 topology=topology,
             )
@@ -981,6 +1071,7 @@ def refine_transition_mesh(
             effective_dx,
             width,
             topology,
+            transition_gradient=gradient,
         )
         violations = _area_violations(candidate, next_bounds)
         if not np.any(violations):
@@ -989,6 +1080,7 @@ def refine_transition_mesh(
                 final_mesh=candidate,
                 effective_dx=effective_dx,
                 transition_width=width,
+                transition_gradient=gradient,
                 iteration_count=refinement_round,
                 topology=topology,
             )
@@ -1007,6 +1099,7 @@ def refine_transition_mesh(
         effective_dx,
         width,
         topology,
+        transition_gradient=gradient,
     )
     violation_count = int(
         np.count_nonzero(_area_violations(current, final_bounds))

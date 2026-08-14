@@ -191,7 +191,9 @@ def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):
     assert config.hdf5_path == (tmp_path / "cli.h5").resolve()
     assert config.mesh_dx == 0.10
     assert dict(config.region_dx) == {1: 0.03, 2: 0.04, 3: 0.02}
+    assert config.transition_mode == "disabled"
     assert config.transition_width == 0.0
+    assert config.transition_gradient is None
 
 
 def test_regions_generate_transition_width_merges_and_validates(tmp_path):
@@ -249,6 +251,111 @@ def test_regions_generate_transition_width_merges_and_validates(tmp_path):
             )
 
 
+def test_regions_generate_transition_gradient_modes_and_overrides(tmp_path):
+    gradient_path = tmp_path / "gradient.toml"
+    gradient_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n"
+        "transition_gradient = 2.5\n",
+        encoding="utf-8",
+    )
+
+    gradient = load_regions_generate_config(
+        RegionsGenerateOverrides(),
+        config_arg=str(gradient_path),
+        cwd=tmp_path,
+    )
+    assert gradient.transition_mode == "gradient"
+    assert gradient.transition_width is None
+    assert gradient.transition_gradient == 2.5
+
+    width_override = load_regions_generate_config(
+        RegionsGenerateOverrides(transition_width=0.2),
+        config_arg=str(gradient_path),
+        cwd=tmp_path,
+    )
+    assert width_override.transition_mode == "width"
+    assert width_override.transition_width == 0.2
+    assert width_override.transition_gradient is None
+
+    disabled = load_regions_generate_config(
+        RegionsGenerateOverrides(transition_width=0.0),
+        config_arg=str(gradient_path),
+        cwd=tmp_path,
+    )
+    assert disabled.transition_mode == "disabled"
+    assert disabled.transition_width == 0.0
+    assert disabled.transition_gradient is None
+
+    width_path = tmp_path / "width.toml"
+    width_path.write_text(
+        gradient_path.read_text(encoding="utf-8").replace(
+            "transition_gradient = 2.5",
+            "transition_width = 0.12",
+        ),
+        encoding="utf-8",
+    )
+    gradient_override = load_regions_generate_config(
+        RegionsGenerateOverrides(transition_gradient=3.0),
+        config_arg=str(width_path),
+        cwd=tmp_path,
+    )
+    assert gradient_override.transition_mode == "gradient"
+    assert gradient_override.transition_width is None
+    assert gradient_override.transition_gradient == 3.0
+
+
+@pytest.mark.parametrize(
+    "value",
+    (0.0, -0.1, float("nan"), float("inf")),
+)
+def test_regions_generate_rejects_invalid_transition_gradient(
+    tmp_path,
+    value,
+):
+    with pytest.raises(ConfigError, match="transition_gradient"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                multi_array_file="multi.rz",
+                regions_map="regions.toml",
+                plot="mesh.png",
+                mesh_dx=0.08,
+                transition_gradient=value,
+            ),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_generate_rejects_toml_transition_mode_conflict(tmp_path):
+    path = tmp_path / "regions.toml"
+    path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n"
+        "transition_width = 0.0\n"
+        "transition_gradient = 2.5\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="互斥"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(),
+            config_arg=str(path),
+            cwd=tmp_path,
+        )
+
+
 def test_regions_inspect_rejects_transition_width_toml_key(tmp_path):
     path = tmp_path / "regions.toml"
     path.write_text(
@@ -269,6 +376,41 @@ def test_regions_inspect_rejects_transition_width_toml_key(tmp_path):
             config_arg=str(path),
             cwd=tmp_path,
         )
+
+
+def test_regions_inspect_rejects_transition_gradient_toml_key(tmp_path):
+    path = tmp_path / "regions.toml"
+    path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions-map.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "transition_gradient = 2.5\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="未知"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            config_arg=str(path),
+            cwd=tmp_path,
+        )
+
+
+def test_root_config_rejects_transition_gradient(tmp_path):
+    path = tmp_path / "linkmesh.in"
+    path.write_text(
+        "schema_version = 1\n"
+        "[mesh]\n"
+        "transition_gradient = 2.5\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="未知键"):
+        load_effective_config(CliOverrides(), cwd=tmp_path)
 
 
 def test_regions_generate_target_defaults_and_hdf5_contract(tmp_path):

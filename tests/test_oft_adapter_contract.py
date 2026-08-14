@@ -93,6 +93,75 @@ def test_transition_topology_profile_and_pslg_contract():
     assert bounds[3] < 0.5
 
 
+def test_transition_gradient_width_and_profile_equivalence():
+    mesh = _two_region_mesh()
+    dx = {1: 0.25, 2: 1.0}
+    topology = triangle_refinement._extract_edge_topology(mesh, dx)
+    interface = topology.interfaces[0]
+    expected_width = 0.5
+    gradient = np.log(interface.coarse_dx / interface.fine_dx) / expected_width
+
+    derived_width = triangle_refinement._interface_transition_width(
+        interface,
+        None,
+        gradient,
+    )
+    width_bounds = triangle_refinement._triangle_area_bounds(
+        mesh,
+        dx,
+        expected_width,
+        topology,
+    )
+    gradient_bounds = triangle_refinement._triangle_area_bounds(
+        mesh,
+        dx,
+        None,
+        topology,
+        transition_gradient=gradient,
+    )
+
+    assert derived_width == pytest.approx(expected_width)
+    np.testing.assert_allclose(gradient_bounds, width_bounds)
+    assert gradient_bounds.shape == (mesh.n_triangles,)
+    assert gradient_bounds.dtype == np.float64
+    assert gradient_bounds.flags.c_contiguous
+    assert np.all(np.isfinite(gradient_bounds))
+    assert np.all(gradient_bounds > 0.0)
+
+
+def test_same_gradient_derives_larger_width_for_larger_dx_ratio():
+    gradient = 2.0
+    smaller_ratio = triangle_refinement.InterfaceConstraint(
+        coarse_region_id=2,
+        fine_region_id=1,
+        fine_dx=0.5,
+        coarse_dx=1.0,
+        segments=np.array([[0, 1]], dtype=np.int32),
+    )
+    larger_ratio = triangle_refinement.InterfaceConstraint(
+        coarse_region_id=3,
+        fine_region_id=1,
+        fine_dx=0.25,
+        coarse_dx=1.0,
+        segments=np.array([[0, 1]], dtype=np.int32),
+    )
+
+    smaller_width = triangle_refinement._interface_transition_width(
+        smaller_ratio,
+        None,
+        gradient,
+    )
+    larger_width = triangle_refinement._interface_transition_width(
+        larger_ratio,
+        None,
+        gradient,
+    )
+
+    assert smaller_width == pytest.approx(np.log(2.0) / gradient)
+    assert larger_width == pytest.approx(np.log(4.0) / gradient)
+    assert larger_width > smaller_width
+
+
 def test_centroid_to_segment_distance_is_euclidean():
     nodes = np.array([[0.0, 0.0], [0.0, 2.0]], dtype=np.float64)
     centroids = np.array([[1.0, 1.0], [2.0, 3.0]], dtype=np.float64)
@@ -183,6 +252,32 @@ def test_equal_dx_and_zero_width_do_not_call_native(monkeypatch):
     assert zero_width.diagnostics.enabled is False
     assert zero_width.diagnostics.iteration_count == 0
     assert zero_width.diagnostics.interfaces == ()
+
+
+def test_gradient_diagnostics_record_per_interface_width(monkeypatch):
+    mesh = _two_region_mesh()
+    gradient = 2.0
+    monkeypatch.setattr(
+        triangle_refinement,
+        "_area_violations",
+        MagicMock(return_value=np.zeros(mesh.n_triangles, dtype=bool)),
+    )
+
+    result = triangle_refinement.refine_transition_mesh(
+        mesh,
+        {1: 0.25, 2: 1.0},
+        None,
+        transition_gradient=gradient,
+    )
+
+    diagnostics = result.diagnostics
+    assert diagnostics.enabled is True
+    assert diagnostics.transition_mode == "gradient"
+    assert diagnostics.transition_width is None
+    assert diagnostics.transition_gradient == gradient
+    assert diagnostics.interfaces[0].transition_width == pytest.approx(
+        np.log(4.0) / gradient
+    )
 
 
 def test_transition_refinement_preserves_input_and_owned_final_mesh(monkeypatch):
