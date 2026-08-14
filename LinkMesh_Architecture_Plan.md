@@ -4153,9 +4153,10 @@ tar.gz，也尚未验证内部 manifest、外部 tar.gz.sha256、完整二进制
 共享 release 和普通用户验收仍为 `PENDING`。
 
 v5.4 正式收口根命令为单区域，profile、三个 legacy 区域 dx 和 nested 专用
-artificial outer 的源码删除已经完成。`EffectiveConfig` 为 13 字段；根命令只使用
-`mesh_dx`。服务器 pytest 全部通过，根单区域和 regions 功能运行验收通过；未提供
-精确 passed 数，不得猜测。
+artificial outer 的源码删除已经完成。该阶段 `EffectiveConfig` 为 13 字段，根命令
+只使用 `mesh_dx`。这是任务二 local refinement 实施前的历史状态；当前实时正式契约
+已在 v5.7 更新为 14 字段。服务器 pytest 全部通过，根单区域和 regions 功能运行验收
+通过；未提供精确 passed 数，不得猜测。
 
 v5.5 保留已实现的全局 `transition_width`，并批准第二种全局
 `transition_gradient` 控制模式。正式名称为 `--transition-gradient`，其
