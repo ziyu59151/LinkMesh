@@ -1849,7 +1849,8 @@ EffectiveConfig.mesh_dx
 - `--region-dx ID=DX`：按最终 Region ID 覆盖；
 - `--transition-width`：全局变化层厚度；
 - `--transition-gradient`：全局对数网格尺度梯度；
-- `--local-refinement R,Z,DX,W`：可重复的局部 point source，设计已批准但源码尚未实现。
+- `--local-refinement R,Z,DX,W`：可重复的局部 point source；完整 CLI 列表整体覆盖
+  对应根命令或 regions generate TOML point source 列表；设计已批准但源码尚未实现。
 
 两个 `--mesh-dx` 同名但作用域隔离。删除根命令 legacy dx 不得改变 regions 的
 任何尺度、transition、Region ID 或验证契约，也不得把旧区域 dx 自动映射为
