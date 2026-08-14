@@ -2,10 +2,9 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.4；根命令已在产品契约中收口为天然单区域，
-  `regions inspect/generate` 是唯一多区域入口；legacy `nested_three_region`、
-  root `--profile`、三个区域 dx 参数及 nested 专用 `artificial_outer` 已批准退役，
-  业务源码删除仍待下一轮实施）
+- 文档状态：当前有效（对应技术蓝图 v5.5；根命令及 legacy nested 源码收口已经完成，
+  `regions inspect/generate` 是唯一多区域入口；现有全局 `transition_width` 保留并
+  已实现，全局 `transition_gradient` 已批准设计但尚未实现）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -96,7 +95,9 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维�
 | LinkMesh 多区域 TXT+SMB | `case_002` GENERATED / DELIVERED |
 | LinkMesh 多区域 M3D-C1 消费验证 | PENDING |
 | OFT/Triangle transition refinement | IMPLEMENTED；真实 `rpqazQ` 已在目标服务器运行 |
-| 全局单一 `transition_width` 产品设计 | FINALIZED；所有不同 dx interfaces 自动共享同一 W |
+| 全局 `transition_width` | IMPLEMENTED / 保留；所有不同 dx interfaces 共享同一 W |
+| 全局 `transition_gradient` | APPROVED / NOT IMPLEMENTED；每条 interface 将按尺寸比派生自己的 W，详细契约见当前蓝图 |
+| R-Z local refinement | SEQUENCED AFTER TASK 1 / TECHNICAL CONTRACT PENDING |
 | 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
 | final `Mesh2D` verbose 数值质量报告 | IMPLEMENTED / USER ACCEPTED |
 | refined mesh 的 M3D-C1 消费 | PENDING |
@@ -112,12 +113,9 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维�
 根命令：
 SINGLE-REGION WORKFLOW / CURRENT
 ROOT MESH_DX = 唯一单 Region 尺度
-NESTED_THREE_REGION = RETIRED BY USER DECISION
-SOURCE REMOVAL = PENDING
---PROFILE / --PLASMA-DX / --VACUUM-DX / --OUTER-DX =
-REMOVAL APPROVED / SOURCE REMOVAL PENDING
-ARTIFICIAL_OUTER NESTED CONSTRUCTION =
-REMOVAL APPROVED / SOURCE REMOVAL PENDING
+NESTED_THREE_REGION = RETIRED / SOURCE REMOVAL COMPLETED
+--PROFILE / --PLASMA-DX / --VACUUM-DX / --OUTER-DX = REMOVED
+ARTIFICIAL_OUTER NESTED CONSTRUCTION = REMOVED
 
 LinkMesh 单区域生成侧最小闭环：PASSED
 TXT、rank-0 SMB、PNG：已生成
@@ -454,8 +452,8 @@ TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric
 
 - **输入**：命令行参数。
 - **职责**：根命令编排单区域 Reader、Mesher、Writer 和 Plotter；`regions
-  inspect/generate` 是作用域隔离的唯一多区域入口。legacy nested 参数和分支已批准
-  删除，源码修改仍为 PENDING。
+  inspect/generate` 是作用域隔离的唯一多区域入口。legacy nested 参数和分支已经
+  删除。
 - **输出**：标准工作流按目标生成 HDF5 或配套 TXT/SMB/PNG；多区域 generate 默认
   输出 mesh PNG，选择 `target=trimeg` 时把同一个 N-region `Mesh2D` 交给既有 HDF5
   Writer 并继续输出 PNG。
@@ -473,7 +471,7 @@ python -m linkmesh
 
 - **输入**：内建默认值、`linkmesh.in` 和显式 CLI 覆盖。
 - **职责**：读取并严格校验根命令单区域配置及独立 regions 配置。profile 和三个
-  legacy 区域 dx 已从正式契约删除，实时源码清理仍为 PENDING；详细迁移规则见蓝图。
+  legacy 区域 dx 已从正式契约及实时源码删除；详细契约见蓝图。
 - **输出**：不可变的标准有效配置对象或独立 regions 配置对象。
 - **不负责**：读取 GFile、生成网格或写出任何目标文件。
 
@@ -512,7 +510,7 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 - **输入**：根命令的单个实际计算边界，或 regions 已验证的 Region plan。
 - **职责**：根命令构造 single-region OFT Domain；regions 构造 N-region Domain；
   调用 OFT/TokaMaker/Triangle 并规范化为 `Mesh2D`。nested/artificial-outer 专用
-  分支已批准删除，源码清理仍为 PENDING。
+  分支已经删除。
 - **输出**：二维非结构化三角网格。
 - **候选工作流边界**：`array_file` 路径只接收 array boundary，不接收参考
   `GFileData`，也不感知 `--plot-lcfs`。
@@ -544,8 +542,9 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 - **职责**：自动提取 transition interfaces、判断粗细侧、计算指数 profile 和逐
   triangle 面积约束、管理 native ownership、执行有限 refinement并返回 final
   `Mesh2D`。
-- **产品语义**：一次 regions generate 使用一个全局 W；多个变化层重叠时采用最严格
-  尺寸。
+- **产品语义**：已实现的 width 模式使用一个全局 W；多个变化层重叠时采用最严格
+  尺寸。已批准但尚未实现的 gradient 模式将使用一个全局对数尺度梯度，并由本模块
+  为每条 interface 派生不同的 W。详细数学、互斥、诊断和验收契约见当前技术蓝图。
 - **不负责**：CLI 打印、Writer、Plotter、PUMI 或把诊断保存到 `Mesh2D`。
 
 ### `src/linkmesh/mesh_quality.py`
@@ -770,8 +769,8 @@ multi-array Reader、轻量包含树、deterministic synthetic role plan、OFT s
 编号、`regions inspect/generate`、TOML regions map、inspection PNG 和 N-region
 `Mesh2D` 均已实现。
 
-根命令 legacy nested 分支仍存在于实时源码，但已退役并等待下一轮删除；详细破坏性
-迁移和最小源码范围只查阅当前技术蓝图。
+根命令 legacy nested 分支已经从实时源码删除；历史运行证据继续保留，不恢复兼容
+入口。当前 transition gradient 的实施范围和验收标准只查阅当前技术蓝图。
 
 ## 9. 测试与证据导读
 
@@ -798,8 +797,9 @@ M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
 
 当前记录需要保留以下边界：
 
-- 删除服务器副本中的 `test_release_packaging.py` 后，当前剩余 pytest 集合为
-  123 passed；该结果不包含 release packaging 测试。
+- User 最新直接证据确认 legacy nested 源码收口完成后服务器 pytest 全部通过，
+  根单区域和 regions 功能运行验收通过；未提供精确 passed 数，不得猜测，也不得将
+  较早不含 release packaging 测试的 123 passed 记录冒充当前完整数量。
 - transition refinement、自动 interface/粗细侧和真实 `rpqazQ` 已实现并运行。
 - `case_002` 与复杂合成压力案例 PNG 已由 User 人工检查通过，但定量数值质量报告
   尚未实现，refined mesh 的 M3D-C1 消费仍为 PENDING。

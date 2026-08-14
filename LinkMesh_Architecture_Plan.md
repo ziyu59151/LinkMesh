@@ -3,11 +3,11 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.4**（User 正式裁决根命令收口为天然单区域工作流，
-  `linkmesh regions inspect/generate` 成为唯一多区域产品入口；批准退役
-  `nested_three_region`、根命令 `--profile`、三个 legacy 区域尺度参数及
-  nested 专用 `artificial_outer` 构造。本轮只完成技术文档、用户导读和迁移契约
-  修订，业务源码、测试、配置实现、CLI 实现和示例删除仍为 PENDING）
+- 文档状态：正式版 **5.5**（根命令 legacy nested 源码收口已经完成；User 批准为
+  `regions generate` 增加第二种全局 transition 控制模式
+  `--transition-gradient`。现有 `transition_width` 保留并已实现；
+  `transition_gradient` 的数学、配置、CLI、诊断、实施和验收契约已经批准，
+  业务源码实现仍为 PENDING）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -128,12 +128,12 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | M1 Reader | **PASSED** |
 | 历史 `nested_three_region + artificial_outer` 生成侧 | **曾实现并 PASSED；历史证据保留** |
 | 根命令 single-region workflow | **SUPPORTED / CURRENT** |
-| 根命令 `nested_three_region` | **RETIRED BY USER DECISION / SOURCE REMOVAL PENDING** |
-| 根命令 `--profile` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
-| 根命令 `--plasma-dx` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
-| 根命令 `--vacuum-dx` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
-| 根命令 `--outer-dx` | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
-| 根命令 nested 专用 `artificial_outer` 构造 | **REMOVAL APPROVED / SOURCE REMOVAL PENDING** |
+| 根命令 `nested_three_region` | **RETIRED / SOURCE REMOVAL COMPLETED** |
+| 根命令 `--profile` | **REMOVED** |
+| 根命令 `--plasma-dx` | **REMOVED** |
+| 根命令 `--vacuum-dx` | **REMOVED** |
+| 根命令 `--outer-dx` | **REMOVED** |
+| 根命令 nested 专用 `artificial_outer` 构造 | **REMOVED** |
 | DIII-D GFile 单区域网格生成 | **PASSED** |
 | M3 core | **PASSED** |
 | M3 complete-11 | **PASSED** |
@@ -197,7 +197,11 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | `case_002` TXT+SMB 同门交付 | **DELIVERED；LOADED PENDING** |
 | OFT/Triangle transition refinement 调查 | **COMPLETED** |
 | native ABI / ownership / runtime exports | **CONFIRMED** |
-| `transition_width` CLI/TOML 与低层 Adapter | **IMPLEMENTED** |
+| `transition_width` CLI/TOML 与低层 Adapter | **IMPLEMENTED / 保留** |
+| `transition_gradient` 设计 | **DESIGNED / USER-APPROVED / NOT IMPLEMENTED** |
+| `transition_gradient` CLI/TOML | **APPROVED / SOURCE IMPLEMENTATION PENDING** |
+| gradient 模式 per-interface `W_i` | **DESIGNED / NOT IMPLEMENTED** |
+| R-Z local refinement | **SEQUENCED AFTER TASK 1 / TECHNICAL CONTRACT PENDING** |
 | 自动 interface 发现与粗细侧 refinement | **IMPLEMENTED** |
 | 指数 profile 与逐 triangle `Amax` | **IMPLEMENTED** |
 | `rpqazQ` 目标服务器真实调用 | **RUN / GENERATED** |
@@ -271,8 +275,9 @@ counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。�
    multi-array inspect 与 generate 生产链已经实现并形成合法 N-region `Mesh2D`。
 8. 首版不建设通用鲁棒计算几何系统，不引入 Shapely/GEOS，不承诺精确分类复杂
    自交、相切、重合或近接触输入。
-9. 历史 `nested_three_region` 根入口已由 User 退役；业务源码、测试和当前模板清理
-   为下一轮已批准任务，状态仍为 SOURCE REMOVAL PENDING。
+9. 历史 `nested_three_region` 根入口已退役，业务源码、测试和当前模板收口已经完成；
+   服务器 pytest 全部通过，根单区域与 regions 工作流运行验收通过。未提供精确
+   passed 数，不得猜测。
 10. OFT 单区域静态空间变网格密度仍待调查；Triangle refinement、M3D-C1
     multi-face 生成侧和 final `Mesh2D` verbose 数值质量报告均已实现。
 11. 动态自适应和磁面对齐继续保持未开放。
@@ -516,8 +521,8 @@ OFT 输出契约：
 不按来源分叉。
 
 历史 nested 策略曾自动构造 LCFS、第一壁和 artificial outer 多层 Region，并已留下
-真实生成与验收记录；User 已正式退役该产品入口。对应源码和测试删除尚未执行，
-状态为 PENDING，不得把历史事实改写为从未存在。
+真实生成与验收记录；User 已正式退役该产品入口，对应源码和测试收口已经完成。
+不得把历史事实改写为从未存在，也不得恢复兼容入口。
 
 物理建模边界：
 
@@ -1050,6 +1055,184 @@ initial Mesh2D
 该实现已落在 `src/linkmesh/mesh_quality.py`、
 `src/linkmesh/mesher/triangle_refinement.py`、`src/linkmesh/cli.py` 和对应测试中，
 未改变 `Mesh2D`、regions map、Plotter、Writer、helper 或 OFT/Triangle 契约。
+
+#### 4.6.12 全局 transition gradient 控制模式
+
+状态：
+
+- `transition_width`：**IMPLEMENTED / 保留**；
+- `transition_gradient` 设计：**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
+- gradient CLI/TOML：**APPROVED / SOURCE IMPLEMENTATION PENDING**；
+- per-interface `W_i`：**DESIGNED / NOT IMPLEMENTED**。
+
+`transition_gradient` 是现有指数 transition profile 的第二种全局控制模式，不是
+新 profile。正式 CLI 名称固定为：
+
+```text
+linkmesh regions generate --transition-gradient FLOAT
+```
+
+不得使用 `transition-gradiation`，也不得将该参数加入根命令、`regions` 父命令或
+`regions inspect`。
+
+设 interface `i` 两侧的 effective dx 为 `h_f,i < h_c,i`。全局 gradient 定义为：
+
+```text
+G = d(ln h) / dd
+```
+
+其中 `d` 为粗侧 triangle centroid 到该 interface 实际 mesh segments 的最短欧氏
+距离，单位 m；因此 `G` 的单位为 `1/m`。`G` 是对数网格尺度梯度，不是普通
+`dh/dd`。在指数 profile 中：
+
+```text
+dh/dd = G * h(d)
+```
+
+所以普通尺寸梯度不是常数。所有不同 dx interfaces 共享同一个全局 `G`，每条
+interface 根据自身尺寸比确定性派生：
+
+```text
+W_i = ln(h_c,i / h_f,i) / G
+h_i(d) = h_f,i * (h_c,i / h_f,i) ** min(d / W_i, 1)
+```
+
+相同 `G` 表示所有 interfaces 具有相同的每米对数尺寸增长率。尺寸比越大，
+`W_i` 越大。`W_i` 是 refinement 内部派生值，不是用户可配置的 interface 参数。
+不得增加线性 profile、普通尺寸梯度、profile selector、Region/interface 级 gradient
+或 Region/interface 级 width。
+
+有效 transition mode 必须明确表示为：
+
+```text
+disabled
+width
+gradient
+```
+
+具体可采用与现有配置风格一致的不可变对象或等价内部类型，但不得由 CLI 执行阶段
+临时猜测模式。
+
+**CLI 与 TOML**
+
+`--transition-gradient` 只允许有限、严格正浮点数，单位 `1/m`。零、负值、NaN 和
+Inf 必须拒绝；不得解释为百分比或逐 triangle 面积增长率。现有
+`--transition-width` 保持单位 m、零关闭、正有限值启用、负值/NaN/Inf 拒绝。
+
+两个 CLI 参数属于同一个互斥参数组，同一 CLI 层不得同时显式提供。regions generate
+TOML 批准：
+
+```toml
+[regions.mesh]
+transition_width = 0.0
+transition_gradient = 2.5
+```
+
+上例仅展示字段位置；同一 TOML 层实际不得同时写出两个键，即使
+`transition_width=0` 也必须拒绝。`transition_gradient` 的内部有效值为正
+`float` 或 `None`。根命令标准 TOML、regions inspect 配置和 regions map 均不得
+接受或保存该字段及派生 `W_i`。
+
+合并必须按整个 transition 控制模式执行，而不是独立合并两个字段：
+
+1. 无显式 CLI transition 选项时，使用 TOML 选择的模式。
+2. 显式 CLI `--transition-width W` 整体覆盖 TOML gradient 模式。
+3. 显式 CLI `--transition-gradient G` 整体覆盖 TOML width 模式。
+4. 显式 CLI `--transition-width 0` 明确关闭 TOML 的 width 或 gradient 模式。
+5. 同一 CLI 层同时提供 width/gradient：失败。
+6. 同一 TOML 层同时定义 width/gradient：失败。
+7. 内建默认状态为 disabled；默认 width 为 `0.0`、gradient 为 `None`，二者不构成
+   同层显式冲突。
+
+这保持“内建默认值 < TOML < 显式 CLI”，同时避免独立字段合并制造虚假冲突。
+
+**数值与 refinement 规则**
+
+仅在 `h_c > h_f` 时派生 `W_i`。实现必须验证 `G`、`h_f`、`h_c`、
+`ln(h_c/h_f)` 和 `W_i` 均有限，前三者严格正，后两者严格正。effective dx 是否相等
+继续使用现有精确规则，不得从近似相等尺寸构造零厚度 interface。
+
+极小正 `G` 可产生很大的 `W_i`；不得裁剪，也不得自行增加 `G`、`W_i`、节点数、
+triangle 数或增长倍率上限。它仍受现有最多三轮、mesh 规模不变但仍违规、最终面积
+违规及全部结构失败规则约束。
+
+gradient 模式只替换每条 interface 的 W 来源。以下现有契约全部保持：
+
+- incidence=1 外边界不产生 transition；
+- incidence=2 同 Region 是普通内部 edge；
+- incidence=2、不同 Region、相同 dx 是无 transition 的共形 interface；
+- incidence=2、不同 Region、不同 dx 是 transition interface；
+- incidence>2 失败；
+- 小 dx 为细侧、大 dx 为粗侧，transition 只作用于粗侧；
+- 距离仍为 centroid 到实际 interface segments 的最短欧氏距离；
+- 多个 interfaces 影响同一 triangle 时取最小目标 `h`；
+- `Amax=h_target^2/2`；
+- 只 refinement，不 coarsen；
+- 每轮基于 current `Mesh2D` 重新提取 topology 和约束；
+- initial `Mesh2D` 只生成一次，全部 targets 消费同一个 final `Mesh2D`；
+- `W` 或 `W_i` 超过粗 Region 局部厚度时允许重叠，粗 Region 大范围细化不自动报错；
+- PSLG、Region attributes、native ABI、ownership 和 Triangle option 不变。
+
+**Diagnostics 与 verbose**
+
+width 模式现有输出保持兼容，继续显示全局 W；per-interface 摘要可显示同一 W。
+gradient 模式不得打印虚假的全局 W，至少表达：
+
+- `transition mode=gradient`；
+- 输入全局 `G [1/m]`；
+- interface count、iteration count；
+- initial/final nodes 与 triangles 及 growth ratios；
+- final maximum area excess 与 final violating triangle count；
+- 每条 interface 的 fine/coarse Region ID、`h_f`、`h_c`、派生 `W_i [m]`、
+  affected coarse triangle count 和 maximum area excess。
+
+verbose 关闭时不增加普通输出。diagnostics 不得写入 `Mesh2D`、Writer 文件、
+regions map 或 native exchange。
+
+**下一轮最小源码范围**
+
+原则上只修改：
+
+- `src/linkmesh/config.py`：解析和校验 gradient，实施同层互斥、跨层模式覆盖并形成
+  effective transition mode；
+- `src/linkmesh/cli.py`：只在 regions generate 注册互斥参数、传递 effective mode
+  并格式化 verbose；不得计算 `W_i` 或 profile；
+- `src/linkmesh/mesher/triangle_refinement.py`：按 mode 使用全局 W 或派生每条
+  interface 的 `W_i`，继续唯一拥有 interface、距离、profile、Amax、Triangle 和
+  迭代，不复制第二套循环；
+- `src/linkmesh/mesh_quality.py`：只合并和表达 diagnostics，不重新计算 `W_i`、
+  距离、Amax 或 refinement；
+- 对应现有配置、CLI 和 refinement 测试。
+
+不得修改 `Mesh2D`、regions map、Reader、Plotter、Writer、M3D-C1 ModelSpec、
+helper、OFT/Triangle、native ABI 或 HDF5/TXT/SMB schema。
+
+**下一轮测试与真实验收**
+
+自动测试至少覆盖：
+
+- 默认 disabled；width/gradient TOML；同层 TOML 冲突；
+- CLI width 覆盖 TOML gradient、CLI gradient 覆盖 TOML width；
+- CLI width=0 关闭 TOML transition；CLI 同层互斥；
+- gradient 的零、负值、NaN、Inf 拒绝；
+- inspect 与根命令不接受 gradient；
+- 给定 `h_f/h_c/G` 精确计算 `W_i`；
+- `G=ln(h_c/h_f)/W` 时 gradient 与 width profile 等价；
+- 同一 G 下不同尺寸比产生不同 `W_i`，且尺寸比越大 `W_i` 越大；
+- 多 interface 仍取最严格 h；
+- Amax shape、dtype、有限性和正值不变；
+- generate help 包含正式名称、`1/m` 单位和 width 互斥说明；
+- gradient 模式 initial `Mesh2D` 只生成一次，全部 targets 复用 final `Mesh2D`；
+- verbose 显示 G 和 per-interface `W_i`，width 输出不回归，disabled 不打印虚假摘要。
+
+真实验收候选必须至少包含两个 `h_c/h_f` 比不同的 interfaces，使用同一个 G，确认
+日志中不同 `W_i` 符合公式、final violations 为零，degenerate/duplicate/
+non-manifold 均为零，并生成 PNG 供 User 检查。自动测试与真实运行状态必须分开记录。
+
+R-Z 点局部加密不属于本任务。本轮不定义 `--local-refinement R,Z,DX,W`、点定位、
+连通分量、点距离 profile、多点约束或根命令/regions 局部加密。该能力按 User 决定
+排在 gradient 实现与验收之后，状态为
+**SEQUENCED AFTER TASK 1 / TECHNICAL CONTRACT PENDING**。
 
 ---
 
@@ -1748,7 +1931,8 @@ hdf5 = "mesh.h5"
 
 [regions.mesh]
 mesh_dx = 0.08
-transition_width = 0.0
+# transition_width = 0.0
+# transition_gradient = 2.5  # 1/m；与 transition_width 二选一
 
 [regions.mesh.region_dx]
 1 = 0.03
@@ -1773,9 +1957,14 @@ transition_width = 0.0
    不变。
 10. `[regions.mesh.region_dx]` 是最终 Region ID 到浮点 dx 的显式映射，不允许位置
     列表。
-11. `[regions.mesh].transition_width` 为有限非负浮点数，默认 `0.0`；显式 CLI
-    `--transition-width` 覆盖 TOML。该字段只属于 generate，inspect 不接受。
-12. 配置层不读取边界或 map 内容，不构造 `Mesh2D`，不调用 OFT/Writer，也不打开或
+11. `[regions.mesh].transition_width` 为有限非负浮点数；零表示显式关闭或内建
+    disabled，正值选择 width 模式。
+12. `[regions.mesh].transition_gradient` 为可选的有限严格正浮点数，单位 `1/m`；
+    提供时选择 gradient 模式。该字段只属于 generate，inspect 和根命令不接受。
+13. 同一 TOML 层不得同时定义 `transition_width` 与 `transition_gradient`，即使
+    width 为零；CLI/TOML 跨层覆盖按第 4.6.12 节的 effective transition mode
+    整体执行。
+14. 配置层不读取边界或 map 内容，不构造 `Mesh2D`，不调用 OFT/Writer，也不打开或
     创建 HDF5。
 
 #### 5.7B.7 regions map 和 dx
@@ -1840,7 +2029,7 @@ Region ID，然后至少核对：
 冲突必须失败并提示重新执行 `regions inspect`。首版不承诺检测只改变空行、等价数值
 文本、未改变结构和编号的坐标微调，或保持相同曲线数量与包含关系的任意输入修改。
 
-regions generate 的尺度参数：
+regions generate 的尺度与 transition 参数：
 
 ```text
 --mesh-dx 0.08
@@ -1848,9 +2037,18 @@ regions generate 的尺度参数：
 --transition-width 0.12
 ```
 
-`--transition-width` 写入 argparse 的 `transition_width`，使用 `type=float`、
-`default=UNSET`，属于 generate 的 `Mesh Resolution` 分组；未显式提供时不得覆盖
-TOML，最终由 regions generate 独立配置合并为默认 `0.0`。
+或：
+
+```text
+--mesh-dx 0.08
+--region-dx 1=0.03 --region-dx 2=0.05
+--transition-gradient 2.5
+```
+
+`--transition-width` 与 `--transition-gradient` 使用 `type=float`、
+`default=UNSET`，属于 generate 的同一个互斥 `Mesh Resolution` 参数组；未显式提供
+时不得覆盖 TOML。effective transition mode、跨层覆盖、数学定义和 diagnostics
+统一遵循第 4.6.12 节。
 
 正式规则：
 
@@ -3027,7 +3225,7 @@ README 内容变化不得改变 tar.gz，除非归档内部其他内容也发生
 ### 9.1 M1–M3 和 TRIMEG
 
 - M1 Reader：**PASSED**；
-- M2 历史 nested 默认链：**曾实现并 PASSED；当前已退役，源码删除 PENDING**；
+- M2 历史 nested 默认链：**曾实现并 PASSED；当前已退役，源码删除已完成**；
 - 根命令单区域链：**SUPPORTED / CURRENT**；
 - M3 core：**PASSED**；
 - M3 complete-11：**PASSED**；
@@ -3265,6 +3463,8 @@ TRIMEG HDF5/Writer 的当前格式契约由 `tests/test_format_contracts.py` 保
 
 原则上保留或合并后保留：
 
+- transition mode 的 disabled/width/gradient 配置合并、同层互斥、跨层覆盖、
+  gradient 数学换算和 diagnostics；
 - `Mesh2D` 与 `outer_boundary` 的独立几何不变量；
 - counted R-Z 文件的关键语法和几何拒绝；
 - GFile Reader 最小字段映射、闭合、方向和依赖失败边界；
@@ -3587,9 +3787,18 @@ tar.gz，也尚未验证内部 manifest、外部 tar.gz.sha256、完整二进制
 运行。Python 正式安装、CMake install、共享根目录、包装入口、modulefile、第一个
 共享 release 和普通用户验收仍为 `PENDING`。
 
-v5.4 正式收口根命令为单区域，批准删除 profile、三个 legacy 区域 dx 和 nested
-专用 artificial outer。源码收口后 `EffectiveConfig` 为 13 字段；根命令只使用
-`mesh_dx`。regions 的 `mesh_dx/region_dx/transition_width` 保持独立且不受影响。
+v5.4 正式收口根命令为单区域，profile、三个 legacy 区域 dx 和 nested 专用
+artificial outer 的源码删除已经完成。`EffectiveConfig` 为 13 字段；根命令只使用
+`mesh_dx`。服务器 pytest 全部通过，根单区域和 regions 功能运行验收通过；未提供
+精确 passed 数，不得猜测。
+
+v5.5 保留已实现的全局 `transition_width`，并批准第二种全局
+`transition_gradient` 控制模式。正式名称为 `--transition-gradient`，其
+`G=d(ln h)/dd`、单位 `1/m`，每条不同 dx interface 自动派生
+`W_i=ln(h_c,i/h_f,i)/G`。width 与 gradient 同层互斥，跨层按 effective mode 整体
+覆盖。gradient 仍为 **NOT IMPLEMENTED**，不增加 interface 级用户参数，也不修改
+`Mesh2D`、Writer、helper、OFT/Triangle 或 native ABI。R-Z 局部加密留待任务二
+单独建立技术契约。
 旧 `--min-angle` 与 `--max-area` 继续不属于 CLI。array reference PNG 仅绘制
 Mesh boundary 与 LCFS reference，不绘制参考 GFile 的 limiter、First wall 或
 Magnetic axis。

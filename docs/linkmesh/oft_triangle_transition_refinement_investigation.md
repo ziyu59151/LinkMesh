@@ -11,7 +11,8 @@
 - `trifree` 运行时导出：**CONFIRMED**
 - 动态依赖：**CHECKED / COMPLETE**
 - 最终裁决：**FEASIBLE BUT REQUIRES LINKMESH-SIDE LOW-LEVEL ADAPTER**
-- 业务实现：**IMPLEMENTED**
+- 业务实现：`transition_width` **IMPLEMENTED / 保留**；
+  `transition_gradient` **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**
 - 真实 `rpqazQ` 调用：**RUN / GENERATED**
 - 调查对象：LinkMesh、OpenFUSIONToolkit/TokaMaker 26.6、随附 Triangle
 - 修改范围：仅生成本报告；未修改业务源码、蓝图、测试、配置、CLI、OFT/Triangle
@@ -54,8 +55,26 @@ minimum angle、max iterations 或 quality-report 专用参数。粗 Region 局�
 
 这些结果达到 **GENERATED / PNG USER-CHECKED PASSED**，不等价于 minimum angle、
 shape quality、面积误差或 transition thickness 已定量通过。通过现有 `--verbose`
-输出 final `Mesh2D` 数值质量摘要的设计已获批准，但尚未实现；refined mesh 的
+输出 final `Mesh2D` 数值质量摘要已经实现并由 User 验收；refined mesh 的
 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性仍为 PENDING。
+
+User 已批准在现有全局 `transition_width` 之外增加全局
+`transition_gradient` 模式，正式 CLI 名称为 `--transition-gradient`。它复用现有
+指数 profile、自动 interface、粗细侧、距离、PSLG、attributes、Amax、native
+ownership 和三轮 refinement 底座，只改变每条 interface 的 W 来源：
+
+```text
+G = d(ln h) / dd                  [1/m]
+W_i = ln(h_c,i / h_f,i) / G      [m]
+```
+
+所有不同 dx interfaces 共享同一个 G，并按各自尺寸比派生不同 `W_i`。width 与
+gradient 同层互斥、跨层按 transition mode 整体覆盖；gradient 的源码实现仍为
+**PENDING**。该设计不修改 ABI、Triangle option、`Mesh2D`、Writer、regions map、
+helper 或目标格式，也不增加 interface 级配置。完整契约以当前
+`LinkMesh_Architecture_Plan.md` 第 4.6.12 节为准。
+
+R-Z 点局部加密排在 gradient 实现与验收之后，本报告不设计其 CLI、数学或模块契约。
 
 下文第 1 至第 24 节保留实施前的源码调查、设计推导和 ABI 证据。其
 `NOT IMPLEMENTED`、`NOT RUN` 或“候选”措辞描述调查发生时的阶段状态；本节和当前
@@ -1877,9 +1896,10 @@ PNG 人工检查只能证明可视几何结果获得 User 接受，不能替代�
 ### 24.2 最终状态
 
 ```text
-IMPLEMENTED / RPQAZQ RUN / GENERATED
-GLOBAL SINGLE-W DESIGN FINALIZED
-VERBOSE NUMERICAL QUALITY REPORT APPROVED / NOT IMPLEMENTED
+TRANSITION_WIDTH IMPLEMENTED / RETAINED
+TRANSITION_GRADIENT DESIGNED / USER-APPROVED / NOT IMPLEMENTED
+RPQAZQ RUN / GENERATED
+VERBOSE NUMERICAL QUALITY REPORT IMPLEMENTED / USER ACCEPTED
 M3D-C1 REFINED-MESH CONSUMPTION PENDING
 ```
 
@@ -1902,6 +1922,8 @@ M3D-C1 REFINED-MESH CONSUMPTION PENDING
   `Amax`、attributes/PSLG、ownership 和有限迭代均已实现；
 -真实 `rpqazQ` 已在目标服务器运行，`case_002` 和复杂合成压力案例均已生成；
 -User 已完成 PNG 人工检查并正式收口全局单一 W 产品设计；
--final `Mesh2D` verbose 定量质量报告仍为 **APPROVED / NOT IMPLEMENTED**；
+-final `Mesh2D` verbose 定量质量报告为 **IMPLEMENTED / USER ACCEPTED**；
+-全局 `transition_gradient` 及 per-interface `W_i` 为
+  **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
 -refined mesh 的 M3D-C1 加载、初始化、时间推进、稳定性和物理正确性仍为
   **PENDING**。
