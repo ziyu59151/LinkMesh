@@ -53,11 +53,6 @@ boundary_source = "lcfs"
 [mesh]
 mesh_dx = 0.08
 
-[output]
-model = "mesh/model.txt"
-smb = "mesh/mesh.smb"
-plot = "mesh/mesh.png"
-
 [[mesh.local_refinement]]
 r = 1.50
 z = 0.00
@@ -68,6 +63,7 @@ width = 0.25
 model = "mesh/model.txt"
 smb = "mesh/mesh.smb"
 plot = "mesh/mesh.png"
+quality_plot = "mesh/mesh_quality.png"
 plot_lcfs = false
 
 [runtime]
@@ -81,6 +77,12 @@ verbose = true
 
 `plot_lcfs` 的正式路径是 `[output].plot_lcfs`，不是 `[input].plot_lcfs`。它只用于
 `array_file` 实际边界配 GFile LCFS PNG 参考线，不改变实际网格边界。
+
+`plot` 是现有网格几何检查图。已批准但尚未实现的 `quality_plot` 是独立的逐
+triangle shape quality Q 图；两者可同时配置，也可只配置其中一个。Q 图固定使用
+`Q=0` 红、`Q=0.5` 蓝、`Q=1` 绿的连续颜色映射，颜色范围固定为 `[0,1]`，不会按
+每个 Case 自动拉伸。质量图只用于网格质量定位，不代表 TRIMEG/M3D-C1 已消费网格，
+也不构成时间推进、稳定性或物理验收。
 
 运行：
 
@@ -139,6 +141,7 @@ target = "mesh_only"
 multi_array_file = "boundaries.rz"
 regions_map = "regions.toml"
 plot = "mesh.png"
+quality_plot = "mesh_quality.png"
 
 [regions.mesh]
 mesh_dx = 0.08
@@ -165,8 +168,14 @@ verbose = true
 
 `transition_width` 与 `transition_gradient` 位于同一个 `[regions.mesh]`，二者互斥；
 派生的每 interface `Wi` 不写入配置。`region_dx` 是最终 Region ID 字符串键到 dx
-的 TOML table。regions map 不保存 mesh 尺度、transition 或 local refinement。
-命令行出现任意 `--local-refinement` 时，完整 CLI point 列表整体替换 TOML 列表。
+的 TOML table。regions map 不保存 mesh 尺度、transition、local refinement 或
+quality plot。命令行出现任意 `--local-refinement` 时，完整 CLI point 列表整体替换
+TOML 列表。
+
+已批准但尚未实现的 `[regions].quality_plot` 与 `[regions].plot` 相互独立：前者
+输出 final 多区域 `Mesh2D` 的逐 triangle Q 图，后者继续输出 Region geometry
+检查图。Q 图不会使用 Region 颜色覆盖质量颜色，固定为 0 红、0.5 蓝、1 绿及
+`[0,1]` colorbar。两种 PNG 都只用于人工检查，不替代求解器消费或物理验收。
 
 `inspect` 读取多轮廓输入、建立当前支持的包含关系并生成 regions map 和检查图。
 用户确认 map 后，`generate` 重新读取输入和 map，并生成最终多区域网格。

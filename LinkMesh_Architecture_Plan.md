@@ -3,11 +3,12 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.7**（根命令 legacy nested 源码收口已经完成；全局
+- 文档状态：正式版 **5.8**（根命令 legacy nested 源码收口已经完成；全局
   `transition_width`、`transition_gradient` 及根命令/`regions generate` 的可重复
   R-Z point local refinement 均已实现并完成生成侧真实验收；gradient、point sources、
-  combined area constraints、结构质量和 PNG 人工检查已经通过；M3D-C1 消费、时间
-  推进、稳定性和物理正确性继续 PENDING）
+  combined area constraints、结构质量和 PNG 人工检查已经通过；逐 triangle shape
+  quality Q PNG 已获 User 批准并完成实施级设计，源码实现与真实 PNG 仍 PENDING；
+  M3D-C1 消费、时间推进、稳定性和物理正确性继续 PENDING）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -215,6 +216,11 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | 复杂合成 transition 压力案例 | **GENERATED / PNG USER-CHECKED PASSED** |
 | 全局单一 `transition_width` 产品设计 | **FINALIZED** |
 | final `Mesh2D` verbose 数值质量报告 | **IMPLEMENTED / USER ACCEPTED** |
+| Triangle shape quality plot | **DESIGNED / USER-APPROVED / NOT IMPLEMENTED** |
+| `--quality-plot` | **APPROVED / SOURCE IMPLEMENTATION PENDING** |
+| 根命令 quality plot | **DESIGNED / NOT IMPLEMENTED** |
+| `regions generate` quality plot | **DESIGNED / NOT IMPLEMENTED** |
+| 固定 red-blue-green Q colormap | **DESIGNED / NOT IMPLEMENTED** |
 | refined mesh 的 M3D-C1 消费 | **PENDING** |
 | 三维、动态自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 
@@ -337,14 +343,14 @@ Writer、CLI、Plotter 或 config。
 | `src/linkmesh/mesh.py` | 定义统一 `Mesh2D`、统计属性和 `outer_boundary` 集中验证 | 依赖后端或目标格式；读取 OFT 私有属性 |
 | `src/linkmesh/mesher/oft_adapter.py` | 根命令只构造单区域 OFT Domain；regions 路径消费已验证 Region plan 构造 N-region Domain；调用唯一 Triangle 底座并规范化为 Mesh2D；受控读取 outer Region 回写边界 | 保留 nested 专用 LCFS/第一壁/artificial-outer 自动分层；配置解析；transition profile；复制 OFT 算法；读取禁止的 OFT 私有结构；猜测包含树、Region ID、物理名称或 dx 顺序 |
 | `src/linkmesh/mesher/triangle_refinement.py` | 【IMPLEMENTED】窄职责内部模块：从 initial/current Mesh2D 提取外边界与跨 Region PSLG、计算 interface 距离和指数 profile、构造逐 triangle 面积上界、调用同一 OFT 26.6 `liboft_triangle.so` 的 `rpqazQ`、管理 native ownership、执行有限迭代并返回全新 final Mesh2D | 读取配置或业务文件；创建 OFT Domain；修改 Mesh2D 字段；保存 native pointer；调用 Writer/Plotter/PUMI；打印 CLI 日志；复制 Triangle 算法；引入第二剖分器 |
-| `src/linkmesh/mesh_quality.py` | 【IMPLEMENTED / USER ACCEPTED】从 final `Mesh2D` 计算通用数值质量统计，并从 refinement 提供的最小只读诊断形成 transition 摘要；返回内部不可变报告对象，不负责打印 | 修改 mesh；调用 Triangle、Writer、Plotter 或 helper；访问 native pointer；重新实现 interface/refinement 算法；定义新的失败阈值 |
+| `src/linkmesh/mesh_quality.py` | 【IMPLEMENTED / USER ACCEPTED】从 final `Mesh2D` 计算通用数值质量统计，并从 refinement 提供的最小只读诊断形成 transition 摘要；下一轮按第 4.6.14 节提供统计报告与 quality plot 共享的逐 triangle Q 窄职责计算入口；返回内部不可变报告对象或只读数值数组，不负责打印或绘图 | 修改 mesh；依赖 Matplotlib；调用 Triangle、Writer、Plotter 或 helper；访问 native pointer；重新实现 interface/refinement 算法；定义新的失败阈值 |
 | `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
 | `src/linkmesh/writers/hdf5_writer.py` | 按 TRIMEG 11 数据集契约写出 | 修改输入；写 `region_ids`；转置；网格生成 |
 | `src/linkmesh/writers/m3dc1_model_writer.py` | 按 M3D-C1 analytic model 契约写 TXT | 复制样例坐标；调用 Simmetrix；独立分配 tags |
 | `src/linkmesh/writers/smb_writer.py` | 验证输入；生成 classification 和交换文件；调用 helper；确认 rank-0 SMB | 创建 APF/MDS entity；读写 SMB 字节；硬编码 PUMI 路径 |
 | `native/linkmesh_scorec_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
 | `native/linkmesh_scorec_helper/CMakeLists.txt` | 构建 `linkmesh-scorec-helper` target | 通用 native/plugin 框架；Python 扩展；运行时编译；硬编码安装前缀 |
-| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；`plot_mesh()` 以 `Mesh2D` 及 `Mesh2D.outer_boundary` 作为实际网格和实际计算域边界来源，并可接收可选 `GFileData` 叠加平衡参考；必须将 actual mesh boundary 与 LCFS reference 视觉和图例区分。未来 regions inspection 绘图候选负责显示全部曲线、候选 parent/children、最终 Region ID 与人工复核颜色，generate 绘图负责最终网格和 Region 映射 | 修改数据对象；要求所有路径必须提供 GFile；把外部边界伪装成 LCFS；把 LCFS、limiter 或其他参考曲线标成实际 mesh boundary；把 PNG 表述为数学证明或消费端验收；用颜色猜测物理材料 |
+| `src/linkmesh/utils/plotter.py` | `plot_lcfs_only()`；现有 `plot_mesh()`、regions inspection 和 regions mesh 绘图继续承担独立几何检查；下一轮按第 4.6.14 节新增窄职责 Triangle shape quality plot，接收 final `Mesh2D` 与已计算的逐 triangle Q，使用固定 red-blue-green colormap 和 `[0,1]` normalization 写 PNG | 修改数据对象；重新计算 Q；改变现有 geometry plot 行为；要求 quality plot 接收 GFile；把外部边界伪装成 LCFS；把 LCFS、limiter 或其他参考曲线标成实际 mesh boundary；把 PNG 表述为数学证明或消费端验收；用 Region 颜色覆盖 Q |
 
 ---
 
@@ -415,7 +421,8 @@ Writer、CLI、Plotter 或 config。
 CLI 合并、类型校验、路径解析及 required-fields 校验后的唯一配置对象。根命令天然
 为单区域，不保存 profile 或区域角色尺度。
 
-当前实时 `src/linkmesh/config.py::EffectiveConfig` 的正式 14 字段为：
+当前实时 `src/linkmesh/config.py::EffectiveConfig` 的正式 14 字段为；下一轮
+Triangle shape quality plot 实现将按第 4.6.14 节增加为 15 字段：
 
 | 字段 | 类型 |
 |---|---|
@@ -428,15 +435,23 @@ CLI 合并、类型校验、路径解析及 required-fields 校验后的唯一�
 | `mesh_dx` | `float`；唯一单 Region 目标网格长度尺度 [m] |
 | `hdf5_path` | `Optional[Path]` |
 | `plot_path` | `Optional[Path]` |
+| `quality_plot_path` | `Optional[Path]`；第 4.6.14 节已批准，当前源码尚未实现 |
 | `model_path` | `Optional[Path]` |
 | `smb_path` | `Optional[Path]` |
 | `verbose` | `bool` |
 | `plot_lcfs` | `bool`，默认 `False` |
 | `local_refinement` | `tuple[LocalRefinementConfig, ...]`；默认空 tuple |
 
-正式字段顺序为：`schema_version`、`config_path`、`target`、`boundary_source`、
-`gfile_path`、`array_file_path`、`mesh_dx`、`hdf5_path`、`plot_path`、
-`model_path`、`smb_path`、`verbose`、`plot_lcfs`、`local_refinement`。
+当前实时 14 字段顺序为：`schema_version`、`config_path`、`target`、
+`boundary_source`、`gfile_path`、`array_file_path`、`mesh_dx`、`hdf5_path`、
+`plot_path`、`model_path`、`smb_path`、`verbose`、`plot_lcfs`、
+`local_refinement`。
+
+下一轮正式 15 字段顺序为：`schema_version`、`config_path`、`target`、
+`boundary_source`、`gfile_path`、`array_file_path`、`mesh_dx`、`hdf5_path`、
+`plot_path`、`quality_plot_path`、`model_path`、`smb_path`、`verbose`、
+`plot_lcfs`、`local_refinement`。在源码实施前，`quality_plot_path` 仍为批准设计，
+不得描述为实时已存在字段。
 
 正式删除 `profile`、`plasma_dx`、`vacuum_dx` 和 `outer_dx`。所有非 `None` 路径
 在构造前解析为绝对路径。`local_refinement` 保存不可变 point-source records；
@@ -1561,6 +1576,251 @@ TRIMEG/M3D-C1 外部消费、时间推进、稳定性或物理正确性。
 自动测试、真实生成、PNG 检查和外部消费继续分层记录。上述 mesh-only 生成侧验收
 不升级为 TRIMEG/M3D-C1 消费证据。
 
+#### 4.6.14 Triangle shape quality plot
+
+状态：
+
+- 正式能力名称：**Triangle shape quality plot**；
+- `--quality-plot`：**APPROVED / SOURCE IMPLEMENTATION PENDING**；
+- 根命令 quality plot：**DESIGNED / NOT IMPLEMENTED**；
+- `regions generate` quality plot：**DESIGNED / NOT IMPLEMENTED**；
+- fixed red-blue-green Q colormap：**DESIGNED / NOT IMPLEMENTED**；
+- 真实 quality PNG：**NOT GENERATED**。
+
+该能力是现有 final `Mesh2D` 数值质量报告的视觉补充，不替代
+`minimum_shape_quality`、`shape_quality_p01`、`shape_quality_p05` 或
+`median_shape_quality`，也不建立新的网格验收阈值、目标格式或物理验证层级。
+
+**公开 CLI、TOML 与路径**
+
+正式 CLI 参数固定为：
+
+```text
+linkmesh --quality-plot PATH
+linkmesh regions generate --quality-plot PATH
+```
+
+它不得加入 `linkmesh regions` 父命令或 `linkmesh regions inspect`。准确 TOML
+路径固定为：
+
+```toml
+schema_version = 1
+
+[output]
+quality_plot = "mesh_quality.png"
+```
+
+以及：
+
+```toml
+schema_version = 1
+
+[regions]
+mode = "generate"
+quality_plot = "mesh_quality.png"
+```
+
+这些路径已按实时严格 schema 核对：根命令现有 `plot` 位于 `[output].plot`；
+regions generate 现有 `plot` 位于 `[regions].plot`。不得新增 `[quality]`、
+`[plot]` 或其他 section。inspect 配置和 regions map 不得接受或保存
+`quality_plot`。
+
+合并规则继续为内建默认值 < TOML < 显式 CLI。未配置时为 `None`。CLI 相对路径
+相对当前工作目录，TOML 相对路径相对配置文件目录；路径规范化、不展开 `~` 或环境
+变量及父目录行为复用同作用域现有 `plot` 契约。
+
+现有 `--plot` 与新 `--quality-plot` 完全独立：
+
+1. 只提供 `--plot`：只生成现有 geometry PNG。
+2. 只提供 `--quality-plot`：只生成 Q PNG。
+3. 同时提供：生成两个独立 PNG。
+4. 都不提供：不生成 PNG。
+5. 两个路径规范化后相同时必须在创建任一 PNG 前失败。
+6. quality output 还应进入同作用域既有输出路径冲突检查，防止覆盖输入、regions
+   map、HDF5、model 或 SMB；它不改变这些路径的值或 target 语义。
+7. existing-file 覆盖行为与同作用域现有 Plotter 保持一致；本任务不承诺 geometry
+   PNG、quality PNG 和 Writer 文件之间的跨文件事务性。
+
+下一轮根 `EffectiveConfig` 从实时 14 字段增加为 15 字段，新增：
+
+```text
+quality_plot_path: Optional[Path]
+```
+
+正式字段顺序为：`schema_version`、`config_path`、`target`、
+`boundary_source`、`gfile_path`、`array_file_path`、`mesh_dx`、
+`hdf5_path`、`plot_path`、`quality_plot_path`、`model_path`、`smb_path`、
+`verbose`、`plot_lcfs`、`local_refinement`。
+
+独立 `RegionsGenerateConfig` 新增
+`quality_plot_path: Optional[Path]`，并将当前 `plot_path: Path` 收口为
+`plot_path: Optional[Path]`，以支持只输出 quality PNG 或不输出任何 PNG。
+`RegionsInspectConfig.plot_path` 继续是必需的 inspection PNG 路径，不新增
+quality 字段。历史阶段记录中的旧字段数量保持当时事实，不做全局替换。
+
+**Q 的唯一数学来源**
+
+实时 `src/linkmesh/mesh_quality.py::calculate_mesh_quality()` 已核对使用：
+
+```text
+Q(K) = 4 * sqrt(3) * A(K) / (a(K)^2 + b(K)^2 + c(K)^2)
+```
+
+其中 `A` 是 triangle 的正面积，`a`、`b`、`c` 是三条边长。理论范围为
+`0 < Q <= 1`；等边 triangle 的 Q 为 1，triangle 趋于退化时 Q 趋于 0。该定义
+继续唯一支撑 minimum、P01、P05 和 median shape quality。
+
+下一轮 `mesh_quality.py` 必须提供窄职责逐 triangle Q 计算入口，使数值汇总和
+quality plot 复用同一实现及同一数组，不得在 `plotter.py`、CLI 或其他模块复制公式。
+不得把 Q 改成 minimum angle、aspect ratio、相邻尺寸比或综合评分，不得向
+`Mesh2D` 增加 quality 字段。
+
+逐 triangle Q 契约：
+
+1. 输出与 final `Mesh2D.triangles` 顺序严格一致，shape 为 `(T,)`，dtype 为
+   `float64`。
+2. 每个值必须有限。
+3. 已有非有限几何和退化 triangle 检查优先执行；quality plot 不得为退化 triangle
+   伪造有限颜色值。
+4. 正常 Q 必须位于 `[0,1]`。只允许对纯浮点舍入造成、且在统一机器精度纪律内的
+   极小越界规范到理论端点；明显非法值必须失败，不得静默 clip。
+5. display normalization 固定为 `[0,1]`，不修改底层 Q 数组。
+6. 现有结构失败条件保持不变；不得新增 minimum Q、百分位或红色 triangle 的通过/
+   失败阈值。除既有结构错误外，低 Q 只用于报告和人工检查。
+
+**固定颜色映射与绘图内容**
+
+颜色映射使用 Matplotlib 标准连续线性分段行为，固定锚点为：
+
+```text
+Q=0.0 → red
+Q=0.5 → blue
+Q=1.0 → green
+```
+
+normalization 固定 `vmin=0.0`、`vmax=1.0`。不得按当前 Case 的 minimum/maximum Q
+自动拉伸，不得使用 Region 离散颜色、彩虹色图或用户可配置 colormap、阈值、分档、
+颜色、范围或透明度参数。相同 Q 在不同 Case 中必须得到相同颜色。
+
+quality PNG 正式图层：
+
+1. 每个 triangle 按自身 Q 连续填色。
+2. 可使用细、低干扰度中性 triangle edge 显示单元边界。
+3. `Mesh2D.outer_boundary` 若存在，以明确黑色边界显示。
+4. 坐标轴为 `R [m]` 与 `Z [m]`，保持 equal aspect。
+5. 标题明确表达 `Triangle Shape Quality`。
+6. colorbar 范围固定为 0 到 1，标签包含 `Shape quality Q`。
+7. 图中显示 nodes、triangles 和 Regions 数量。
+8. 多区域图不得使用 Region fill 或 Region 颜色图例覆盖 Q；可使用不遮挡 Q 的细
+   中性 Region interface。
+9. 根 `array_file + GFile LCFS reference` 的 quality plot 首版不接收或叠加
+   `GFileData`、LCFS、first wall 或 magnetic axis；这些继续由现有 `--plot`
+   geometry PNG 表达。
+10. 使用现有 Plotter 的稳定保存、关闭 figure 和输入不可变纪律。不得把 quality
+    PNG 扩展成第二份完整 geometry plot。
+
+**final Mesh2D 数据流**
+
+根命令：
+
+```text
+Reader
+  → OFT/Triangle initial Mesh2D
+  → optional local refinement
+  → final Mesh2D
+  → shared per-triangle Q / numerical quality
+  → optional existing geometry plot
+  → optional quality plot
+  → target Writer
+```
+
+regions generate：
+
+```text
+multi-array + regions map
+  → initial N-region Mesh2D
+  → unified optional width/gradient transition + local refinement
+  → final Mesh2D
+  → shared per-triangle Q / numerical quality
+  → optional existing Region geometry plot
+  → optional quality plot
+  → target Writer
+```
+
+quality plot 只能消费所有 refinement 完成后的同一个 final `Mesh2D`。启用它不得
+重新生成网格、重新运行 refinement、创建第二个 `Mesh2D`，或修改 nodes、
+triangles、region_ids、outer_boundary。全部 targets、数值报告及两类 PNG 继续使用
+同一个 final 对象。quality plot 的成功或失败不得改变 Writer 输入；下一轮实现必须
+保持实时 CLI 的既有副作用顺序，并不得宣称跨 PNG/Writer 的事务性原子输出。
+
+**下一轮最小源码范围**
+
+批准且仅批准：
+
+- `src/linkmesh/config.py`：新增 root 与 regions generate 可选 quality path、严格
+  keys、合并和路径冲突；保持 schema version 1；inspect 拒绝该字段。
+- `src/linkmesh/cli.py`：仅在 root 与 regions generate 注册
+  `--quality-plot`，help 标注准确 TOML 路径；将 final `Mesh2D` 和共享 Q 交给
+  Plotter；不计算 Q 公式或 colormap 数学。
+- `src/linkmesh/mesh_quality.py`：唯一计算逐 triangle Q，并让现有汇总复用该结果；
+  不依赖 Matplotlib，不修改 `Mesh2D`。
+- `src/linkmesh/utils/plotter.py`：新增窄职责 quality plot 函数，接收
+  `Mesh2D` 和已计算 Q；不得改变现有 Plotter 函数行为或重新计算 Q。
+- `tests/test_configuration_contract.py`、`tests/test_cli_contract.py`、
+  `tests/test_plotter_contract.py`。
+- 仅在证明 final-mesh 编排契约需要时，最小修改
+  `tests/test_oft_adapter_contract.py` 中已有相关测试。
+
+不得新增独立 quality plotter 模块、第三方依赖、`Mesh2D` 字段、Writer dataset、
+helper exchange 字段、OFT/Triangle 参数或 native ABI。
+
+**自动测试设计**
+
+配置测试至少覆盖 root/regions TOML、CLI 覆盖、默认 `None`、inspect 拒绝、
+schema version 与未知键不回归、root/regions schema 隔离、15 字段 root 配置以及
+规范化后的 geometry/quality 同路径拒绝。
+
+CLI 测试至少覆盖 root 与 generate 接受、inspect 拒绝、准确 TOML help 路径、
+quality-only、geometry+quality、未请求时不调用、local refinement 后使用 final
+mesh、transition+local 后使用 final mesh、initial mesh 只生成一次，以及所有 targets
+和 Writers 继续消费同一个 final mesh。
+
+mesh quality 测试至少覆盖共享 Q 数组产生 minimum/P01/P05/median、等边 Q=1、已知
+非等边结果、接近退化但合法 triangle 的有限低 Q、非法或退化几何沿用正式失败边界、
+shape/dtype/有限性/范围和输入不可变性。
+
+Plotter 测试至少覆盖逐 triangle 填色、0/red、0.5/blue、1/green 锚点、固定
+`Normalize(0,1)`、带 `Shape quality Q` 标签的 colorbar、equal aspect、R/Z 单位、
+outer boundary、多区域无 Region fill、非空 PNG、figure 关闭、输入不可变、Q 长度、
+非有限值和明显越界拒绝，以及现有 geometry Plotter 回归。
+
+测试不得锁定 PNG 全像素、完整 help 文本、Matplotlib 内部 artist 顺序或完整图片
+snapshot，不新增第三方依赖。
+
+**真实验收**
+
+Case A 复用已验收的根单区域 local-refinement Case，同时生成 geometry 与 quality
+PNG。确认 quality 图使用 refinement 后 final triangle count，密集区仍按 Q 而不是
+尺寸着色，colorbar 固定 `[0,1]`，最低 Q triangle 偏红、高 Q triangle 偏绿，数值
+报告 minimum Q 与共享 Q 数组 minimum 一致，并由 User 人工检查。
+
+Case B 复用 Case 009：`G=5.0 1/m`，三个 Region baseline dx 为
+`0.030/0.150/0.070 m`，两个 local sources。同时生成现有 Region geometry PNG 与
+quality PNG。质量图必须使用所有统一 refinement 完成后的 final `Mesh2D`；既有直接
+证据为 2092 nodes / 4115 triangles，但若确定性环境输出变化则记录实际计数，不把
+旧计数作为格式常量。确认 interfaces、transition layer 和 point-source 邻域都有 Q
+颜色且无 Region fill 覆盖；结构计数与 final area violations 继续按实际结果记录；
+User 检查低质量尾部是否对应几何角点、interface 或强尺度变化区。
+
+状态严格分层：
+
+- 源码与自动测试：`IMPLEMENTED / CHECKED`；
+- PNG 实际生成：`GENERATED`；
+- PNG 人工检查：`USER-CHECKED`；
+- 数值 Q 与颜色映射一致：`STRUCTURALLY CHECKED`。
+
+上述任何状态都不得提升 M3D-C1/TRIMEG 消费、时间推进、稳定性或物理正确性。
+
 **明确不开放**
 
 本任务不开放用户指定 Region ID、local gradient、方向性或椭圆范围、沿曲线或 box
@@ -1720,6 +1980,7 @@ schema_version = 1
 [output]
   hdf5
   plot
+  quality_plot（第 4.6.14 节已批准，源码实现 PENDING）
   model
   smb
   plot_lcfs
@@ -1739,6 +2000,7 @@ schema_version = 1
 | `[[mesh.local_refinement]]` | array-of-tables；每条精确含 `r/z/dx/width` | `local_refinement`；不可变 point-source tuple |
 | `[output].hdf5` | 非空字符串 | `hdf5_path` |
 | `[output].plot` | 非空字符串 | `plot_path` |
+| `[output].quality_plot` | 非空字符串 | `quality_plot_path`；逐 triangle Q PNG，源码实现 PENDING |
 | `[output].model` | 非空字符串 | `model_path` |
 | `[output].smb` | 非空字符串 | `smb_path` |
 | `[output].plot_lcfs` | TOML bool | `plot_lcfs`；默认 `false`；已实现 |
@@ -1770,7 +2032,8 @@ schema_version = 1
 | `--array-file PATH` | `array_file` | 覆盖 `[input].array_file` |
 | `--mesh-dx FLOAT` | `mesh_dx` | 覆盖 `[mesh].mesh_dx`；唯一单 Region 目标网格尺度 [m] |
 | `--hdf5 PATH` / `--h5 PATH` | `hdf5` | 完全同义；覆盖 `[output].hdf5`，最终形成 `EffectiveConfig.hdf5_path` |
-| `--plot PATH` | `plot` | 覆盖 `[output].plot` |
+| `--plot PATH` | `plot` | 覆盖 `[output].plot`；现有 geometry PNG |
+| `--quality-plot PATH` | `quality_plot` | 覆盖 `[output].quality_plot`；逐 triangle Q PNG，root 与 regions generate 独立注册，源码实现 PENDING |
 | `--model PATH` | `model` | 覆盖 `[output].model` |
 | `--smb PATH` | `smb` | 覆盖 `[output].smb`，表示未插 rank 的基础路径 |
 | `--plot-lcfs` | `plot_lcfs` | 显式出现时覆盖 `[output].plot_lcfs` 为 `True`；已实现 |
@@ -1839,8 +2102,9 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
 4. 标量先取显式 CLI，否则 TOML，否则内建默认值。
 5. 路径键映射：
    `gfile→gfile_path`、`array_file→array_file_path`、
-   `hdf5→hdf5_path`、`plot→plot_path`、`model→model_path`、
-   `smb→smb_path`。
+   `hdf5→hdf5_path`、`plot→plot_path`、
+   `quality_plot→quality_plot_path`、`model→model_path`、
+   `smb→smb_path`；quality mapping 在第 4.6.14 节批准，源码实现 PENDING。
 6. 路径使用 `Path.resolve(strict=False)` 等价语义，不展开 `~` 或环境变量。
 7. 合并后再次校验枚举、数值和 bool。
 8. `plot_lcfs` 按同一标量规则取显式 CLI，否则 TOML，否则默认 `False`，并严格校验
@@ -1849,9 +2113,10 @@ mesh_only 和 m3dc1 行为均保持不变。HDF5 Writer 函数签名以及 TRIME
 10. `local_refinement` 未由 CLI 提供时使用 TOML tuple；CLI 提供任意记录时，完整
     CLI 列表整体替换 TOML 列表。
 11. 不读取或合并 profile、`plasma_dx`、`vacuum_dx`、`outer_dx`。
-12. 构造冻结的 14 字段 `EffectiveConfig`，不保存来源信息。
-13. 执行 boundary-source/target required-fields 和阶段闸门。
-13. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
+12. 当前构造冻结的 14 字段 `EffectiveConfig`；下一轮 quality plot 实现后构造
+    第 4.6.14 节定义的 15 字段对象，不保存来源信息。
+13. 执行 boundary-source/target required-fields、输出路径冲突和阶段闸门。
+14. 全部通过后才进入 Reader、OFT、Writer 或 Plotter。
 
 配置层不要求输出文件已经存在，不创建父目录。输入业务文件存在性由 Reader 报告。
 helper 定位不属于 `EffectiveConfig`。
@@ -2280,6 +2545,7 @@ target = "trimeg"
 multi_array_file = "boundaries.txt"
 regions_map = "regions.toml"
 plot = "mesh.png"
+quality_plot = "mesh_quality.png"
 hdf5 = "mesh.h5"
 
 [regions.mesh]
@@ -2296,16 +2562,19 @@ mesh_dx = 0.08
 
 1. `mode` 只允许 `"inspect"` 或 `"generate"`，并必须与实际二级子命令一致。
 2. inspect required fields 为 `multi_array_file`、`regions_map`、`plot`。
-3. generate required fields 为 `multi_array_file`、`regions_map`、`plot`；默认
-   `target="mesh_only"`，`hdf5_path=None`。
+3. 当前 generate required fields 为 `multi_array_file`、`regions_map`、`plot`；
+   下一轮按第 4.6.14 节将 `plot` 改为可选，并新增可选 `quality_plot`，从而允许
+   geometry-only、quality-only、两图或无 PNG；默认 `target="mesh_only"`，
+   `hdf5_path=None`。
 4. generate target 只允许字符串 `"mesh_only"` 或 `"trimeg"`；
    `target=trimeg` 时 hdf5 必需，`target=mesh_only` 时 hdf5 禁止。
 5. inspect 与 generate 均支持 `--config` 和完整长 CLI；用户不得被强制只使用配置。
 6. 优先级固定为内建默认值 < TOML < 显式 CLI。
 7. 配置文件相对路径相对配置文件目录，显式 CLI 相对路径相对当前工作目录；
    `hdf5_path` 最终规范化为绝对 `Path`。
-8. `multi_array_file_path`、`regions_map_path`、`plot_path` 和存在时的
-   `hdf5_path` 两两不同，规范化后冲突必须失败。
+8. `multi_array_file_path`、`regions_map_path`、存在时的 `plot_path`、
+   `quality_plot_path`、`hdf5_path`、`model_path` 和 `smb_path` 两两不同，
+   规范化后冲突必须失败；quality path 的加入按第 4.6.14 节实施。
 9. regions 配置不得被旧无子命令入口加载为动态字段，旧配置发现、schema 和行为保持
    不变。
 10. `[regions.mesh.region_dx]` 是最终 Region ID 到浮点 dx 的显式映射，不允许位置
@@ -3769,6 +4038,24 @@ PENDING。
 9. 所有 required-fields、非法组合、GFile 读取和 LCFS 数据错误均明确失败。
 10. PNG 结果不得记录为 TRIMEG/M3D-C1 消费或物理验收。
 
+### 9.7B Triangle shape quality plot 未来验收
+
+Triangle shape quality plot 当前为 **DESIGNED / USER-APPROVED / NOT
+IMPLEMENTED**。自动测试与真实验收必须遵循第 4.6.14 节，不得用文档设计、mock
+Plotter 或已有 geometry PNG 宣称 quality PNG 已生成。
+
+最低验收层级为：
+
+1. root 与 regions generate 严格配置、CLI 作用域、help 路径和输出冲突测试通过；
+2. 逐 triangle Q 与现有 shape-quality 汇总共享实时数学实现；
+3. 固定 `Q=0 red / Q=0.5 blue / Q=1 green` 和 `[0,1]` normalization 可检查；
+4. root local-refinement Case 与 Case 009 都从 final `Mesh2D` 生成非空 quality
+   PNG；
+5. 数值 Q 与颜色输入完成结构一致性检查；
+6. 两张真实 PNG 由 User 人工检查。
+
+quality PNG 不构成 TRIMEG/M3D-C1 加载、初始化、时间推进、稳定性或物理正确性证据。
+
 ### 9.8 当前自动测试树与精简策略
 
 当前正式自动测试树只有：
@@ -4213,6 +4500,17 @@ M3D-C1 multi-face build result、schema v2、helper v1/v2 和
 **LOADED** 仍为 **PENDING**，初始化、时间推进、稳定性和物理正确性均不得外推。
 
 动态自适应、磁面对齐、三维和并行分区仍未开放。
+
+v5.8 批准独立的 **Triangle shape quality plot**。正式 CLI 为
+`--quality-plot PATH`，只属于根命令和 `regions generate`，不属于 `regions`
+父命令或 `regions inspect`；准确 TOML 路径为根 `[output].quality_plot` 与
+generate `[regions].quality_plot`。它与现有 `--plot` geometry PNG 完全独立，
+规范化后同路径必须失败。Q 唯一复用实时 `mesh_quality.py` 的
+`4*sqrt(3)*A/(a^2+b^2+c^2)`，固定连续锚点为 0 red、0.5 blue、1 green，
+normalization 固定 `[0,1]`，不按 Case 自动拉伸。quality plot 只消费全部 refinement
+后的 final `Mesh2D`，不修改 `Mesh2D`、Writer、helper、OFT/Triangle、native ABI
+或目标格式。本轮仅完成蓝图、历史、仓库导读和组内说明修订；源码、自动测试和真实
+quality PNG 均为 **PENDING / NOT IMPLEMENTED**。
 
 v4.3 Release 迁移只修改正式蓝图、仓库导读、发布基础设施、唯一最终用户 README、
 发布专项静态回归和必要 Git 排除规则。未修改业务源码、native helper、业务测试、

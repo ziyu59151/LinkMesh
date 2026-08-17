@@ -2,10 +2,10 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.7；根命令及 legacy nested 源码收口已经完成，
+- 文档状态：当前有效（对应技术蓝图 v5.8；根命令及 legacy nested 源码收口已经完成，
   `regions inspect/generate` 是唯一多区域入口；全局 `transition_width`、
   `transition_gradient` 及根/regions R-Z point local refinement 均已实现并完成
-  生成侧真实验收）
+  生成侧真实验收；Triangle shape quality Q plot 已获批准，源码实现仍 PENDING）
 - 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
 - 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
 - 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
@@ -104,6 +104,8 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维�
 | 可重复 `--local-refinement R,Z,DX,W` | IMPLEMENTED；根与 regions 使用不同严格 TOML 路径，CLI 列表整体覆盖 TOML 列表 |
 | 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
 | final `Mesh2D` verbose 数值质量报告 | IMPLEMENTED / USER ACCEPTED |
+| Triangle shape quality Q plot | DESIGNED / USER-APPROVED / NOT IMPLEMENTED；未来 root 与 regions generate 使用独立 `quality_plot` |
+| fixed red-blue-green Q colormap | DESIGNED / NOT IMPLEMENTED；详细公式、颜色和验收契约见当前技术蓝图 |
 | refined mesh 的 M3D-C1 消费 | PENDING |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
 | OFT 多区域拓扑 | 生成与共享 mesh topology 已调查；M3D-C1 interface classification 对应仍待确认 |
@@ -458,6 +460,8 @@ TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric
 - **职责**：根命令编排单区域 Reader、Mesher、Writer 和 Plotter；`regions
   inspect/generate` 是作用域隔离的唯一多区域入口。legacy nested 参数和分支已经
   删除；四层 CLI help 提供严格 TOML 路径提示和 `schema_version = 1` 入口说明。
+  下一轮将仅在 root 与 regions generate 接入独立 `--quality-plot`，并确保它消费
+  refinement 后的 final `Mesh2D`；当前尚未实现。
 - **输出**：标准工作流按目标生成 HDF5 或配套 TXT/SMB/PNG；多区域 generate 默认
   输出 mesh PNG，选择 `target=trimeg` 时把同一个 N-region `Mesh2D` 交给既有 HDF5
   Writer 并继续输出 PNG。
@@ -476,8 +480,9 @@ python -m linkmesh
 - **输入**：内建默认值、`linkmesh.in` 和显式 CLI 覆盖。
 - **职责**：读取并严格校验根命令单区域配置及独立 regions 配置，是当前严格 TOML
   schema、允许 section/key 和路径映射的唯一实现位置。profile 和三个 legacy 区域
-  dx 已从正式契约及实时源码删除；详细配置示例见 `docs/linkmesh/plan.md`，技术契约
-  见蓝图。
+  dx 已从正式契约及实时源码删除；下一轮将分别增加 root
+  `[output].quality_plot` 与 generate `[regions].quality_plot`，inspect 继续拒绝；
+  当前尚未实现。详细配置示例见 `docs/linkmesh/plan.md`，技术契约见蓝图。
 - **输出**：不可变的标准有效配置对象或独立 regions 配置对象。
 - **不负责**：读取 GFile、生成网格或写出任何目标文件。
 
@@ -556,11 +561,13 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 
 ### `src/linkmesh/mesh_quality.py`
 
-- **状态**：IMPLEMENTED / USER ACCEPTED。
+- **状态**：数值报告 IMPLEMENTED / USER ACCEPTED；quality plot 共享逐 triangle
+  Q 接口 DESIGNED / NOT IMPLEMENTED。
 - **职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 transition 与 local
-  refinement diagnostics，形成现有 `--verbose` 人类可读摘要。
-- **不负责**：修改 mesh、调用 Triangle、定义新 CLI/TOML 参数或新增质量失败阈值。
-- 详细指标、单位、数据流和失败边界统一查阅当前技术蓝图。
+  refinement diagnostics，形成现有 `--verbose` 人类可读摘要；下一轮继续作为 Q
+  数学的唯一来源，为数值汇总和 Plotter 提供同一逐 triangle Q。
+- **不负责**：修改 mesh、依赖 Matplotlib、调用 Triangle、定义新质量失败阈值。
+- 详细 Q 公式、颜色映射、数据流和验收边界统一查阅当前技术蓝图。
 
 ### `src/linkmesh/m3dc1_model.py`
 
@@ -609,12 +616,15 @@ rank 插入由 SMB Writer/helper 与 PUMI 管理，不由普通用户手工改�
 
 ### `src/linkmesh/utils/plotter.py`
 
-- **输入**：作为实际网格和实际边界来源的 `Mesh2D`，以及可选参考 `GFileData`。
-- **职责**：绘制三角网格、actual mesh boundary 和可选 LCFS reference，并在视觉和
-  图例中明确区分；还可按既有路径叠加第一壁、磁轴和区域着色。
-- **输出**：PNG 人工检查图。
-- **不负责**：把 array boundary 标为 LCFS、把 LCFS 标为 mesh boundary、修改网格、
-  判断 SMB/HDF5 是否可被求解器消费或替代数值验收。
+- **输入**：作为实际网格和实际边界来源的 `Mesh2D`，以及现有 geometry plot 可选的
+  参考 `GFileData`。
+- **职责**：现有 geometry plot 继续绘制三角网格、actual mesh boundary、Region 和
+  可选 LCFS reference，行为保持不变；下一轮新增接收 final `Mesh2D` 与已计算逐
+  triangle Q 的独立 quality PNG，当前尚未实现。
+- **输出**：相互独立的 geometry PNG；未来可选 Triangle shape quality Q PNG。
+- **不负责**：重新计算 Q、把 quality plot 变成第二份完整 geometry plot、把 array
+  boundary 标为 LCFS、把 LCFS 标为 mesh boundary、修改网格，或判断 SMB/HDF5
+  是否可被求解器消费或替代数值验收。
 
 ---
 
