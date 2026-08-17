@@ -5,6 +5,8 @@ import pytest
 
 pytest.importorskip("matplotlib")
 
+from matplotlib.colors import to_rgba
+
 from linkmesh.mesh import Mesh2D
 from linkmesh.mesh_quality import (
     calculate_mesh_quality,
@@ -154,13 +156,13 @@ def test_quality_plot_fixed_colormap_normalization_and_inputs(
     assert len(calls) == 1
     colormap = calls[0]["cmap"]
     norm = calls[0]["norm"]
-    np.testing.assert_allclose(colormap(0.0)[:3], (1.0, 0.0, 0.0))
+    np.testing.assert_allclose(colormap(0.0), to_rgba("red"))
     np.testing.assert_allclose(
-        colormap(0.5)[:3],
-        (0.0, 0.0, 1.0),
+        colormap(0.5),
+        to_rgba("blue"),
         atol=0.01,
     )
-    np.testing.assert_allclose(colormap(1.0)[:3], (0.0, 0.5, 0.0))
+    np.testing.assert_allclose(colormap(1.0), to_rgba("green"))
     assert norm.vmin == 0.0
     assert norm.vmax == 1.0
     assert labels == ["Shape quality Q"]
