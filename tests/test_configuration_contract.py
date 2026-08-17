@@ -878,6 +878,7 @@ def test_effective_config_has_exact_single_region_fields(tmp_path):
         "mesh_dx",
         "hdf5_path",
         "plot_path",
+        "quality_plot_path",
         "model_path",
         "smb_path",
         "verbose",
@@ -905,6 +906,86 @@ def test_removed_root_toml_fields_are_rejected(tmp_path, removed_key):
 
     with pytest.raises(ConfigError, match="未知键"):
         load_effective_config(CliOverrides(), cwd=tmp_path)
+
+
+def test_quality_plot_config_paths_defaults_overrides_and_collisions(tmp_path):
+    root_path = tmp_path / "linkmesh.in"
+    root_path.write_text(
+        "schema_version = 1\n"
+        "[input]\ngfile = 'eq.gfile'\n"
+        "[output]\nplot = 'geometry.png'\n"
+        "quality_plot = 'toml-quality.png'\n",
+        encoding="utf-8",
+    )
+    root = load_effective_config(
+        CliOverrides(quality_plot="cli-quality.png"),
+        cwd=tmp_path,
+    )
+    assert root.quality_plot_path == (
+        tmp_path / "cli-quality.png"
+    ).resolve()
+
+    default_root = _load(tmp_path, gfile="eq.gfile")
+    assert default_root.quality_plot_path is None
+
+    regions_path = tmp_path / "regions-quality.toml"
+    regions_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions.toml'\n"
+        "quality_plot = 'quality.png'\n"
+        "[regions.mesh]\nmesh_dx = 0.08\n",
+        encoding="utf-8",
+    )
+    regions = load_regions_generate_config(
+        RegionsGenerateOverrides(),
+        config_arg=str(regions_path),
+        cwd=tmp_path,
+    )
+    assert regions.plot_path is None
+    assert regions.quality_plot_path == (tmp_path / "quality.png").resolve()
+
+    with pytest.raises(ConfigError, match="路径冲突"):
+        _load(
+            tmp_path,
+            gfile="eq.gfile",
+            plot="same.png",
+            quality_plot="./same.png",
+        )
+
+    with pytest.raises(ConfigError, match="路径冲突"):
+        load_regions_generate_config(
+            RegionsGenerateOverrides(
+                multi_array_file="multi.rz",
+                regions_map="regions.toml",
+                plot="same.png",
+                quality_plot="./same.png",
+                mesh_dx=0.08,
+            ),
+            cwd=tmp_path,
+        )
+
+
+def test_regions_inspect_rejects_quality_plot(tmp_path):
+    path = tmp_path / "inspect.toml"
+    path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "regions_map = 'regions.toml'\n"
+        "plot = 'geometry.png'\n"
+        "quality_plot = 'quality.png'\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="未知键"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            config_arg=str(path),
+            cwd=tmp_path,
+        )
 
 
 def test_root_mesh_dx_default_toml_and_cli_priority(tmp_path):

@@ -105,6 +105,62 @@ def _validated_arrays(
     return nodes, triangles, region_ids
 
 
+def _shape_quality_values(
+    areas: np.ndarray,
+    side_squares: np.ndarray,
+) -> np.ndarray:
+    """Return normalized float64 Q values from the project's unique formula."""
+    quality = np.asarray(
+        4.0 * math.sqrt(3.0) * areas / np.sum(side_squares, axis=1),
+        dtype=np.float64,
+    )
+    if not np.all(np.isfinite(quality)):
+        raise ValueError("mesh quality Q 含 NaN/Inf")
+
+    tolerance = 64.0 * np.finfo(np.float64).eps
+    if np.any(quality < -tolerance) or np.any(quality > 1.0 + tolerance):
+        raise ValueError("mesh quality Q 明显超出理论范围 [0,1]")
+    return np.clip(quality, 0.0, 1.0)
+
+
+def calculate_triangle_shape_quality(mesh: Mesh2D) -> np.ndarray:
+    """Return independently owned per-triangle Q values in triangle order."""
+    nodes, triangles, _region_ids = _validated_arrays(mesh)
+    first = nodes[triangles[:, 0]]
+    second = nodes[triangles[:, 1]]
+    third = nodes[triangles[:, 2]]
+
+    side_lengths = np.column_stack(
+        (
+            np.linalg.norm(second - third, axis=1),
+            np.linalg.norm(first - third, axis=1),
+            np.linalg.norm(first - second, axis=1),
+        )
+    )
+    doubled_area = np.abs(
+        (second[:, 0] - first[:, 0]) * (third[:, 1] - first[:, 1])
+        - (third[:, 0] - first[:, 0]) * (second[:, 1] - first[:, 1])
+    )
+    areas = 0.5 * doubled_area
+    if (
+        not np.all(np.isfinite(side_lengths))
+        or not np.all(np.isfinite(areas))
+    ):
+        raise ValueError("mesh quality triangle 几何含 NaN/Inf")
+    if np.any(areas <= _TRIANGLE_AREA_MINIMUM) or np.any(
+        side_lengths <= 0.0
+    ):
+        raise ValueError("mesh quality Q 无法用于退化 triangle")
+
+    values = _shape_quality_values(
+        areas,
+        side_lengths * side_lengths,
+    )
+    if values.shape != (mesh.n_triangles,):
+        raise ValueError("mesh quality Q 必须与 triangles 一一对应")
+    return np.array(values, dtype=np.float64, copy=True)
+
+
 def _edge_statistics(
     triangles: np.ndarray,
     equivalent_sizes: np.ndarray,
@@ -206,11 +262,9 @@ def calculate_mesh_quality(
         raise ValueError("mesh quality triangle 角度含 NaN/Inf")
     minimum_angles = np.min(angles, axis=1)
 
-    shape_quality = (
-        4.0
-        * math.sqrt(3.0)
-        * areas[valid]
-        / np.sum(side_squares, axis=1)
+    shape_quality = _shape_quality_values(
+        areas[valid],
+        side_squares,
     )
     equivalent_sizes = np.sqrt(2.0 * areas)
     valid_equivalent_sizes = equivalent_sizes[valid]

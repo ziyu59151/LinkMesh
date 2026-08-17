@@ -40,6 +40,7 @@ def _install_boundaries(monkeypatch):
         "model": MagicMock(),
         "smb": MagicMock(),
         "plot": MagicMock(),
+        "quality_plot": MagicMock(),
     }
     monkeypatch.setattr(
         "linkmesh.readers.gfile_reader.read_gfile",
@@ -72,6 +73,10 @@ def _install_boundaries(monkeypatch):
     monkeypatch.setattr(
         "linkmesh.utils.plotter.plot_mesh",
         mocks["plot"],
+    )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_triangle_shape_quality",
+        mocks["quality_plot"],
     )
     mocks.update(gfile=gfile, boundary=boundary, mesh=mesh)
     return mocks
@@ -403,6 +408,35 @@ def test_regions_generate_help_is_scoped(capsys):
     )
 
 
+def test_quality_plot_cli_scope_and_help(capsys):
+    parser = cli.build_parser()
+
+    root = parser.parse_args(["--quality-plot", "quality.png"])
+    assert root.quality_plot == "quality.png"
+
+    generated = parser.parse_args(
+        ["regions", "generate", "--quality-plot", "quality.png"]
+    )
+    assert generated.quality_plot == "quality.png"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["regions", "inspect", "--quality-plot", "quality.png"]
+        )
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--help"])
+    root_help = " ".join(capsys.readouterr().out.split())
+    assert "TOML: output.quality_plot" in root_help
+    assert "Q=0 红、Q=0.5 蓝、Q=1 绿" in root_help
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["regions", "generate", "--help"])
+    generate_help = " ".join(capsys.readouterr().out.split())
+    assert "TOML: regions.quality_plot" in generate_help
+    assert "Q=0 红、Q=0.5 蓝、Q=1 绿" in generate_help
+
+
 def test_local_refinement_cli_scope_repetition_and_format():
     parser = cli.build_parser()
 
@@ -705,6 +739,11 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         )
     )
     plot = MagicMock()
+    quality_plot = MagicMock()
+    quality_values = np.array(
+        [0.7, 0.8, 0.9, 0.75, 0.85, 0.95],
+        dtype=np.float64,
+    )
 
     monkeypatch.setattr(
         "linkmesh.readers.boundary_reader.read_multi_boundary_file",
@@ -746,6 +785,14 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         "linkmesh.utils.plotter.plot_regions_mesh",
         plot,
     )
+    monkeypatch.setattr(
+        "linkmesh.utils.plotter.plot_triangle_shape_quality",
+        quality_plot,
+    )
+    monkeypatch.setattr(
+        "linkmesh.mesh_quality.calculate_triangle_shape_quality",
+        MagicMock(return_value=quality_values),
+    )
 
     cli._run(
         _parse(
@@ -763,6 +810,10 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
             "1=0.03",
             "--transition-width",
             "0.12",
+            "--local-refinement",
+            "1.5,0.0,0.01,0.2",
+            "--quality-plot",
+            "quality.png",
         )
     )
 
@@ -772,12 +823,24 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         {1: 0.03, 2: 0.08},
         0.12,
         transition_gradient=None,
-        local_sources=(),
+        local_sources=(
+            config_mod.LocalRefinementConfig(
+                r=1.5,
+                z=0.0,
+                dx=0.01,
+                width=0.2,
+            ),
+        ),
     )
     plot.assert_called_once_with(
         final_mesh,
         records,
         str((tmp_path / "mesh.png").resolve()),
+    )
+    quality_plot.assert_called_once_with(
+        final_mesh,
+        quality_values,
+        str((tmp_path / "quality.png").resolve()),
     )
 
 
@@ -1533,6 +1596,68 @@ def test_array_lcfs_reference_never_enters_mesher_or_writer(
         mocks["mesh"],
     )
     assert mocks["plot"].call_args.kwargs["lcfs_reference_only"] is True
+
+
+def test_root_quality_plot_uses_final_mesh_and_is_independent(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    mocks = _install_boundaries(monkeypatch)
+    initial_mesh = Mesh2D(
+        nodes=np.array(
+            [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            dtype=np.float64,
+        ),
+        triangles=np.array([[0, 1, 2]], dtype=np.int32),
+        region_ids=np.array([7], dtype=np.int32),
+    )
+    final_mesh = Mesh2D(
+        nodes=initial_mesh.nodes.copy(),
+        triangles=initial_mesh.triangles.copy(),
+        region_ids=initial_mesh.region_ids.copy(),
+    )
+    mocks["generate"].return_value = initial_mesh
+    monkeypatch.setattr(
+        "linkmesh.mesher.triangle_refinement.refine_transition_mesh",
+        MagicMock(
+            return_value=SimpleNamespace(
+                mesh=final_mesh,
+                diagnostics=SimpleNamespace(enabled=True),
+            )
+        ),
+    )
+    quality = np.array([0.75], dtype=np.float64)
+    calculate = MagicMock(return_value=quality)
+    monkeypatch.setattr(
+        "linkmesh.mesh_quality.calculate_triangle_shape_quality",
+        calculate,
+    )
+
+    cli._run(
+        _parse(
+            "--no-config",
+            "--target",
+            "mesh_only",
+            "--boundary-source",
+            "lcfs",
+            "--gfile",
+            "eq.gfile",
+            "--local-refinement",
+            "0.2,0.2,0.01,0.2",
+            "--quality-plot",
+            "quality.png",
+        )
+    )
+
+    calculate.assert_called_once_with(final_mesh)
+    mocks["quality_plot"].assert_called_once_with(
+        final_mesh,
+        quality,
+        str((tmp_path / "quality.png").resolve()),
+    )
+    assert mocks["plot"].call_count == 0
+    mocks["generate"].assert_called_once()
 
 
 def test_configuration_failure_precedes_reader_and_mesher(

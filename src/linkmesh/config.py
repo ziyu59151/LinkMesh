@@ -62,7 +62,14 @@ _ALLOWED_SECTION_KEYS = {
     "input": {"gfile", "array_file"},
     "domain": {"boundary_source"},
     "mesh": {"mesh_dx", "local_refinement"},
-    "output": {"hdf5", "plot", "model", "smb", "plot_lcfs"},
+    "output": {
+        "hdf5",
+        "plot",
+        "quality_plot",
+        "model",
+        "smb",
+        "plot_lcfs",
+    },
     "runtime": {"verbose"},
 }
 
@@ -108,6 +115,7 @@ class EffectiveConfig:
     mesh_dx: float
     hdf5_path: Optional[Path]
     plot_path: Optional[Path]
+    quality_plot_path: Optional[Path]
     model_path: Optional[Path]
     smb_path: Optional[Path]
     verbose: bool
@@ -167,6 +175,7 @@ class RegionsGenerateOverrides:
     multi_array_file: Any = UNSET
     regions_map: Any = UNSET
     plot: Any = UNSET
+    quality_plot: Any = UNSET
     hdf5: Any = UNSET
     model: Any = UNSET
     smb: Any = UNSET
@@ -188,7 +197,8 @@ class RegionsGenerateConfig:
     target: Literal["mesh_only", "trimeg", "m3dc1"]
     multi_array_file_path: Path
     regions_map_path: Path
-    plot_path: Path
+    plot_path: Optional[Path]
+    quality_plot_path: Optional[Path]
     hdf5_path: Optional[Path]
     model_path: Optional[Path]
     smb_path: Optional[Path]
@@ -222,6 +232,7 @@ class CliOverrides:
     mesh_dx: Any = UNSET
     hdf5: Any = UNSET
     plot: Any = UNSET
+    quality_plot: Any = UNSET
     model: Any = UNSET
     smb: Any = UNSET
     verbose: Any = UNSET
@@ -493,6 +504,12 @@ def _load_toml(config_path: Path) -> dict:
         out["hdf5_path"] = _check_str_path(output["hdf5"], "[output].hdf5", config_path)
     if "plot" in output:
         out["plot_path"] = _check_str_path(output["plot"], "[output].plot", config_path)
+    if "quality_plot" in output:
+        out["quality_plot_path"] = _check_str_path(
+            output["quality_plot"],
+            "[output].quality_plot",
+            config_path,
+        )
     if "model" in output:
         out["model_path"] = _check_str_path(
             output["model"], "[output].model", config_path
@@ -689,6 +706,7 @@ def _load_regions_generate_toml(
         "multi_array_file",
         "regions_map",
         "plot",
+        "quality_plot",
         "hdf5",
         "model",
         "smb",
@@ -728,6 +746,7 @@ def _load_regions_generate_toml(
         "multi_array_file",
         "regions_map",
         "plot",
+        "quality_plot",
         "hdf5",
         "model",
         "smb",
@@ -952,7 +971,6 @@ def load_regions_generate_config(
     )
     multi_array_file_path = required_path("multi_array_file")
     regions_map_path = required_path("regions_map")
-    plot_path = required_path("plot")
 
     def optional_output_path(name: str) -> Optional[Path]:
         raw_value = merged(name)
@@ -968,6 +986,8 @@ def load_regions_generate_config(
             base,
         )
 
+    plot_path = optional_output_path("plot")
+    quality_plot_path = optional_output_path("quality_plot")
     hdf5_path = optional_output_path("hdf5")
     model_path = optional_output_path("model")
     smb_path = optional_output_path("smb")
@@ -1003,9 +1023,10 @@ def load_regions_generate_config(
     resolved_paths = [
         ("multi_array_file", multi_array_file_path),
         ("regions_map", regions_map_path),
-        ("plot", plot_path),
     ]
     for name, path in (
+        ("plot", plot_path),
+        ("quality_plot", quality_plot_path),
         ("hdf5", hdf5_path),
         ("model", model_path),
         ("smb", smb_path),
@@ -1107,6 +1128,7 @@ def load_regions_generate_config(
         multi_array_file_path=multi_array_file_path,
         regions_map_path=regions_map_path,
         plot_path=plot_path,
+        quality_plot_path=quality_plot_path,
         hdf5_path=hdf5_path,
         model_path=model_path,
         smb_path=smb_path,
@@ -1290,6 +1312,11 @@ def load_effective_config(
     gfile_path = _merge_path("gfile", "gfile_path", None)
     array_file_path = _merge_path("array_file", "array_file_path", None)
     plot_path = _merge_path("plot", "plot_path", None)
+    quality_plot_path = _merge_path(
+        "quality_plot",
+        "quality_plot_path",
+        None,
+    )
     model_path = _merge_path("model", "model_path", None)
     smb_path = _merge_path("smb", "smb_path", None)
 
@@ -1306,12 +1333,23 @@ def load_effective_config(
         mesh_dx=mesh_dx,
         hdf5_path=hdf5_path,
         plot_path=plot_path,
+        quality_plot_path=quality_plot_path,
         model_path=model_path,
         smb_path=smb_path,
         verbose=verbose,
         plot_lcfs=plot_lcfs,
         local_refinement=local_refinement,
     )
+
+    if (
+        cfg.plot_path is not None
+        and cfg.quality_plot_path is not None
+        and cfg.plot_path == cfg.quality_plot_path
+    ):
+        raise ConfigError(
+            "根命令路径冲突：plot 与 quality_plot 解析为同一路径 "
+            f"{cfg.plot_path}"
+        )
 
     # required-field 校验发生在路径合并完成之后。
     _validate_compatibility(cfg)

@@ -192,6 +192,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="可选的网格自检 PNG 输出路径；TOML: output.plot",
     )
+    output_group.add_argument(
+        "--quality-plot",
+        dest="quality_plot",
+        default=UNSET,
+        metavar="PATH",
+        help=(
+            "逐 triangle Shape quality Q PNG；Q=0 红、Q=0.5 蓝、Q=1 绿；"
+            "TOML: output.quality_plot"
+        ),
+    )
 
     # ------------------------------------------------------------------ #
     # 网格尺度（default=UNSET，合并、校验和 profile 适用性由 config 负责）  #
@@ -506,6 +516,16 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="最终网格 PNG 输出路径；TOML: regions.plot",
     )
+    generate_output_group.add_argument(
+        "--quality-plot",
+        dest="quality_plot",
+        default=UNSET,
+        metavar="PATH",
+        help=(
+            "逐 triangle Shape quality Q PNG；Q=0 红、Q=0.5 蓝、Q=1 绿；"
+            "TOML: regions.quality_plot"
+        ),
+    )
     generate_runtime_group.add_argument(
         "--verbose",
         action="store_true",
@@ -574,6 +594,7 @@ def _build_overrides(args: argparse.Namespace) -> CliOverrides:
         mesh_dx=args.mesh_dx,
         hdf5=args.hdf5,
         plot=args.plot,
+        quality_plot=args.quality_plot,
         model=args.model,
         smb=args.smb,
         local_refinement=(
@@ -728,6 +749,12 @@ def _run(args: argparse.Namespace) -> None:
             calculate_mesh_quality(mesh, refinement_diagnostics)
         )
 
+    triangle_shape_quality = None
+    if cfg.quality_plot_path is not None:
+        from linkmesh.mesh_quality import calculate_triangle_shape_quality
+
+        triangle_shape_quality = calculate_triangle_shape_quality(mesh)
+
     # ------------------------------------------------------------------ #
     # Step 4：写出 HDF5（M3；target=trimeg 且未 --no-hdf5）                 #
     # mesh_only 不写 HDF5（第 6A.10 节：mesh_only 不强制 HDF5）。            #
@@ -785,6 +812,21 @@ def _run(args: argparse.Namespace) -> None:
         )
         if verbose:
             print(f"[LinkMesh] PNG 路径：{plot_str}")
+
+    if cfg.quality_plot_path is not None:
+        from linkmesh.utils.plotter import plot_triangle_shape_quality
+
+        quality_plot_str = str(cfg.quality_plot_path)
+        if verbose:
+            print(
+                "[LinkMesh] 生成 Triangle shape quality 图："
+                f"{quality_plot_str}"
+            )
+        plot_triangle_shape_quality(
+            mesh,
+            triangle_shape_quality,
+            quality_plot_str,
+        )
 
 
 def _format_optional_metric(value: float | None) -> str:
@@ -949,6 +991,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         multi_array_file=args.multi_array_file,
         regions_map=args.regions_map,
         plot=args.plot,
+        quality_plot=args.quality_plot,
         hdf5=args.hdf5,
         model=args.model,
         smb=args.smb,
@@ -1017,6 +1060,12 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
     if any(count == 0 for count in counts.values()):
         raise ValueError("完整网格中至少一个 map Region 没有三角形")
 
+    triangle_shape_quality = None
+    if cfg.quality_plot_path is not None:
+        from linkmesh.mesh_quality import calculate_triangle_shape_quality
+
+        triangle_shape_quality = calculate_triangle_shape_quality(mesh)
+
     if cfg.verbose:
         from linkmesh.mesh_quality import calculate_mesh_quality
 
@@ -1039,7 +1088,17 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         write_m3dc1_model(build_result, str(cfg.model_path))
         write_smb(mesh, build_result, str(cfg.smb_path))
 
-    plot_regions_mesh(mesh, records, str(cfg.plot_path))
+    if cfg.plot_path is not None:
+        plot_regions_mesh(mesh, records, str(cfg.plot_path))
+
+    if cfg.quality_plot_path is not None:
+        from linkmesh.utils.plotter import plot_triangle_shape_quality
+
+        plot_triangle_shape_quality(
+            mesh,
+            triangle_shape_quality,
+            str(cfg.quality_plot_path),
+        )
 
     if cfg.verbose:
         record_by_id = {
@@ -1068,7 +1127,12 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
             print(f"[LinkMesh] M3D-C1 model TXT: {cfg.model_path}")
         if cfg.smb_path is not None:
             print(f"[LinkMesh] PUMI SMB base: {cfg.smb_path}")
-        print(f"[LinkMesh] mesh PNG: {cfg.plot_path}")
+        if cfg.plot_path is not None:
+            print(f"[LinkMesh] mesh PNG: {cfg.plot_path}")
+        if cfg.quality_plot_path is not None:
+            print(
+                f"[LinkMesh] shape quality PNG: {cfg.quality_plot_path}"
+            )
     else:
         print(
             f"节点数: {mesh.n_nodes}，三角形数: {mesh.n_triangles}，"

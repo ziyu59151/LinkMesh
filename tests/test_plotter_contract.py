@@ -6,6 +6,10 @@ import pytest
 pytest.importorskip("matplotlib")
 
 from linkmesh.mesh import Mesh2D
+from linkmesh.mesh_quality import (
+    calculate_mesh_quality,
+    calculate_triangle_shape_quality,
+)
 from linkmesh.regions import (
     RegionMapEntry,
     assign_final_region_ids,
@@ -16,6 +20,7 @@ from linkmesh.utils.plotter import (
     plot_mesh,
     plot_regions_inspection,
     plot_regions_mesh,
+    plot_triangle_shape_quality,
 )
 
 
@@ -34,6 +39,57 @@ def _mesh() -> Mesh2D:
     )
 
 
+def test_triangle_shape_quality_math_and_report_share_values():
+    mesh = Mesh2D(
+        nodes=np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [0.5, np.sqrt(3.0) / 2.0],
+                [2.0, 0.0],
+                [2.0, 1.0],
+            ],
+            dtype=np.float64,
+        ),
+        triangles=np.array([[0, 1, 2], [1, 3, 4]], dtype=np.int32),
+        region_ids=np.array([1, 1], dtype=np.int32),
+    )
+    quality = calculate_triangle_shape_quality(mesh)
+    report = calculate_mesh_quality(mesh)
+
+    assert quality.shape == (2,)
+    assert quality.dtype == np.float64
+    assert np.all(np.isfinite(quality))
+    assert np.all((quality >= 0.0) & (quality <= 1.0))
+    assert quality[0] == pytest.approx(1.0)
+    assert quality[1] == pytest.approx(2.0 * np.sqrt(3.0) / 4.0)
+    assert report.minimum_shape_quality == pytest.approx(np.min(quality))
+    assert report.shape_quality_p01 == pytest.approx(
+        np.percentile(quality, 1.0, method="linear")
+    )
+    assert report.shape_quality_p05 == pytest.approx(
+        np.percentile(quality, 5.0, method="linear")
+    )
+    assert report.median_shape_quality == pytest.approx(np.median(quality))
+
+
+def test_triangle_shape_quality_is_small_for_near_degenerate_valid_triangle():
+    mesh = Mesh2D(
+        nodes=np.array(
+            [[0.0, 0.0], [1.0, 0.0], [0.5, 3.0e-12]],
+            dtype=np.float64,
+        ),
+        triangles=np.array([[0, 1, 2]], dtype=np.int32),
+        region_ids=np.array([1], dtype=np.int32),
+    )
+
+    quality = calculate_triangle_shape_quality(mesh)
+
+    assert quality[0] > 0.0
+    assert quality[0] < 1.0e-10
+    assert np.isfinite(quality[0])
+
+
 def test_plotter_generates_nonempty_png_without_gfile(tmp_path):
     output = tmp_path / "mesh.png"
 
@@ -41,6 +97,95 @@ def test_plotter_generates_nonempty_png_without_gfile(tmp_path):
 
     assert output.is_file()
     assert output.stat().st_size > 0
+
+
+def test_quality_plot_fixed_colormap_normalization_and_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    import matplotlib.axes
+    import matplotlib.figure
+    import matplotlib.pyplot as plt
+
+    mesh = _mesh()
+    quality = np.array([0.0, 1.0], dtype=np.float64)
+    nodes_before = mesh.nodes.copy()
+    quality_before = quality.copy()
+    output = tmp_path / "quality.png"
+
+    calls = []
+    labels = []
+    original_tripcolor = matplotlib.axes.Axes.tripcolor
+    original_colorbar = matplotlib.figure.Figure.colorbar
+
+    def recording_tripcolor(self, *args, **kwargs):
+        calls.append(kwargs)
+        return original_tripcolor(self, *args, **kwargs)
+
+    def recording_colorbar(self, *args, **kwargs):
+        colorbar = original_colorbar(self, *args, **kwargs)
+        original_set_label = colorbar.set_label
+
+        def recording_label(value, *label_args, **label_kwargs):
+            labels.append(value)
+            return original_set_label(
+                value,
+                *label_args,
+                **label_kwargs,
+            )
+
+        colorbar.set_label = recording_label
+        return colorbar
+
+    monkeypatch.setattr(
+        matplotlib.axes.Axes,
+        "tripcolor",
+        recording_tripcolor,
+    )
+    monkeypatch.setattr(
+        matplotlib.figure.Figure,
+        "colorbar",
+        recording_colorbar,
+    )
+
+    plot_triangle_shape_quality(mesh, quality, str(output))
+
+    assert output.stat().st_size > 0
+    assert len(calls) == 1
+    colormap = calls[0]["cmap"]
+    norm = calls[0]["norm"]
+    np.testing.assert_allclose(colormap(0.0)[:3], (1.0, 0.0, 0.0))
+    np.testing.assert_allclose(
+        colormap(0.5)[:3],
+        (0.0, 0.0, 1.0),
+        atol=0.01,
+    )
+    np.testing.assert_allclose(colormap(1.0)[:3], (0.0, 0.5, 0.0))
+    assert norm.vmin == 0.0
+    assert norm.vmax == 1.0
+    assert labels == ["Shape quality Q"]
+    np.testing.assert_array_equal(mesh.nodes, nodes_before)
+    np.testing.assert_array_equal(quality, quality_before)
+    assert plt.get_fignums() == []
+
+
+@pytest.mark.parametrize(
+    "quality, message",
+    [
+        (np.array([[0.5, 0.5]]), "一维"),
+        (np.array([0.5]), "一一对应"),
+        (np.array([np.nan, 0.5]), "NaN/Inf"),
+        (np.array([-0.1, 0.5]), "范围"),
+        (np.array([0.5, 1.1]), "范围"),
+    ],
+)
+def test_quality_plot_rejects_invalid_quality(quality, message, tmp_path):
+    with pytest.raises(ValueError, match=message):
+        plot_triangle_shape_quality(
+            _mesh(),
+            quality,
+            str(tmp_path / "quality.png"),
+        )
 
 
 def test_regions_inspection_uses_figure_legend_and_no_axes_text(

@@ -654,6 +654,120 @@ def plot_regions_mesh(
             temporary_path.unlink()
 
 
+def plot_triangle_shape_quality(
+    mesh: "Mesh2D",
+    shape_quality,
+    filepath: str,
+) -> None:
+    """Atomically plot final-mesh per-triangle shape quality Q."""
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib.tri as mtri
+        from matplotlib.colors import LinearSegmentedColormap, Normalize
+    except ImportError as exc:
+        raise ImportError(
+            "无法导入 matplotlib。请运行：pip install matplotlib"
+        ) from exc
+
+    quality = np.array(shape_quality, dtype=np.float64, copy=True)
+    if quality.ndim != 1 or quality.shape != (mesh.n_triangles,):
+        raise ValueError(
+            "shape quality Q 必须是一维且与 triangles 一一对应"
+        )
+    if not np.all(np.isfinite(quality)):
+        raise ValueError("shape quality Q 含 NaN/Inf")
+
+    tolerance = 64.0 * np.finfo(np.float64).eps
+    if np.any(quality < -tolerance) or np.any(quality > 1.0 + tolerance):
+        raise ValueError("shape quality Q 明显超出范围 [0,1]")
+    display_quality = np.clip(quality, 0.0, 1.0)
+
+    output_path = Path(filepath)
+    if not output_path.parent.is_dir():
+        raise FileNotFoundError(
+            f"quality PNG 父目录不存在：{output_path.parent}"
+        )
+
+    colormap = LinearSegmentedColormap.from_list(
+        "linkmesh_shape_quality",
+        [(0.0, "red"), (0.5, "blue"), (1.0, "green")],
+    )
+    normalization = Normalize(vmin=0.0, vmax=1.0, clip=False)
+
+    temporary_path: Path | None = None
+    figure = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".png",
+            prefix=f".{output_path.stem}.",
+            dir=output_path.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+
+        figure, axis = plt.subplots(figsize=(10, 7))
+        triangulation = mtri.Triangulation(
+            mesh.nodes[:, 0],
+            mesh.nodes[:, 1],
+            mesh.triangles,
+        )
+        color_mesh = axis.tripcolor(
+            triangulation,
+            facecolors=display_quality,
+            cmap=colormap,
+            norm=normalization,
+            edgecolors="#555555",
+            linewidth=0.25,
+        )
+
+        if mesh.outer_boundary is not None:
+            boundary = np.vstack(
+                (mesh.outer_boundary, mesh.outer_boundary[0])
+            )
+            axis.plot(
+                boundary[:, 0],
+                boundary[:, 1],
+                color="black",
+                linewidth=1.7,
+                zorder=4,
+            )
+
+        colorbar = figure.colorbar(color_mesh, ax=axis)
+        colorbar.set_label("Shape quality Q")
+        axis.set_xlabel("R [m]")
+        axis.set_ylabel("Z [m]")
+        axis.set_title("Triangle Shape Quality")
+        axis.set_aspect("equal", adjustable="box")
+        figure.text(
+            0.5,
+            0.015,
+            (
+                f"Nodes: {mesh.n_nodes}    "
+                f"Triangles: {mesh.n_triangles}    "
+                f"Regions: {len(np.unique(mesh.region_ids))}"
+            ),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+        figure.subplots_adjust(bottom=0.10)
+        figure.savefig(
+            temporary_path,
+            dpi=160,
+            bbox_inches="tight",
+            format="png",
+        )
+        plt.close(figure)
+        figure = None
+        os.replace(temporary_path, output_path)
+        temporary_path = None
+    finally:
+        if figure is not None:
+            plt.close(figure)
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
+
 def plot_lcfs_only(
     gfile_data: "GFileData",
     filepath: str,
