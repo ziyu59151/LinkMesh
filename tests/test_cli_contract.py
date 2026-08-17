@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from linkmesh import cli
-from linkmesh.config import ConfigError
+from linkmesh.config import ConfigError, LocalRefinementConfig
 from linkmesh.mesh import Mesh2D
 from linkmesh.regions import RegionsError
 
@@ -824,7 +824,7 @@ def test_regions_generate_transition_refines_once_and_reuses_final_mesh(
         0.12,
         transition_gradient=None,
         local_sources=(
-            config_mod.LocalRefinementConfig(
+            LocalRefinementConfig(
                 r=1.5,
                 z=0.0,
                 dx=0.01,
