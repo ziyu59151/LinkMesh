@@ -3,12 +3,11 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.8**（根命令 legacy nested 源码收口已经完成；全局
+- 文档状态：正式版 **5.9**（根命令 legacy nested 源码收口已经完成；全局
   `transition_width`、`transition_gradient` 及根命令/`regions generate` 的可重复
-  R-Z point local refinement 均已实现并完成生成侧真实验收；gradient、point sources、
-  combined area constraints、结构质量和 PNG 人工检查已经通过；逐 triangle shape
-  quality Q PNG 已获 User 批准并完成实施级设计，源码实现与真实 PNG 仍 PENDING；
-  M3D-C1 消费、时间推进、稳定性和物理正确性继续 PENDING）
+  R-Z point local refinement 均已实现并完成生成侧真实验收；Triangle shape quality
+  plot 已实现并完成当前仓库验收；M3D-C1 消费、时间推进、稳定性和物理正确性继续
+  PENDING）
 - 最高依据：本文档自身即为 LinkMesh 项目唯一有效技术蓝图；开发纪律见 `CONTEXT.md`；完成过程与真实运行证据见 `History.md`；仓库导航见 `Project_Tree.md`；`docs/linkmesh/` 下的 work plan 仅作为人类阶段记事本，不是技术契约或 Aider 执行依据；组内使用说明见 `docs/linkmesh/plan.md`；精简前完整 3.x 技术蓝图见只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md`；更早历史快照见 `docs/linkmesh/LinkMesh_Architecture_Plan_v1.13.md`；边界输入、交付部署等专题事实见 `docs/linkmesh/` 下相应分析报告。上述文档均不得覆盖本文的正式技术定义
 - 事实边界：标注【已确认事实】为可执行工程事实；【待源码确认】为需只读侦察验证的事项；【PLANNED / PENDING IMPLEMENTATION / NOT IMPLEMENTED】为已批准正式契约但尚未实现的功能；【P0 禁止】为当前阶段严格禁止引入的功能；【实现候选】为已有源码调用点线索但须目标版本与最小运行验证确认、不得写成固定接口的路线；【版本锁定兼容接口】为 User 已批准、绑定特定 OFT 版本、范围受控、失败即停止的私有依赖，不是通用稳定公共 API
 - 修改前置条件：任何对本文档接口、字段、格式、验收标准或禁止事项的修改，必须由人类主管在对话中明确确认后方可执行
@@ -216,11 +215,11 @@ order、face↔loop topology 与 geometric classification 语义。禁止两条�
 | 复杂合成 transition 压力案例 | **GENERATED / PNG USER-CHECKED PASSED** |
 | 全局单一 `transition_width` 产品设计 | **FINALIZED** |
 | final `Mesh2D` verbose 数值质量报告 | **IMPLEMENTED / USER ACCEPTED** |
-| Triangle shape quality plot | **DESIGNED / USER-APPROVED / NOT IMPLEMENTED** |
-| `--quality-plot` | **APPROVED / SOURCE IMPLEMENTATION PENDING** |
-| 根命令 quality plot | **DESIGNED / NOT IMPLEMENTED** |
-| `regions generate` quality plot | **DESIGNED / NOT IMPLEMENTED** |
-| 固定 red-blue-green Q colormap | **DESIGNED / NOT IMPLEMENTED** |
+| Triangle shape quality plot | **IMPLEMENTED / USER-ACCEPTED** |
+| `--quality-plot` | **IMPLEMENTED / USER-ACCEPTED** |
+| 根命令 quality plot | **IMPLEMENTED / USER-ACCEPTED** |
+| `regions generate` quality plot | **IMPLEMENTED / USER-ACCEPTED** |
+| 固定 red-blue-green Q colormap | **IMPLEMENTED / USER-ACCEPTED** |
 | refined mesh 的 M3D-C1 消费 | **PENDING** |
 | 三维、动态自适应网格和并行分区 | **OUT OF P0 / 未开放** |
 

@@ -104,8 +104,8 @@ LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、三维�
 | 可重复 `--local-refinement R,Z,DX,W` | IMPLEMENTED；根与 regions 使用不同严格 TOML 路径，CLI 列表整体覆盖 TOML 列表 |
 | 复杂合成 transition 压力案例 | GENERATED；PNG USER-CHECKED PASSED |
 | final `Mesh2D` verbose 数值质量报告 | IMPLEMENTED / USER ACCEPTED |
-| Triangle shape quality Q plot | DESIGNED / USER-APPROVED / NOT IMPLEMENTED；未来 root 与 regions generate 使用独立 `quality_plot` |
-| fixed red-blue-green Q colormap | DESIGNED / NOT IMPLEMENTED；详细公式、颜色和验收契约见当前技术蓝图 |
+| Triangle shape quality Q plot | IMPLEMENTED / USER-ACCEPTED；root 与 regions generate 使用独立 `quality_plot` |
+| fixed red-blue-green Q colormap | IMPLEMENTED / USER-ACCEPTED；颜色范围固定为 `[0,1]` |
 | refined mesh 的 M3D-C1 消费 | PENDING |
 | OFT 单区域空间变网格密度 | 待调查，未实现 |
 | OFT 多区域拓扑 | 生成与共享 mesh topology 已调查；M3D-C1 interface classification 对应仍待确认 |
@@ -562,7 +562,7 @@ EAST `array_file` 生成侧已通过：104 个输入边界点生成 185 个节�
 ### `src/linkmesh/mesh_quality.py`
 
 - **状态**：数值报告 IMPLEMENTED / USER ACCEPTED；quality plot 共享逐 triangle
-  Q 接口 DESIGNED / NOT IMPLEMENTED。
+  Q 接口 IMPLEMENTED / USER ACCEPTED。
 - **职责**：只读计算 final `Mesh2D` 通用数值质量，并合并 transition 与 local
   refinement diagnostics，形成现有 `--verbose` 人类可读摘要；下一轮继续作为 Q
   数学的唯一来源，为数值汇总和 Plotter 提供同一逐 triangle Q。
@@ -613,6 +613,7 @@ rank 插入由 SMB Writer/helper 与 PUMI 管理，不由普通用户手工改�
   含义或修改输入对象。
 
 字段级 HDF5 数据集、shape、dtype 和索引规则请直接查阅当前技术蓝图，不在本导读重复。
+
 
 ### `src/linkmesh/utils/plotter.py`
 

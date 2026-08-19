@@ -1,0 +1,211 @@
+===== 1. Host and operating system =====
+Wed Aug 12 10:35:27 AM CST 2026
+liustation
+Linux liustation 6.8.0-106-generic #106-Ubuntu SMP PREEMPT_DYNAMIC Fri Mar  6 07:58:08 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+HOME=/home/lxzeng
+PWD=/home/lxzeng
+
+===== 2. Relevant environment variables =====
+PATH=/home/lxzeng/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/home/lxzeng/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/home/lxzeng/.vscode-server/cli/servers/Stable-df53daabb18cd157bdb08c7f01c34df936cf12f4/server/bin/remote-cli:/home/lxzeng/miniconda3/bin:/home/lxzeng/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/lxzeng/.vscode-server/extensions/ms-python.debugpy-2026.6.0-linux-x64/bundled/scripts/noConfigScripts
+
+===== 3. Environment modules =====
+No modules loaded
+
+===== 4. Relevant executables =====
+m3dc1_mfmgen         NOT FOUND
+mfmgen               NOT FOUND
+mpicxx               /usr/bin/mpicxx
+/usr/bin/opal_wrapper
+mpic++               /usr/bin/mpic++
+/usr/bin/opal_wrapper
+c++                  /usr/bin/c++
+/usr/bin/x86_64-linux-gnu-g++-13
+g++                  /usr/bin/g++
+/usr/bin/x86_64-linux-gnu-g++-13
+cmake                /usr/bin/cmake
+/usr/bin/cmake
+
+===== 5. m3dc1_mfmgen linked libraries =====
+m3dc1_mfmgen not found in PATH
+
+===== 6. Known tutorial directories =====
+FOUND: /projects/m3dc1/tutorials/Create_Multiregion_Mesh
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/batchjob.stellar	116 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K0.smb	609895 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.sms	836095 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.vtk/0/0.vtu	489902 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.vtk/diiid-8K.vtk.pvtu	531 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.dmg	111 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd	9768 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.txt	3988 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/first_wall.pts	1179 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input	566 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log	19409 bytes
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/makefile	93 bytes
+FOUND: /projects/m3dc1/tutorials/Setup_EFIT_Equilibrium
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/a158115.04701_590	4793 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.dawson.adapt	417 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.dawson.interpolate	335 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.dawson.refine	288 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.dawson.test	249 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.flux.adapt	372 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.flux.interpolate	290 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.flux.refine	243 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.flux.test	237 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.stellar.adapt	368 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.stellar.interpolate	286 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.stellar.refine	239 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.stellar.test	233 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1.h5	286944 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input	4018 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.adapt	4018 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.interpolate	3641 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.refine	3986 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.test	3985 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1ke	136 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/coil.dat	1458 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/current.dat	234 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/current.dat.out	450 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/debug-out	13085 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K0.smb	609895 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.sms	836095 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.vtk/0/0.vtu	489902 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.vtk/diiid-8K.vtk.pvtu	531 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.dmg	111 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd	9768 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.txt	3988 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/eqdsk-out	11493 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/equilibrium.h5	23923660 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/g158115.04701_590	393715 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/geqdsk	393715 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/interpolated/C1.h5	286880 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/interpolated/equilibrium.h5	24141064 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/interpolated/time_000.h5	19824776 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/m3dc1_2d	27567088 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/makefile	502 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/mesh0.smb	26287136 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/normcurv	44943 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/p158115.04701_590	161019 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part0.smb	40567 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part10.smb	41003 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part11.smb	41703 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part12.smb	40427 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part13.smb	41335 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part14.smb	38839 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part15.smb	41415 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part1.smb	38883 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part2.smb	41535 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part3.smb	41151 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part4.smb	40087 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part5.smb	40695 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part6.smb	39231 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part7.smb	39663 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part8.smb	38363 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/part9.smb	41979 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_ne	8448 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_omega	9216 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_omega.C	9090 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_omega.electron	9323 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_omega.ExB	9216 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_omega.ion	9220 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profilesdb-ffprime	12384 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profilesdb-g	12384 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profilesdb-p	34080 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profilesdb-pprime	34080 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profilesdb-w	24576 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_te	8875 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/profile_te.extended	8875 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/sizefieldParam	62 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/testout	61000 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/time_000.h5	134393104 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted0.smb	1692408 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted10.smb	1698184 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted11.smb	1721372 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted12.smb	1719264 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted13.smb	1712012 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted14.smb	1730752 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted15.smb	1720280 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted1.smb	1666740 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted2.smb	1699620 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted3.smb	1674204 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted4.smb	1742492 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted5.smb	1750360 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted6.smb	1751856 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted7.smb	1646940 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted8.smb	1765748 bytes
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/ts0-adapted9.smb	1480932 bytes
+
+===== 7. SCOREC/PUMI interface files under /projects/m3dc1 =====
+/projects/m3dc1/M3DC1/m3dc1_scorec/build/m3dc1_scorecConfig.cmake
+
+===== 8. SCOREC/PUMI libraries under /projects/m3dc1 =====
+
+===== 9. Git revisions near SCOREC/PUMI installations =====
+
+===== 10. Generation-side references in tutorials =====
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.vtk/diiid-8K.vtk.pvtu:10:<PDataArray type="Int32" Name="gface_1" NumberOfComponents="1" format="binary"/>
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.vtk/0/0.vtu:26:<DataArray type="Int32" Name="gface_1" NumberOfComponents="1" format="binary">
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.sms:36741:88 file:///home/liuchang/M3DC12/unstructured/tutorials/Create_Multiregion_Mesh/diiid-8K.sms9 mesh.full6 # 1 0 0 
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.sms:36744:5 model4
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid-8K.sms:36745:11 ./diiid.smd24 model.nonmanifold.simple6 # 1 0 0 
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:329:12 loopIdOnEdge1
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:334:8 faceType3
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:339:8 faceType2
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:344:12 loopIdOnEdge3
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:349:8 faceType1
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:354:12 loopIdOnEdge2
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/diiid.smd:365:85 file:///home/liuchang/M3DC12/unstructured/tutorials/Create_Multiregion_Mesh/diiid.smd24 model.nonmanifold.simple6 # 1 0 0 
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/batchjob.stellar:7:srun -n 1 m3dc1_mfmgen input
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:1:! Read in one boundary (loop) file
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:5:!   file_name loop-id node_spacing
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:10:!   is_thick initial_loop_id new_loop_id node_spacing
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:14:!  (2=parameterized) loop_id node_spacing
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:19:! Define 3 faces (plasma, wall, vacuum)
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:22:!  n_loops loop_1 ... node_spacing
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:23:faceBdry 1 1 0.04     ! plasma
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:24:faceBdry 2 1 2 0.04   ! wall
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/input:25:faceBdry 2 2 3 0.1
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:55:-- SSurface_createPlane({0, 0, 0}, {1, 0, 0}, {0, 1, 0})
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:56:p41239088 = SSurface_createPlane({0, 0, 0}, {1, 0, 0}, {0, 1, 0})
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:62:-- SSurface_createPlane({0, 0, 0}, {1, 0, 0}, {0, 1, 0})
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:63:p41240208 = SSurface_createPlane({0, 0, 0}, {1, 0, 0}, {0, 1, 0})
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:69:-- SSurface_createPlane({0, 0, 0}, {1, 0, 0}, {0, 1, 0})
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:70:p41238912 = SSurface_createPlane({0, 0, 0}, {1, 0, 0}, {0, 1, 0})
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:98:-- SurfaceMesher_new(n41427232, r41504288)
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:99:p37135568 = SurfaceMesher_new(n41427232, r41504288)
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:102:-- SurfaceMesher_execute(p37135568, p39255552)
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:103:SurfaceMesher_execute(p37135568, p39255552)
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:104:-- SurfaceMesher_delete(p37135568)
+/projects/m3dc1/tutorials/Create_Multiregion_Mesh/m3dc1_meshgen.log:105:SurfaceMesher_delete(p37135568)
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.interpolate:45:	isurface = 0
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.interpolate:130:	mesh_model = 'diiid.txt'
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.interpolate:133:	imulti_region = 1
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.flux.adapt:15:$M3DC1_MPIRUN -n $SLURM_NTASKS collapse model.dmg ts0-adapted.smb mesh.smb $SLURM_NTASKS
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.refine:45:	isurface = 0
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.refine:130:	mesh_model = 'diiid.txt'
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.refine:133:	imulti_region = 1
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:329:12 loopIdOnEdge1
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:334:8 faceType3
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:339:8 faceType2
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:344:12 loopIdOnEdge3
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:349:8 faceType1
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:354:12 loopIdOnEdge2
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid.smd:365:85 file:///home/liuchang/M3DC12/unstructured/tutorials/Create_Multiregion_Mesh/diiid.smd24 model.nonmanifold.simple6 # 1 0 0 
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.dawson.adapt:16:$M3DC1_MPIRUN -n $SLURM_NTASKS collapse model.dmg ts0-adapted.smb mesh.smb $SLURM_NTASKS
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.vtk/0/0.vtu:26:<DataArray type="Int32" Name="gface_1" NumberOfComponents="1" format="binary">
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.vtk/diiid-8K.vtk.pvtu:10:<PDataArray type="Int32" Name="gface_1" NumberOfComponents="1" format="binary"/>
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.adapt:47:	isurface = 0
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.adapt:132:	mesh_model = 'diiid.txt'
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.adapt:135:	imulti_region = 1
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/makefile:10:	cp ../Create_Multiregion_Mesh/diiid-8K0.smb .
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/makefile:11:	cp ../Create_Multiregion_Mesh/diiid.txt .
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.sms:36741:88 file:///home/liuchang/M3DC12/unstructured/tutorials/Create_Multiregion_Mesh/diiid-8K.sms9 mesh.full6 # 1 0 0 
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.sms:36744:5 model4
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/diiid-8K.sms:36745:11 ./diiid.smd24 model.nonmanifold.simple6 # 1 0 0 
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.test:45:	isurface = 0
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.test:130:	mesh_model = 'diiid.txt'
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input.test:133:	imulti_region = 1
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/batchjob.stellar.adapt:15:$M3DC1_MPIRUN -n $SLURM_NTASKS collapse model.dmg ts0-adapted.smb mesh.smb $SLURM_NTASKS
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input:47:	isurface = 0
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input:132:	mesh_model = 'diiid.txt'
+/projects/m3dc1/tutorials/Setup_EFIT_Equilibrium/C1input:135:	imulti_region = 1

@@ -78,7 +78,7 @@ verbose = true
 `plot_lcfs` 的正式路径是 `[output].plot_lcfs`，不是 `[input].plot_lcfs`。它只用于
 `array_file` 实际边界配 GFile LCFS PNG 参考线，不改变实际网格边界。
 
-`plot` 是现有网格几何检查图。已批准但尚未实现的 `quality_plot` 是独立的逐
+`plot` 是现有网格几何检查图。`quality_plot` 是已实现并完成当前验收的独立逐
 triangle shape quality Q 图；两者可同时配置，也可只配置其中一个。Q 图固定使用
 `Q=0` 红、`Q=0.5` 蓝、`Q=1` 绿的连续颜色映射，颜色范围固定为 `[0,1]`，不会按
 每个 Case 自动拉伸。质量图只用于网格质量定位，不代表 TRIMEG/M3D-C1 已消费网格，

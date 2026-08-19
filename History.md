@@ -176,4 +176,13 @@ User 同期批准任务二正式参数为可重复 `--local-refinement R,Z,DX,W`
 
 本轮同时修正当前蓝图与实时配置实现之间的不一致：`EffectiveConfig` 当前正式字段数由任务二实施前的 13 字段更新为实时 14 字段，第 14 字段为不可变 `local_refinement`；根路径为 `[[mesh.local_refinement]]`，regions generate 路径为 `[[regions.mesh.local_refinement]]`，两套严格 schema 不得混写。历史第 46 条及更早阶段的 13 字段/NOT IMPLEMENTED 状态继续作为当时事实保留。四层 CLI help 现在明确所有配置必须在 TOML 顶层以整数 `schema_version = 1` 开头，argument group 仅为认知分组，参数级 `TOML:` 路径和 `config.py` 严格 schema 才是映射依据；特别明确 `plot_lcfs → output.plot_lcfs`、两套 local-refinement 路径、transition/region-dx 路径及 CLI-only开关。未修改 `config.py`、CLI 参数、TOML schema、配置优先级、业务执行逻辑、refinement 数学、Mesh2D、Writer、helper或目标格式。
 
-48. 完成 Triangle shape quality plot 的实施级设计裁决与四份当前文档收口（蓝图升至 v5.8；本轮只修改 `LinkMesh_Architecture_Plan.md`、`History.md`、`Project_Tree.md` 和 `docs/linkmesh/plan.md`，未修改业务源码、tests、examples、CLI/config 实现、Plotter、mesh quality、Reader、Writer、helper、OFT/Triangle、native ABI、目标格式或任何 work plan，未运行测试或生成命令）。transition gradient、root/regions R-Z point local refinement、combined transition+multiple local sources 以及 CLI help/TOML 严格 schema 可发现性保持已实现和已验收状态；User 确认最新服务器自动测试全部通过，但本轮未提供新的精确 passed 数，故不猜测。User 批准独立 **Triangle shape quality plot**：正式参数 `--quality-plot PATH` 同时属于根命令和 `regions generate`，不属于 `regions` 父命令或 `regions inspect`；根 TOML 路径为 `[output].quality_plot`，generate 路径为 `[regions].quality_plot`。现有 `--plot` geometry PNG 保持完全独立且行为不变，两路径规范化后相同必须失败。quality plot 只消费全部 refinement 后的 final `Mesh2D`，并唯一复用实时 `mesh_quality.py` 的逐 triangle `Q=4*sqrt(3)*A/(a^2+b^2+c^2)`；固定连续颜色锚点为 `Q=0 red`、`Q=0.5 blue`、`Q=1 green`，normalization 固定 `[0,1]`，不得按 Case 自动拉伸。该图不新增 Q 阈值、不修改 `Mesh2D` 或目标格式，也不替代现有数值报告、外部消费或物理验收。当前状态严格为 **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；源码、自动测试和真实 quality PNG 仍 PENDING。
+48. 完成 Triangle shape quality plot 的实施与验收状态同步（蓝图升至 v5.9；本轮仅修改允许的技术文档，未修改业务源码、tests、requirements.txt、examples、Reader、Writer、Mesh2D、refinement、helper、OFT/Triangle、native ABI 或 work plan，未运行测试或生成命令）。
+
+Triangle shape quality plot 的当前状态按最新仓库和 User 证据记录为 **IMPLEMENTED /
+USER-ACCEPTED**：根命令和 `regions generate` 使用 `--quality-plot`，沿用固定
+`Q=0 red / Q=0.5 blue / Q=1 green` 和 `[0,1]` normalization，geometry PNG
+与 quality PNG 独立，质量图消费 refinement 后的同一个 final `Mesh2D`。该状态不
+外推为 TRIMEG/M3D-C1 消费、时间推进、稳定性或物理正确性。
+
+曾讨论的 Poisson 条件诊断随后由 User 取消，且从未修改或实施任何业务源码；该功能
+不再作为当前能力、待实现任务或未来路线保留。

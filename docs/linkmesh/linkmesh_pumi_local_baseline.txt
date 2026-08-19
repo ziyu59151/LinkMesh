@@ -1,0 +1,1046 @@
+===== 1. Local repository =====
+2026年08月12日 10:36:22
+DESKTOP-4D7L06I
+/d/project/LinkMesh
+D:/project/LinkMesh
+master
+6fe486b9c2f96e6a62bbd9cdbd78992f5934b104
+ M scripts/probe_oft_multi_array_regions.py
+?? docs/linkmesh/work_plan_3.md
+?? scripts/probe_oft_no_plasma.py
+
+===== 2. M3D-C1 reference map =====
+./docs/linkmesh/m3dc1_reference_map.txt
+./docs/m3dc1/m3dc1_reference_map.txt
+
+===== 3. Existing investigation reports =====
+docs/linkmesh/multi_array_regions_investigation_report.md
+docs/linkmesh/OFT_26_6_Variable_Mesh_Density_Investigation.md
+docs/linkmesh/release_infrastructure_investigation_report.md
+
+===== 4. Current LinkMesh M3D-C1 implementation files =====
+src/linkmesh/m3dc1_model.py
+src/linkmesh/writers/m3dc1_model_writer.py
+src/linkmesh/writers/smb_writer.py
+
+===== 5. Native helper tree =====
+native/linkmesh_scorec_helper/CMakeLists.txt
+native/linkmesh_scorec_helper/main.cc
+
+===== 6. Required local M3D-C1 source files =====
+FOUND	M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc	6715
+FOUND	M3DC1/m3dc1_scorec/api/m3dc1_scorec.h	332
+FOUND	M3DC1/m3dc1_scorec/api/name_convert.h	149
+FOUND	M3DC1/m3dc1_scorec/include/m3dc1_mesh.h	98
+FOUND	M3DC1/m3dc1_scorec/include/m3dc1_model.h	125
+FOUND	M3DC1/m3dc1_scorec/src/m3dc1_mesh.cc	1666
+FOUND	M3DC1/m3dc1_scorec/src/m3dc1_model.cc	1207
+FOUND	M3DC1/m3d_c1_mhd_simulation_code_intro.md	1258
+FOUND	M3DC1/M3D-C1 Compilation Guide.md	116
+FOUND	M3DC1/M3D-C1 Tutorials.md	248
+
+===== 7. Existing LinkMesh generation-side symbols =====
+src/linkmesh/cli.py:23:         → target=m3dc1：build_single_face_model_spec() →
+src/linkmesh/cli.py:24:           write_m3dc1_model() + write_smb()（SMB 除非 --no-smb）
+src/linkmesh/cli.py:421:        6. target=m3dc1 时构造一次 M3DC1ModelSpec，并写出 TXT 与可选 SMB
+src/linkmesh/cli.py:626:        from linkmesh.m3dc1_model import build_single_face_model_spec
+src/linkmesh/cli.py:629:        spec = build_single_face_model_spec(mesh)
+src/linkmesh/cli.py:636:            from linkmesh.writers.smb_writer import write_smb
+src/linkmesh/cli.py:647:            write_smb(mesh, spec, smb_str)
+src/linkmesh/m3dc1_model.py:309:class M3DC1ModelSpec:
+src/linkmesh/m3dc1_model.py:535:def build_single_face_model_spec(mesh: Mesh2D) -> M3DC1ModelSpec:
+src/linkmesh/m3dc1_model.py:536:    """Build a single-face M3DC1ModelSpec from Mesh2D.outer_boundary.
+src/linkmesh/m3dc1_model.py:587:    return M3DC1ModelSpec(
+src/linkmesh/writers/m3dc1_model_writer.py:4:The writer accepts only a validated M3DC1ModelSpec and emits the common text
+src/linkmesh/writers/m3dc1_model_writer.py:20:    M3DC1ModelSpec,
+src/linkmesh/writers/m3dc1_model_writer.py:29:def serialize_m3dc1_model(spec: M3DC1ModelSpec) -> str:
+src/linkmesh/writers/m3dc1_model_writer.py:43:    if not isinstance(spec, M3DC1ModelSpec):
+src/linkmesh/writers/m3dc1_model_writer.py:45:            "Writer 只接受 M3DC1ModelSpec，"
+src/linkmesh/writers/m3dc1_model_writer.py:115:    spec: M3DC1ModelSpec,
+src/linkmesh/writers/smb_writer.py:3:The Python side validates Mesh2D and M3DC1ModelSpec, derives deterministic
+src/linkmesh/writers/smb_writer.py:4:geometric classification, writes the private LinkMesh M4 Exchange schema v1,
+src/linkmesh/writers/smb_writer.py:8:serialization is performed exclusively by SCOREC/PUMI writeNative().
+src/linkmesh/writers/smb_writer.py:25:from linkmesh.m3dc1_model import CurveType, M3DC1ModelSpec
+src/linkmesh/writers/smb_writer.py:63:    spec: M3DC1ModelSpec
+src/linkmesh/writers/smb_writer.py:253:    spec: M3DC1ModelSpec,
+src/linkmesh/writers/smb_writer.py:259:            "M4-2 P0 只支持 single-loop、single-face M3DC1ModelSpec"
+src/linkmesh/writers/smb_writer.py:383:def _derive_classification(
+src/linkmesh/writers/smb_writer.py:386:    spec: M3DC1ModelSpec,
+src/linkmesh/writers/smb_writer.py:460:    classified_edges = tuple(
+src/linkmesh/writers/smb_writer.py:475:        classified_edges,
+src/linkmesh/writers/smb_writer.py:517:    spec: M3DC1ModelSpec,
+src/linkmesh/writers/smb_writer.py:524:    if not isinstance(spec, M3DC1ModelSpec):
+src/linkmesh/writers/smb_writer.py:526:            f"spec 必须是 M3DC1ModelSpec，实际={type(spec).__name__}"
+src/linkmesh/writers/smb_writer.py:539:        _derive_classification(nodes, triangles, spec)
+src/linkmesh/writers/smb_writer.py:742:def write_smb(
+src/linkmesh/writers/smb_writer.py:744:    spec: M3DC1ModelSpec,
+src/linkmesh/writers/smb_writer.py:758:    ``writeNative``. For SCOREC/PUMI 2.2.9 the expected physical rank-0 file
+src/linkmesh/writers/__init__.py:6:    write_smb(mesh: Mesh2D, filepath: str) -> None    # 第二战役：M3DC1 PUMI .smb
+src/linkmesh/writers/__init__.py:10:    才能开始实现 write_smb()（M4 里程碑）。
+native/linkmesh_scorec_helper/main.cc:7:#include <gmi_analytic.h>
+native/linkmesh_scorec_helper/main.cc:92:  Classification classification;
+native/linkmesh_scorec_helper/main.cc:105:  std::vector<Classification> vertex_classifications;
+native/linkmesh_scorec_helper/main.cc:107:  std::vector<Classification> triangle_classifications;
+native/linkmesh_scorec_helper/main.cc:351:  exchange.vertex_classifications = checked_vector<Classification>(
+native/linkmesh_scorec_helper/main.cc:353:      "vertex_classifications");
+native/linkmesh_scorec_helper/main.cc:354:  for (auto& classification : exchange.vertex_classifications) {
+native/linkmesh_scorec_helper/main.cc:355:    classification.dimension = read_scalar<std::int32_t>(
+native/linkmesh_scorec_helper/main.cc:356:        stream, "vertex_classification.dimension");
+native/linkmesh_scorec_helper/main.cc:357:    classification.tag = read_scalar<std::int32_t>(
+native/linkmesh_scorec_helper/main.cc:358:        stream, "vertex_classification.tag");
+native/linkmesh_scorec_helper/main.cc:369:    edge.classification.dimension = read_scalar<std::int32_t>(
+native/linkmesh_scorec_helper/main.cc:370:        stream, "mesh_edge.classification.dimension");
+native/linkmesh_scorec_helper/main.cc:371:    edge.classification.tag = read_scalar<std::int32_t>(
+native/linkmesh_scorec_helper/main.cc:372:        stream, "mesh_edge.classification.tag");
+native/linkmesh_scorec_helper/main.cc:375:  exchange.triangle_classifications = checked_vector<Classification>(
+native/linkmesh_scorec_helper/main.cc:377:      "triangle_classifications");
+native/linkmesh_scorec_helper/main.cc:378:  for (auto& classification : exchange.triangle_classifications) {
+native/linkmesh_scorec_helper/main.cc:379:    classification.dimension = read_scalar<std::int32_t>(
+native/linkmesh_scorec_helper/main.cc:380:        stream, "triangle_classification.dimension");
+native/linkmesh_scorec_helper/main.cc:381:    classification.tag = read_scalar<std::int32_t>(
+native/linkmesh_scorec_helper/main.cc:382:        stream, "triangle_classification.tag");
+native/linkmesh_scorec_helper/main.cc:432:void validate_classification(
+native/linkmesh_scorec_helper/main.cc:433:    const Classification& classification,
+native/linkmesh_scorec_helper/main.cc:440:  if (mesh_vertex && classification.dimension == 0) {
+native/linkmesh_scorec_helper/main.cc:441:    valid = vertex_tags.count(classification.tag) == 1;
+native/linkmesh_scorec_helper/main.cc:443:      classification.dimension == 1 &&
+native/linkmesh_scorec_helper/main.cc:445:    valid = edge_tags.count(classification.tag) == 1;
+native/linkmesh_scorec_helper/main.cc:446:  } else if (classification.dimension == 2) {
+native/linkmesh_scorec_helper/main.cc:447:    valid = face_tags.count(classification.tag) == 1;
+native/linkmesh_scorec_helper/main.cc:454:          " classification dim=" +
+native/linkmesh_scorec_helper/main.cc:455:          std::to_string(classification.dimension) +
+native/linkmesh_scorec_helper/main.cc:456:          " tag=" + std::to_string(classification.tag));
+native/linkmesh_scorec_helper/main.cc:620:    validate_classification(
+native/linkmesh_scorec_helper/main.cc:621:        edge.classification,
+native/linkmesh_scorec_helper/main.cc:628:        edge.classification.dimension == 1 ||
+native/linkmesh_scorec_helper/main.cc:629:            edge.classification.dimension == 2,
+native/linkmesh_scorec_helper/main.cc:631:        "mesh edge classification dimension must be 1 or 2");
+native/linkmesh_scorec_helper/main.cc:673:    const auto& classification =
+native/linkmesh_scorec_helper/main.cc:674:        exchange.triangle_classifications[index];
+native/linkmesh_scorec_helper/main.cc:675:    validate_classification(
+native/linkmesh_scorec_helper/main.cc:676:        classification,
+native/linkmesh_scorec_helper/main.cc:683:        classification.dimension == 2 &&
+native/linkmesh_scorec_helper/main.cc:684:            classification.tag == face.tag,
+native/linkmesh_scorec_helper/main.cc:686:        "every triangle must classify on the unique geometric face");
+native/linkmesh_scorec_helper/main.cc:700:  for (const auto& classification :
+native/linkmesh_scorec_helper/main.cc:701:       exchange.vertex_classifications) {
+native/linkmesh_scorec_helper/main.cc:702:    validate_classification(
+native/linkmesh_scorec_helper/main.cc:703:        classification,
+native/linkmesh_scorec_helper/main.cc:768:agm_bdry add_boundary(gmi_model* model, gmi_ent* entity) {
+native/linkmesh_scorec_helper/main.cc:770:      gmi_analytic_topo(model),
+native/linkmesh_scorec_helper/main.cc:775:    gmi_model* model,
+native/linkmesh_scorec_helper/main.cc:778:  agm* topology = gmi_analytic_topo(model);
+native/linkmesh_scorec_helper/main.cc:781:  gmi_ent* adjacent =
+native/linkmesh_scorec_helper/main.cc:782:      gmi_find(model, dimension - 1, adjacent_tag);
+native/linkmesh_scorec_helper/main.cc:795:    gmi_model* model,
+native/linkmesh_scorec_helper/main.cc:796:    gmi_ent* edge,
+native/linkmesh_scorec_helper/main.cc:802:  gmi_add_analytic_reparam(
+native/linkmesh_scorec_helper/main.cc:806:  gmi_add_analytic_reparam(
+native/linkmesh_scorec_helper/main.cc:811:    gmi_model* model,
+native/linkmesh_scorec_helper/main.cc:812:    gmi_ent* face,
+native/linkmesh_scorec_helper/main.cc:826:    gmi_add_analytic_reparam(
+native/linkmesh_scorec_helper/main.cc:835:  gmi_model* model = nullptr;
+native/linkmesh_scorec_helper/main.cc:847:      gmi_destroy(model);
+native/linkmesh_scorec_helper/main.cc:855:  native.model = gmi_make_analytic();
+native/linkmesh_scorec_helper/main.cc:859:      "gmi_make_analytic returned null");
+native/linkmesh_scorec_helper/main.cc:889:    gmi_ent* entity = gmi_add_analytic(
+native/linkmesh_scorec_helper/main.cc:944:    gmi_ent* entity = gmi_add_analytic(
+native/linkmesh_scorec_helper/main.cc:972:  gmi_ent* face_entity = gmi_add_analytic(
+native/linkmesh_scorec_helper/main.cc:994:apf::ModelEntity* find_model_entity(
+native/linkmesh_scorec_helper/main.cc:995:    apf::Mesh2* mesh,
+native/linkmesh_scorec_helper/main.cc:998:  apf::ModelEntity* entity =
+native/linkmesh_scorec_helper/main.cc:1051:    gmi_model* model) {
+native/linkmesh_scorec_helper/main.cc:1052:  apf::Mesh2* mesh = apf::makeEmptyMdsMesh(model, 2, false);
+native/linkmesh_scorec_helper/main.cc:1056:      "makeEmptyMdsMesh returned null");
+native/linkmesh_scorec_helper/main.cc:1064:    std::vector<apf::MeshEntity*> mesh_vertices(
+native/linkmesh_scorec_helper/main.cc:1071:      const auto& classification =
+native/linkmesh_scorec_helper/main.cc:1072:          exchange.vertex_classifications[index];
+native/linkmesh_scorec_helper/main.cc:1074:      apf::Vector3 coordinate(node.r, node.z, 0.0);
+native/linkmesh_scorec_helper/main.cc:1075:      apf::Vector3 parameter(0.0, 0.0, 0.0);
+native/linkmesh_scorec_helper/main.cc:1077:      if (classification.dimension == 1) {
+native/linkmesh_scorec_helper/main.cc:1079:            edge_by_tag.at(classification.tag);
+native/linkmesh_scorec_helper/main.cc:1082:      } else if (classification.dimension == 2) {
+native/linkmesh_scorec_helper/main.cc:1090:              classification.dimension,
+native/linkmesh_scorec_helper/main.cc:1091:              classification.tag),
+native/linkmesh_scorec_helper/main.cc:1103:        apf::MeshEntity*>
+native/linkmesh_scorec_helper/main.cc:1107:      apf::Downward downward;
+native/linkmesh_scorec_helper/main.cc:1113:      apf::MeshEntity* entity = mesh->createEntity(
+native/linkmesh_scorec_helper/main.cc:1114:          apf::Mesh::EDGE,
+native/linkmesh_scorec_helper/main.cc:1117:              edge.classification.dimension,
+native/linkmesh_scorec_helper/main.cc:1118:              edge.classification.tag),
+native/linkmesh_scorec_helper/main.cc:1143:      apf::Downward downward;
+native/linkmesh_scorec_helper/main.cc:1151:      const auto& classification =
+native/linkmesh_scorec_helper/main.cc:1152:          exchange.triangle_classifications[index];
+native/linkmesh_scorec_helper/main.cc:1153:      apf::MeshEntity* entity = mesh->createEntity(
+native/linkmesh_scorec_helper/main.cc:1154:          apf::Mesh::TRIANGLE,
+native/linkmesh_scorec_helper/main.cc:1157:              classification.dimension,
+native/linkmesh_scorec_helper/main.cc:1158:              classification.tag),
+native/linkmesh_scorec_helper/main.cc:1167:    mesh->acceptChanges();
+native/linkmesh_scorec_helper/main.cc:1168:    mesh->verify();
+native/linkmesh_scorec_helper/main.cc:1169:    mesh->writeNative(exchange.output_base.string().c_str());
+native/linkmesh_scorec_helper/main.cc:1175:        "writeNative did not create rank-0 SMB: " +
+native/linkmesh_scorec_helper/main.cc:1180:        "writeNative created an empty rank-0 SMB: " +
+native/linkmesh_scorec_helper/main.cc:1183:    apf::disownMdsModel(mesh);
+native/linkmesh_scorec_helper/main.cc:1185:    apf::destroyMesh(mesh);
+native/linkmesh_scorec_helper/main.cc:1189:      apf::disownMdsModel(mesh);
+native/linkmesh_scorec_helper/main.cc:1191:      apf::destroyMesh(mesh);
+native/linkmesh_scorec_helper/main.cc:1228:    PCU_Comm_Init();
+native/linkmesh_scorec_helper/main.cc:1234:        peer_count == 1 && PCU_Comm_Peers() == 1,
+native/linkmesh_scorec_helper/main.cc:1252:    PCU_Comm_Free();
+native/linkmesh_scorec_helper/main.cc:1278:    PCU_Comm_Free();
+tests/test_cli_contract.py:60:        "linkmesh.m3dc1_model.build_single_face_model_spec",
+tests/test_cli_contract.py:68:        "linkmesh.writers.smb_writer.write_smb",
+tests/test_cli_contract.py:525:        "linkmesh.m3dc1_model.build_single_face_model_spec",
+tests/test_cli_contract.py:533:        "linkmesh.writers.smb_writer.write_smb",
+tests/test_format_contracts.py:16:    M3DC1ModelSpec,
+tests/test_format_contracts.py:17:    build_single_face_model_spec,
+tests/test_format_contracts.py:32:    write_smb,
+tests/test_format_contracts.py:147:    spec = build_single_face_model_spec(mesh)
+tests/test_format_contracts.py:174:        build_single_face_model_spec(mesh)
+tests/test_format_contracts.py:177:        M3DC1ModelSpec(
+tests/test_format_contracts.py:178:            vertices=build_single_face_model_spec(_mesh()).vertices,
+tests/test_format_contracts.py:185:            loops=build_single_face_model_spec(_mesh()).loops,
+tests/test_format_contracts.py:186:            faces=build_single_face_model_spec(_mesh()).faces,
+tests/test_format_contracts.py:190:def test_exchange_schema_layout_and_classification(tmp_path):
+tests/test_format_contracts.py:192:    spec = build_single_face_model_spec(mesh)
+tests/test_format_contracts.py:235:    spec = build_single_face_model_spec(mesh)
+tests/test_format_contracts.py:256:    write_smb(mesh, spec, base, helper_path=helper)
+tests/test_format_contracts.py:267:    spec = build_single_face_model_spec(mesh)
+tests/test_format_contracts.py:285:        write_smb(mesh, spec, base, helper_path=helper)
+tests/test_format_contracts.py:293:    spec = build_single_face_model_spec(mesh)
+tests/test_format_contracts.py:297:        write_smb(
+
+===== 8. Relevant local M3D-C1 source symbols =====
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:12:#include "m3dc1_model.h"
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:18:#include "gmi_null.h" // FIXME: should be deleted later on since it's added temporarily for null model
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:19:#include <gmi_analytic.h>
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:52:static apf::Field* get_field_at_index(apf::Mesh2* m, apf::Field* inField, int index, int numDofs)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:54:  int numComps = apf::countComponents(inField);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:56:  PCU_ALWAYS_ASSERT(index <= numFields);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:57:  PCU_ALWAYS_ASSERT(index > 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:59:  apf::Field* targetField = apf::createPackedField(m, "target_field", numDofs);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:61:  apf::NewArray<double> allDofs(numComps);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:62:  apf::MeshEntity* v;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:63:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:66:    apf::getComponents(inField, v, 0, &(allDofs[0]));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:67:    apf::setComponents(targetField, v, 0, &(allDofs[(index-1)*numDofs]));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:73:static apf::Field* get_scalerComponent_of_field(apf::Mesh2* m, apf::Field* in, int comp)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:76:  PCU_ALWAYS_ASSERT(comp < comps);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:77:  apf::Field* out = apf::createFieldOn(m, "in_field_comp", apf::SCALAR);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:79:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:80:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:93:static apf::Field* get_vectorComponent_of_field(apf::Mesh2* m, apf::Field* in)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:95:  apf::Field* out = apf::createFieldOn(m, "in_field_comp", apf::VECTOR);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:96:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:97:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:114:static apf::Field* get_ip_field(apf::Mesh2* m, apf::Field* in)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:117:  int numComps = apf::countComponents(in);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:122:  apf::Field* ip = apf::createIPField(m, "ip_field", apf::VECTOR, order);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:124:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:125:  apf::MeshIterator* it = m->begin(dim);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:130:    apf::MeshEntity* dvs[3];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:134:      apf::Vector3 p;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:141:    apf::NewArray<double> values(3*dofNode);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:142:    apf::NewArray<double> dofAtXi(dofNode);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:144:      apf::getComponents(in, dvs[i], 0, &(values[dofNode*i]));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:149:    apf::MeshElement* me = apf::createMeshElement(m, e);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:150:    for (int i = 0; i < apf::countIntPoints(me, order); i++) {
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:151:      apf::Vector3 xi; /* parametric coords of the point in e at which we are evaluating the field */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:152:      apf::getIntPoint(me, order, i, xi);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:153:      apf::Vector3 p; /* physical coords of the point in e at which we are evaluating the field */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:154:      apf::mapLocalToGlobal(me, xi, p);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:158:      apf::Vector3 grad(dofAtXi[1], dofAtXi[2], 0.0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:159:      apf::setVector(ip, e, i, grad);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:161:    apf::destroyMeshElement(me);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:167:static void process_size_field(apf::Mesh2* m, apf::Field* in_size, int ts,
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:171:  apf::Field* sum_field = apf::createFieldOn(m, "sum_field", apf::SCALAR);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:172:  apf::Field* min_field = apf::createFieldOn(m, "min_field", apf::SCALAR);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:173:  apf::Field* cnt_field = apf::createFieldOn(m, "cnt_field", apf::SCALAR);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:175:  apf::MeshEntity* v;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:176:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:183:      double edge_length = apf::measure(m, m->getUpward(v, i));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:189:    apf::setScalar(sum_field, v, 0, current_sum);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:190:    apf::setScalar(min_field, v, 0, current_min);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:191:    apf::setScalar(cnt_field, v, 0, current_cnt);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:195:  apf::accumulate(sum_field);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:196:  apf::accumulate(cnt_field);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:200:    double total_sum = apf::getScalar(sum_field, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:201:    double total_cnt = apf::getScalar(cnt_field, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:202:    apf::setScalar(sum_field, v, 0, total_sum/total_cnt);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:207:  apf::sharedReduction(min_field, 0, false, apf::ReductionMin<double>());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:215:    double s = apf::getScalar(sum_field, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:223:  PCU_Min_Doubles(&mesh_min, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:224:  PCU_Max_Doubles(&mesh_max, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:226:  if (!PCU_Comm_Self()) {
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:244:    double asked_size = apf::getScalar(in_size, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:245:    double avg_size = apf::getScalar(sum_field, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:246:    double min_size = apf::getScalar(min_field, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:261:    apf::setScalar(in_size, v, 0, asked_size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:264:  apf::synchronize(in_size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:272:    double s = apf::getScalar(in_size, v, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:280:  PCU_Min_Doubles(&asked_min, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:281:  PCU_Max_Doubles(&asked_max, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:284:  if (!PCU_Comm_Self())
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:291:  apf::destroyField(sum_field);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:292:  apf::destroyField(min_field);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:293:  apf::destroyField(cnt_field);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:298:typedef std::vector<apf::Field*> MultiField; // fields on different planes
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:308:  PCU_ALWAYS_ASSERT(pad >= 3 && pad < 7);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:333:static bool is_in_plane(apf::MeshEntity* e)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:335:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:336:  PCU_ALWAYS_ASSERT(m->getType(e) == apf::Mesh::EDGE);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:338:  double tol = 2. * M3DC1_PI / m3dc1_model::instance()->num_plane / 1.e6;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:339:  apf::Vector3 p[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:340:  apf::MeshEntity* v[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:348:static void destroyElement(apf::Mesh2* m, apf::MeshEntity* e)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:350:  int dim = apf::getDimension(m,e);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:360:    if (etype == apf::Mesh::TRIANGLE) return;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:361:    if (etype == apf::Mesh::EDGE)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:365:    /* if (etype == apf::Mesh::VERTEX) */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:367:  apf::Downward down;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:380:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:382:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:383:  apf::MeshIterator* it;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:390:  m->acceptChanges();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:396:static void transfer_field_data_on_plane(apf::Field* in, apf::Field* out, int p)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:398:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:399:  int local_planeid = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:400:  PCU_ALWAYS_ASSERT_VERBOSE(p >= 0, "p must be strictly positive!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:401:  PCU_ALWAYS_ASSERT_VERBOSE(p < np, "p must be strictly less than number of planes!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:402:  int nc = apf::countComponents(in);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:403:  apf::NewArray<double> dofs(nc);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:404:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:405:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:406:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:413:    apf::getComponents(in, e, 0, &dofs[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:414:    apf::setComponents(out, e, 0, &dofs[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:420:static void move_field_data_down(apf::Field* f, int startp)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:422:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:423:  int local_planeid = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:424:  PCU_ALWAYS_ASSERT_VERBOSE(startp > 0, "startp must be strictly positive!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:425:  PCU_ALWAYS_ASSERT_VERBOSE(startp < np, "startp must be strictly less than number of planes!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:426:  int nc = apf::countComponents(f);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:427:  apf::NewArray<double> zeros(nc);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:432:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:433:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:434:  apf::MeshIterator* it = m->begin(1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:441:    apf::MeshEntity* vs[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:443:    apf::Vector3 ps[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:452:    apf::NewArray<double> dofs(nc);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:453:    apf::getComponents(f, vs[0], 0, &dofs[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:454:    apf::setComponents(f, vs[1], 0, &dofs[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:455:    apf::setComponents(f, vs[0], 0, &zeros[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:459:  /* PCU_Barrier(); */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:462:static void transfer_field_to_main(apf::Field* f, MultiField& pfields)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:464:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:465:  apf::MeshIterator* it;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:466:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:467:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:468:  int nc = apf::countComponents(f);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:470:  PCU_ALWAYS_ASSERT(np <= max_num_plane);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:474:    sprintf(pfieldname, get_plane_name_format(), apf::getName(f), i);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:475:    apf::Field* tmp = createPackedField(m, pfieldname, nc, apf::getShape(f));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:476:    apf::zeroField(tmp);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:492:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:493:  apf::MeshIterator* it;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:494:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:495:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:496:  PCU_ALWAYS_ASSERT(np == (int)pfields.size());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:497:  int lpid = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:498:  int nc = apf::countComponents(pfields[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:502:  get_original_field_name(apf::getName(pfields[0]), original_name);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:503:  apf::Field* f = m->findField(original_name);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:504:  PCU_ALWAYS_ASSERT_VERBOSE(f, "was not able to find the original field!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:513:    apf::MeshEntity* v[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:514:    apf::Vector3 p[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:523:    apf::NewArray<double> dofs(nc);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:525:      apf::getComponents(pfields[j], v[0], 0, &dofs[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:526:      apf::setComponents(pfields[j], v[1], 0, &dofs[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:542:static apf::Field* compute_multiplane_size_field(const MultiField& pfields, double ar)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:544:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:545:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:546:  PCU_ALWAYS_ASSERT(np == (int)pfields.size());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:548:  int nc = apf::countComponents(pfields[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:550:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:551:  apf::MeshIterator* it;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:556:    apf::Field* ip = get_ip_field(m, pfields[i]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:557:    apf::Field* size = spr::getSPRSizeField(ip, ar);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:559:    sprintf(szname, "sz_%s", apf::getName(pfields[i]));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:560:    apf::Field* sz = apf::createField(m, szname, apf::SCALAR, apf::getShape(size));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:561:    apf::copyData(sz, size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:564:    apf::destroyField(size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:566:    apf::destroyField(ip);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:569:    /*   apf::destroyField(ip); */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:573:  apf::Field* mastersize = apf::createField(m, "size", apf::SCALAR, apf::getShape(sizefields[0]));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:580:      double s = apf::getScalar(sizefields[i], e, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:584:    apf::setScalar(mastersize, e, 0, minsize);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:587:  /* apf::writeVtkFiles("03_mesh_with_all_sizes", m); */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:590:    apf::destroyField(sizefields[i]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:593:  /* apf::writeVtkFiles("04_mesh_with_master_size", m); */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:599:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:600:  PCU_ALWAYS_ASSERT(np == (int)pfields.size());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:602:  int nc = apf::countComponents(pfields[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:603:  int local_planeid = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:607:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:611:  get_original_field_name(apf::getName(pfields[0]), original_name);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:612:  apf::Field* f = m->findField(original_name);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:613:  PCU_ALWAYS_ASSERT_VERBOSE(f, "was not able to find the original field!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:616:  apf::NewArray<double> zeros(nc);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:620:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:621:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:624:    apf::setComponents(f, e, 0, &zeros[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:629:      apf::setComponents(pfields[j], e, 0, &zeros[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:638:    apf::MeshEntity* v[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:639:    apf::Vector3 p[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:648:	apf::setComponents(pfields[j], v[0], 0, &zeros[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:652:      PCU_ALWAYS_ASSERT(std::fabs(p[1][2]) > tol);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:654:	apf::setComponents(pfields[j], v[1], 0, &zeros[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:659:    apf::synchronize(pfields[j]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:663:static void zero_fields_on_master(apf::Field* f) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:665:  int np = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:666:  int nc = apf::countComponents(f);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:667:  int local_planeid = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:668:  PCU_ALWAYS_ASSERT_VERBOSE(local_planeid==0, "function can only be called on master palne!");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:672:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:674:  apf::NewArray<double> zeros(nc);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:678:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:679:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:681:    apf::setComponents(f, e, 0, &zeros[0]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:684:    apf::synchronize(f);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:694:void group_complex_dof (apf::Field* field, int option);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:698:  std::cout<<"[M3D-C1 ERROR] p"<<PCU_Comm_Self()<<": "
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:752:    m3dc1_mesh::instance()->mesh->writeNative("adapted-mesh.smb");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:771:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:776:  if (*num_plane<1 || PCU_Comm_Peers()%(*num_plane)) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:778:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:783:  m3dc1_model::instance()->set_num_plane(*num_plane);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:791:  *num_plane = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:800:  *plane_id = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:810:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:815:  m3dc1_model::instance()->set_phi(*min_val, *max_val);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:825:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:830:  m3dc1_model::instance()->set_phi(*planeid, *phi);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:838:  m3dc1_model::instance()->get_phi(*planeid, phi);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:842:/** model functions */
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:844:int m3dc1_model_getplaneid(int * plane_id)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:847:  *plane_id = m3dc1_model::instance()->local_planeid;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:852:int m3dc1_model_getmincoord(double* x_min, double* y_min)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:855:  *x_min = m3dc1_model::instance()->boundingBox[0];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:856:  *y_min = m3dc1_model::instance()->boundingBox[1];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:861:int m3dc1_model_getmaxcoord(double* x_max, double* y_max)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:864:  *x_max = m3dc1_model::instance()->boundingBox[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:865:  *y_max = m3dc1_model::instance()->boundingBox[3];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:870:int m3dc1_model_load(char* /* in */ model_file)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:873:  FILE *test_in = fopen (model_file,"r");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:876:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:877:      std::cout<<"[M3D-C1 ERROR] "<<__func__<<" failed: model file \""<<model_file<<"\" doesn't exist\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:884:  std::string model_name = model_file; 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:885:  if(model_name.substr(model_name.find_last_of(".") + 1) == "dmg")
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:886:  { // modelType = 2 (.dmg model)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:887:    g = pumi_geom_load(model_file, "mesh");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:888:    m3dc1_model::instance()->model = g->getGmi();   
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:889:    gmi_register_mesh();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:890:    m3dc1_model::instance()->model = gmi_load(model_file);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:891:    m3dc1_model::instance()->modelType = 2;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:894:  { // modelType = 1 (non .dmg models)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:895:    g = pumi_geom_load(model_file, "analytic");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:896:    m3dc1_model::instance()->model = g->getGmi();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:897:    m3dc1_model::instance()->load_analytic_model(model_file); 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:898:    m3dc1_model::instance()->modelType = 1;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:902:  if (m3dc1_model::instance()->modelType == 1)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:903:    m3dc1_model::instance()->caculateBoundingBox();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:906:  m3dc1_model::instance()->numEntOrig[0]=m3dc1_model::instance()->model->n[0];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:907:  m3dc1_model::instance()->numEntOrig[1]=m3dc1_model::instance()->model->n[1];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:908:  m3dc1_model::instance()->numEntOrig[2]=m3dc1_model::instance()->model->n[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:912:void m3dc1_model_getmodeltype(int* modeltype)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:915:  // 1 for .txt model, 2 for .dmg model
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:916:  *modeltype = m3dc1_model::instance()->modelType;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:920:int m3dc1_modelinfo_load(char* /* in */ modelInfo_file)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:923:  if (m3dc1_model::instance()->modelType == 1)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:924:    return M3DC1_SUCCESS;  // only move forward for .dmg models
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:926:  assert(m3dc1_model::instance()->modelType == 2);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:927:  if (std::strcmp(modelInfo_file, "dummyInfo") == 0)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:929:    std::cout << "Make sure to provide model_info file since model is .dmg\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:930:    exit(1);  // Need to have model info file
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:933:  std::cout << "Model Info file = " << modelInfo_file << "\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:935:  // Check if the given model info file exists or not:
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:936:  std::ifstream ifs(modelInfo_file); 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:939:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:940:      std::cout<<"[M3D-C1 ERROR] "<<__func__<<" failed: model file \""<<modelInfo_file<<"\" doesn't exist\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:944:  // Load the content of the model info file
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:948:  m3dc1_model::instance()->boundingBox[0]= r_min;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:949:  m3dc1_model::instance()->boundingBox[1]= z_min;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:950:  m3dc1_model::instance()->boundingBox[2]= r_max;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:951:  m3dc1_model::instance()->boundingBox[3]= z_max;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:953:  // Read total number of edges on the model
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:956:  m3dc1_model::instance()->numModelEdges = numModelEdges;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:958:  // Read innermost loop
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:965:    m3dc1_model::instance()->innerLoop.push_back(edgeId);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:968:  // Read outermost loop
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:974:    m3dc1_model::instance()->outerLoop.push_back(edgeId);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:979:void m3dc1_model_getnumedges(int* numedges)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:982:  *numedges = m3dc1_model::instance()->numModelEdges;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:986:void m3dc1_model_getgeometricloop(int* modelEdges, int* numberOfEdges, int* loopType)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:990:  if (*loopType == 0)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:991:    geomEdges = m3dc1_model::instance()->innerLoop;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:992:  else if (*loopType == 1)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:993:    geomEdges = m3dc1_model::instance()->outerLoop;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:996:    std::cout << "Incorrect Loop Type. Set 0 for inner loop, and 1 for outer loop\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1000:  // Print a warning if the requested loop does not exist.
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1002:    std::cout << "Warning: The requested loop has zero edges - Loop does not exist in the model\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1005:    modelEdges[i] = geomEdges[i];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1011:int m3dc1_model_print()
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1014:  if (PCU_Comm_Self() || m3dc1_model::instance()->local_planeid) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1017:  gmi_iter* gf_it = gmi_begin(m3dc1_model::instance()->model, 2);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1018:  gmi_ent* ge;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1020:  while ((ge = gmi_next(m3dc1_model::instance()->model, gf_it))) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1022:    gmi_set* gf_edges = gmi_adjacent(m3dc1_model::instance()->model, ge, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1023:    if (!PCU_Comm_Self())    std::cout<<"model face id "<<gmi_tag(m3dc1_model::instance()->model, ge)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1024:             <<" - # adj model edges: "<<gf_edges->n<<"\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1027:    if (!PCU_Comm_Self())      std::cout<<"\tadj edge ID: ";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1029:    if (!PCU_Comm_Self())        std::cout<<gmi_tag(m3dc1_model::instance()->model,  gf_edges->e[i])<<" "; 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1030:    if (!PCU_Comm_Self())      std::cout<<"\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1032:    gmi_free_set(gf_edges);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1034:  gmi_end(m3dc1_model::instance()->model, gf_it);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1036:// verify geom edge
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1037:  gmi_iter* ge_it = gmi_begin(m3dc1_model::instance()->model, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1038:  while ((ge = gmi_next(m3dc1_model::instance()->model, ge_it))) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1040:    M3DC1::Expression** pn=(M3DC1::Expression**) gmi_analytic_data(m3dc1_model::instance()->model,ge);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1043:    if (!PCU_Comm_Self())       std::cout<<"["<<PCU_Comm_Self()<<"] model edge "<<gmi_tag(m3dc1_model::instance()->model, ge)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1044:             <<" - failed with gmi_analytic_data retrieval\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1047:  gmi_end(m3dc1_model::instance()->model, ge_it);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1049:// verify gv_edges
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1050:  gmi_iter* gv_it = gmi_begin(m3dc1_model::instance()->model, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1051:  while ((ge = gmi_next(m3dc1_model::instance()->model, gv_it))) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1053:    gmi_set* gv_edges = gmi_adjacent(m3dc1_model::instance()->model, ge, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1054:    if (!PCU_Comm_Self())
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1055:      std::cout<<"model vertex id "<<gmi_tag(m3dc1_model::instance()->model, ge)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1056:             <<" - # adj model edges: "<<gv_edges->n<<"\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1059:    if (!PCU_Comm_Self())
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1062:            if (!PCU_Comm_Self()) std::cout<<gmi_tag(m3dc1_model::instance()->model,  gv_edges->e[i])<<" "; 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1063:          if (!PCU_Comm_Self()) std::cout<<"\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1065:    gmi_free_set(gv_edges);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1067:  gmi_end(m3dc1_model::instance()->model, gv_it);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1073:int m3dc1_model_setnumplane(int* num_plane)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1076:  if (*num_plane<1 || PCU_Comm_Peers()%(*num_plane)) return M3DC1_FAILURE;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1077:  m3dc1_model::instance()->set_num_plane(*num_plane);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1082:int m3dc1_model_getnumplane(int* num_plane)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1085:  *num_plane = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1090:void m3dc1_model_settopo()
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1093:  m3dc1_model::instance()->snapping = true;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1099:void setWeight(apf::Mesh* m, apf::MeshTag* tag, int dim) {
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1101:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1102:  apf::MeshIterator* it = m->begin(dim);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1108:apf::MeshTag* setWeights(apf::Mesh* m) {
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1109:  apf::MeshTag* tag = m->createDoubleTag("parma_weight", 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1115:void clearTags(apf::Mesh* m, apf::MeshTag* t) {
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1116:  apf::removeTagFromDimension(m, t, 0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1117:  apf::removeTagFromDimension(m, t, m->getDimension());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1123:  MPI_Comm groupComm = PCU_Get_Comm();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1124:  PCU_Switch_Comm(m3dc1_model::instance()->oldComm);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1127:  m3dc1_model::instance()->create3D();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1129:  m3dc1_mesh::instance()->mesh = apf::loadMdsMesh(m3dc1_model::instance()->model,
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1132:  apf::Mesh2* mesh = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1137:    apf::Numbering* n = mesh->getNumbering(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1138:    if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 INFO] "<<__func__<<": numbering "<<getName(n)<<" deleted\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1142:  apf::DynamicArray<apf::MeshTag*> tags;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1148:      apf::removeTagFromDimension(mesh, tags[i], idim);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1152:  if (m3dc1_model::instance()->num_plane==1) // 2D problem
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1176:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1183:  if (m3dc1_model::instance()->local_planeid == 0) // master plane
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1185:    m3dc1_mesh::instance()->mesh = pumi_mesh_load(pumi::instance()->model, 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1186:                                    mesh_file, m3dc1_model::instance()->group_size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1195:    apf::Mesh2* mesh = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1198:      apf::Field* f = mesh->getField(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1199:      if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 INFO] "<<__func__<<": field "<<getName(f)<<" deleted\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1205:      apf::Numbering* n = mesh->getNumbering(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1206:      if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 INFO] "<<__func__<<": numbering "<<getName(n)<<" deleted\n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1210:    apf::DynamicArray<apf::MeshTag*> tags;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1216:        apf::removeTagFromDimension(mesh, tags[i], idim);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1221:    m3dc1_mesh::instance()->mesh = pumi_mesh_create(pumi::instance()->model, 2, false);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1225:  if (m3dc1_model::instance()->num_plane==1) // 2D problem
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1232:  pumi_mesh_verify(m3dc1_mesh::instance()->mesh, false);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1248:  MPI_Comm groupComm = PCU_Get_Comm();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1249:  PCU_Switch_Comm(m3dc1_model::instance()->oldComm);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1253:  int num_plane = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1256:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1261:  if (!m3dc1_model::instance()->phi)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1263:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1266:    m3dc1_model::instance()->set_phi(0.0, 2.0*M3DC1_PI/num_plane*(num_plane-1));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1269:  m3dc1_model::instance()->setupCommGroupsPlane();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1279:  pumi_mesh_verify(m3dc1_mesh::instance()->mesh, false);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1290:  sprintf(fname, "dirs-ts%d-%d", ts, PCU_Comm_Self());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1303:  sprintf(fname, "dirs-ts%d-%d", ts, PCU_Comm_Self());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1325:  if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1337:  pumi_mesh_verify(m3dc1_mesh::instance()->mesh, false);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1423:  apf::MeshEntity* e = NULL;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1424:  apf::MeshEntity* simplex = NULL;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1425:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1426:  apf::Adjacent adjacent;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1434:  simplex = apf::getMdsEntity(m, simplex_dim, *initial_simplex);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1437:    int simplex_index = apf::getMdsIndex(m, simplex);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1438:    apf::Downward vertices;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1439:    apf::Vector3 v_coord[3];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1440:    apf::Matrix<3, 3> A;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1453:    apf::Matrix<3, 3> Ainv = apf::invert(A);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1454:    apf::Vector3 b_coords; // = Ainv * final_position
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1494:    apf::MeshEntity* edge_vertices[2];
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1504:    e = apf::findElement(m, edge_type, edge_vertices);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1505:    edge_curr_index = apf::getMdsIndex(m, e);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1517:      e = apf::findElement(m, edge_type, edge_vertices);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1518:      edge_curr_index = apf::getMdsIndex(m, e);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1521:    apf::getBridgeAdjacent(m, e,
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1526:	int new_simplex_index = apf::getMdsIndex(m, adjacent[j]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1532:      apf::Downward edges;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1535:	int edge_tmp_index = apf::getMdsIndex(m, edges[j]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1542:      edge_curr_index = apf::getMdsIndex(m, e);    
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1543:      apf::getBridgeAdjacent(m, e,
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1547:	int new_simplex_index = apf::getMdsIndex(m, adjacent[j]);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1590:      PCU_Comm_Write(to, (void*)msg_send, msg_size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1607:        PCU_Comm_Write(to, (void*)msg_send, msg_size);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1621:  while(PCU_Comm_Read(&pid_from, &msg_recv, &msg_size))
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1645:void verify_field(pMesh m, pField f)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1647:  PCU_Comm_Begin();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1656:  PCU_Comm_Send();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1659:  int global_mismatch = PCU_Max_Int(mismatch);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1662:    if (!PCU_Comm_Self())
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1667:    if (!PCU_Comm_Self())
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1672:void m3dc1_field_verify()
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1680:    if (!pumi_rank()) std::cout<<"[M3D-C1 INFO] verifying field "<<getName(f_it->second->get_field());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1685:    verify_field(m3dc1_mesh::instance()->mesh, f_it->second->get_field()); 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1695:  apf::Mesh2* mesh = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1699:    std::cout<<"[M3D-C1 ERROR] p"<<PCU_Comm_Self()<<" "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1705:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1706:  apf::MeshIterator* it = mesh->begin(*ent_dim);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1719:  apf::MeshEntity* e =getMdsEntity(m3dc1_mesh::instance()->mesh, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1730:  apf::MeshEntity* ent = getMdsEntity(m3dc1_mesh::instance()->mesh, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1732:  gmi_ent* gent= (gmi_ent*)(m3dc1_mesh::instance()->mesh->toModel(ent));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1733:  *geom_class_dim = gmi_dim(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1734:  *geom_class_id = gmi_tag(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1735:  // if 3D mesh, need to return the classification on the original plane
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1739:    int numPlane = m3dc1_model::instance()->num_plane;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1740:    memcpy( numEntOrig, m3dc1_model::instance()->numEntOrig, sizeof(numEntOrig));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1790:  apf::Mesh2* mesh = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1791:  apf::MeshEntity* e = getMdsEntity(mesh, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1799:    apf::Adjacent adjacent;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1804:      std::cout<<"[M3D-C1 ERROR] p"<<PCU_Comm_Self()<<" "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1814:    apf::Downward downward;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1818:      std::cout<<"[M3D-C1 ERROR] p"<<PCU_Comm_Self()<<" "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1846:    apf::Adjacent adjacent;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1847:    apf::getBridgeAdjacent(mesh, e, *ent_dim-1, *adj_dim, adjacent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1851:      std::cout<<"[M3D-C1 ERROR] p"<<PCU_Comm_Self()<<" "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1868:  apf::MeshEntity* e = getMdsEntity(m3dc1_mesh::instance()->mesh, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1874:    apf::Adjacent adjacent;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1880:    apf::Downward downward;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1896:    if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 ERROR] "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1904:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1909:  apf::Mesh2* mesh = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1914:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1915:  std::vector<apf::MeshEntity*> ent_vec;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1926:      std::cout<<"[M3D-C1 ERROR] p"<<PCU_Comm_Self()<<" "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1946:    if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 ERROR] "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1954:    if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1959:  apf::Mesh2* mesh = m3dc1_mesh::instance()->mesh; 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1960:  std::vector<apf::MeshEntity*> ent_vec;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1973:  apf::MeshEntity* e = getMdsEntity(m3dc1_mesh::instance()->mesh, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1986:  apf::Mesh2* m = m3dc1_mesh::instance()->mesh;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:1987:  apf::MeshEntity* e = getMdsEntity(m, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2013:  apf::MeshEntity* e =getMdsEntity(m3dc1_mesh::instance()->mesh, *ent_dim, *ent_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2015:  *value = apf::measure(m3dc1_mesh::instance()->mesh, e);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2024:  apf::MeshEntity* e = getMdsEntity(m3dc1_mesh::instance()->mesh, 0, *node_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2026:  apf::Field* f = (*m3dc1_mesh::instance()->field_container)[*field_id]->get_field();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2029:      if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 ERROR] "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2035:  apf::setComponents(f, e, 0, data);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2043:  apf::MeshEntity* e = getMdsEntity(m3dc1_mesh::instance()->mesh, 0, *node_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2045:  apf::Field* f = (*m3dc1_mesh::instance()->field_container)[*field_id]->get_field();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2048:      if (!PCU_Comm_Self()) std::cout<<"[M3D-C1 ERROR] "<<__func__
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2053:  apf::getComponents(f, e, 0, data);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2060:  apf::MeshEntity* e = getMdsEntity(m3dc1_mesh::instance()->mesh, 0, *node_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2062:  apf::Vector3 xyz;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2078:void get_gv_edges(gmi_ent* gvertex, std::vector<gmi_ent*>& gedges)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2082:  gmi_set* gv_edges = gmi_adjacent(m3dc1_model::instance()->model, gvertex, 1);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2085:  gmi_free_set(gv_edges);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2093:  apf::MeshEntity* vt = getMdsEntity(m3dc1_mesh::instance()->mesh, 0, *node_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2097:  gmi_ent* gent= (gmi_ent*)(m3dc1_mesh::instance()->mesh->toModel(vt));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2098:  int gType = gmi_dim(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2105:  if (m3dc1_model::instance()->modelType == 2)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2107:    apf::MeshTag* norm_curv_tag = m3dc1_mesh::instance()->mesh->findTag("norm_curv");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2118:      std::cout << "Warning: In case of .dmg models, normal vectors are only provided at \n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2120:      std::cout << "called at the correct model edges at correct boundary loop\n";*/
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2129:  apf::MeshTag* norm_curv_tag = m3dc1_mesh::instance()->mesh->findTag("norm_curv");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2140:    apf::Vector3 param(0,0,0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2145:      apf::Vector3 vcd_t;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2150:      std::vector<gmi_ent*> gEdges;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2156:        std::cout<<"["<<PCU_Comm_Self()<<"] "<<__func__<<" ERROR: #adjEdge of gVertex="
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2162:        gmi_ent* pe = gEdges.at(i);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2165:        gmi_range(m3dc1_model::instance()->model, pe, 0, paraRange);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2166:        M3DC1::Expression** pn=(M3DC1::Expression**) gmi_analytic_data(m3dc1_model::instance()->model,pe);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2179:        std::cout<<"["<<PCU_Comm_Self()<<"] "<<__func__<<" ERROR: numEdgePlane="
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2191:      apf::Vector3 param(0,0,0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2193:      M3DC1::Expression** pn=(M3DC1::Expression**) gmi_analytic_data(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2204:  apf::MeshEntity* vt = getMdsEntity(m3dc1_mesh::instance()->mesh, 0, *node_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2207:  if (m3dc1_model::instance()->modelType == 2)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2209:    apf::MeshTag* norm_curv_tag = m3dc1_mesh::instance()->mesh->findTag("norm_curv");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2219:      std::cout << "Warning: In case of .dmg models, curvatures are only provided at \n";
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2221:      std::cout << "called at the correct model edges at correct boundary loop\n";*/
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2230:  apf::MeshTag* norm_curv_tag = m3dc1_mesh::instance()->mesh->findTag("norm_curv");
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2240:  gmi_ent* gent= (gmi_ent*)(m3dc1_mesh::instance()->mesh->toModel(vt));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2241:  int gType = gmi_dim(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2244:    apf::Vector3 vcd_t;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2249:    std::vector<gmi_ent*> gEdges;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2255:      gmi_ent* pe = gEdges.at(i);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2258:      gmi_range(m3dc1_model::instance()->model, pe, 0, paraRange);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2259:      M3DC1::Expression** pn=(M3DC1::Expression**) gmi_analytic_data(m3dc1_model::instance()->model,pe);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2278:      apf::Vector3 param(0,0,0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2280:      M3DC1::Expression** pn=(M3DC1::Expression**) gmi_analytic_data(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2290:  apf::MeshEntity* vt = getMdsEntity(m3dc1_mesh::instance()->mesh, 0, *node_id);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2292:  gmi_ent* gent= (gmi_ent*)(m3dc1_mesh::instance()->mesh->toModel(vt));
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2293:  int gType = gmi_dim(m3dc1_model::instance()->model,gent);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2299:void write_node(apf::Mesh2* m, const char* filename, int start_index)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2302:  sprintf(node_filename,"%s-%d", filename, PCU_Comm_Self());
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2305:  apf::MeshEntity* e;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2306:  apf::MeshIterator* it = m->begin(0);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2309:    apf::Vector3 xyz;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2325:// mesh region functions
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2327:int m3dc1_region_getoriginalface( int * /* in */ elm, int * /* out */ fac)
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2330:  apf::MeshEntity* ent = getMdsEntity(m3dc1_mesh::instance()->mesh, 3, *elm);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2331:  apf::Downward downward;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2340:    apf::Downward downward2;
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2369:  apf::Field* f = createPackedField(m3dc1_mesh::instance()->mesh, field_name, components);
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2372:  apf::freeze(f); // switch dof data from tag to array
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2374:  if (!PCU_Comm_Self()) 
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2390:  apf::Field* f = (*m3dc1_mesh::instance()->field_container)[*field_id]->get_field();
+M3DC1/m3dc1_scorec/api/m3dc1_scorec.cc:2392:  if (!PCU_Comm_Self())
+
+===== 9. References in current technical documents =====
+LinkMesh_Architecture_Plan.md:6:- 文档状态：正式版 **4.9**（`regions inspect/generate`、TOML regions map、分 Region dx 与 N-region `Mesh2D` 已实现并完成真实 OFT/Triangle 结构验收；本版新增 `regions generate --target {mesh_only,trimeg}` 与 `--hdf5`，将合法多区域 `Mesh2D` 接入既有 TRIMEG complete-11 Writer；真实多区域 HDF5 生成、h5py 回读和 MATLAB/TRIMEG 加载仍待分层验收）
+LinkMesh_Architecture_Plan.md:28:SCOREC/PUMI 不是第二剖分器。LinkMesh 使用目标 PUMI 软件包提供的 APF、MDS、
+LinkMesh_Architecture_Plan.md:29:GMI、PCU 与 PUMI 接口，将既有 `Mesh2D` 和 `M3DC1ModelSpec` 转换为 classified
+LinkMesh_Architecture_Plan.md:30:APF/MDS mesh，并调用官方 `writeNative()` 生成 SMB。PUMI/APF/MDS 不重新生成
+LinkMesh_Architecture_Plan.md:41:      ├── M3DC1 model Adapter → M3DC1ModelSpec
+LinkMesh_Architecture_Plan.md:43:      │     └── SMB Writer → native helper → rank-0 native SMB
+LinkMesh_Architecture_Plan.md:53:  → single-face M3DC1 model Adapter
+LinkMesh_Architecture_Plan.md:54:  → M3DC1ModelSpec
+LinkMesh_Architecture_Plan.md:56:      └── LinkMesh SCOREC/PUMI Adapter
+LinkMesh_Architecture_Plan.md:58:            → 目标版本官方 writeNative()
+LinkMesh_Architecture_Plan.md:59:            → 分区前串行 native SMB
+LinkMesh_Architecture_Plan.md:62:TXT Writer 与 SCOREC/PUMI Adapter 必须由同一个 `M3DC1ModelSpec` 驱动，共享
+LinkMesh_Architecture_Plan.md:64:order、face↔loop topology 与 geometric classification 语义。禁止两条输出路径独立
+LinkMesh_Architecture_Plan.md:73:| 分区 | LinkMesh 不涉及；终点为分区前串行 native SMB | `split_smb`、`part*.smb`、`**1.smb`～`**16.smb`、环向或并行分区 |
+LinkMesh_Architecture_Plan.md:74:| 输出 | TRIMEG HDF5；M3D-C1 analytic model TXT + 分区前串行 PUMI native SMB | Simmetrix、`make_model`、`.smd`、`.sms` 正式依赖；手写、解析、修改、拼接、模板复制或逆向 SMB 字节 |
+LinkMesh_Architecture_Plan.md:88:- LinkMesh M4-1B probe 和 M4-2 helper 已在目标 PUMI 环境完成构建和生成侧运行。
+LinkMesh_Architecture_Plan.md:89:- 正式 TXT+SMB 已由真实 M3D-C1/SCOREC 环境成功加载并完成初始化。
+LinkMesh_Architecture_Plan.md:103:| M4-1A ModelSpec + TXT Writer + Level 1 | **PASSED** |
+LinkMesh_Architecture_Plan.md:106:| M4-2 SMB Writer/helper 生成侧 | **IMPLEMENTED / PASSED** |
+LinkMesh_Architecture_Plan.md:107:| M5 第一条 `single_region + lcfs` M3DC1 CLI | **PASSED** |
+LinkMesh_Architecture_Plan.md:109:| M3D-C1 配套 TXT+SMB 加载 | **PASSED** |
+LinkMesh_Architecture_Plan.md:119:| EAST TXT+SMB+PNG 生成侧 | **PASSED** |
+LinkMesh_Architecture_Plan.md:132:| `linkmesh regions inspect/generate` 两阶段工作流 | **IMPLEMENTED；真实 two-level/four-level OFT/Triangle 生成与多区域 PNG 人工复核已完成** |
+LinkMesh_Architecture_Plan.md:141:| OFT 五类合成多区域案例 | **全部 PASS；GENERATED / STRUCTURALLY CHECKED** |
+LinkMesh_Architecture_Plan.md:143:| LinkMesh 多区域 mesh PNG | **GENERATED；已由 User 人工复核** |
+LinkMesh_Architecture_Plan.md:144:| LinkMesh 多区域 TRIMEG 接线 | **IMPLEMENTED；真实 HDF5 尚未生成** |
+LinkMesh_Architecture_Plan.md:145:| 多区域 TRIMEG HDF5 h5py 回读 | **PENDING** |
+LinkMesh_Architecture_Plan.md:146:| 多区域 TRIMEG 标准 MATLAB/TRIMEG consumer 加载 | **PENDING** |
+LinkMesh_Architecture_Plan.md:147:| M3D-C1 求解器多区域模拟能力 | **User 根据同门实际展示确认** |
+LinkMesh_Architecture_Plan.md:148:| LinkMesh 新多区域网格的 M3D-C1 输出与兼容性 | **PENDING / NOT OPEN** |
+LinkMesh_Architecture_Plan.md:149:| 多 face、三维、自适应网格和并行分区 | **OUT OF P0 / 未开放** |
+LinkMesh_Architecture_Plan.md:161:      ├── M3D-C1 TXT + rank-0 native SMB
+LinkMesh_Architecture_Plan.md:165:counted R-Z 输入、M3D-C1 TXT+SMB 生成和 TRIMEG HDF5 生成均已实现。已交付给组内
+LinkMesh_Architecture_Plan.md:175:3. 保持 TRIMEG 与 M3D-C1 Writer、`Mesh2D`、ModelSpec 和 helper 契约稳定。
+LinkMesh_Architecture_Plan.md:184:3. 核对 OFT 26.6、`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime
+LinkMesh_Architecture_Plan.md:188:**P2：多轮廓多区域网格与高级网格能力**
+LinkMesh_Architecture_Plan.md:220:明确并先更新蓝图前，不开放空间变密度、局部 refinement、M3D-C1 多区域、多
+LinkMesh_Architecture_Plan.md:257:| `src/linkmesh/cli.py` | 收集显式 CLI 参数；调用配置合并；编排 Reader → Mesher → Writer → Plotter；标准工作流保持旧顶层 target；`regions inspect/generate` 使用独立作用域，generate 可在同一个 N-region `Mesh2D` 上选择 `mesh_only` 或 `trimeg` | 几何、区域、种子、Triangle、dx 换算、配置默认值合并、复制 HDF5 Writer 逻辑、把 regions map 元数据传给 Writer、SMB rank 改写或 helper 环境变量解析 |
+LinkMesh_Architecture_Plan.md:263:| `src/linkmesh/m3dc1_model.py` | 定义 `M3DC1ModelSpec` 并从 `Mesh2D.outer_boundary` 构造 single-face model | PUMI、MPI、Simmetrix 依赖；保存 PUMI 句柄；固定 104 点 |
+LinkMesh_Architecture_Plan.md:266:| `src/linkmesh/writers/smb_writer.py` | 验证输入；生成 classification 和交换文件；调用 helper；确认 rank-0 SMB | 创建 APF/MDS entity；读写 SMB 字节；硬编码 PUMI 路径 |
+LinkMesh_Architecture_Plan.md:267:| `native/linkmesh_scorec_helper/main.cc` | 读取交换文件；管理 MPI/PCU/GMI/APF/MDS；创建 classified mesh；调用官方 `writeNative()` | 网格剖分；配置；TXT Writer；loader/validator；多区域、多 face、三维或分区 |
+LinkMesh_Architecture_Plan.md:291:`Mesh2D` 是 LinkMesh 面向 TRIMEG、M3D-C1/PUMI 等下游的统一、持久、
+LinkMesh_Architecture_Plan.md:307:高阶节点、PUMI 句柄、MPI ownership、运行时 field 或求解器私有对象。
+LinkMesh_Architecture_Plan.md:364:`Mesh2D`、`GFileData`、PUMI 句柄、Writer、argparse Namespace 或可变业务状态。
+LinkMesh_Architecture_Plan.md:366:### 3.5 `M3DC1ModelSpec`
+LinkMesh_Architecture_Plan.md:368:`M3DC1ModelSpec` 表达 P0 single-region、single-face、single-loop analytic model：
+LinkMesh_Architecture_Plan.md:378:`region_ids` 自动当作 geometric face tag，不得保存 PUMI/SCOREC 句柄。
+LinkMesh_Architecture_Plan.md:418:- 该结论不开放 M3D-C1 多区域或多 face，不表示支持任意区域拓扑、三维、自适应
+LinkMesh_Architecture_Plan.md:589:TXT、SMB 或 helper exchange。
+LinkMesh_Architecture_Plan.md:603:`M3DC1ModelSpec` 和 native helper 不得感知参考 GFile。不得把 array boundary
+LinkMesh_Architecture_Plan.md:761:- CLI 不解析 `LINKMESH_SCOREC_HELPER`。
+LinkMesh_Architecture_Plan.md:762:- CLI 不硬编码 PUMI 安装路径。
+LinkMesh_Architecture_Plan.md:899:- 它是与 EQDSK、M3D-C1 TXT 和 SMB 分离的外部二维计算边界；
+LinkMesh_Architecture_Plan.md:960:3. `GFileData` 不传给 OFT Adapter、`Mesh2D`、Writer、ModelSpec 或 helper。
+LinkMesh_Architecture_Plan.md:983:TXT/SMB 的几何和 classification 输入。唯一允许差异是 B 的 PNG 增加 LCFS
+LinkMesh_Architecture_Plan.md:986:该工作流不新增 `Mesh2D` 字段，不修改任何 Writer、`M3DC1ModelSpec`、helper
+LinkMesh_Architecture_Plan.md:999:2. 官方 ITER 多区域示例使用多个 Region，并为不同 Region 提供不同常数 dx。
+LinkMesh_Architecture_Plan.md:1124:Region、网格层或物理材料，也不是 M3D-C1 的真实 plasma classification。
+LinkMesh_Architecture_Plan.md:1149:不得自动驱动 Writer、M3D-C1 classification 或求解器物理语义。任何下游连接必须先
+LinkMesh_Architecture_Plan.md:1199:- generate `--plot` 表示最终多区域三角网格图；
+LinkMesh_Architecture_Plan.md:1279:plasma、OFT technical role、Region ID、dx、Writer、M3D-C1 classification 或求解器
+LinkMesh_Architecture_Plan.md:1326:#### 5.7B.8 多区域 TRIMEG 分派与当前边界
+LinkMesh_Architecture_Plan.md:1340:多区域输出复用现有 complete-11 契约：
+LinkMesh_Architecture_Plan.md:1364:  TRIMEG schema、M3D-C1 model/SMB、classification 或 helper exchange。
+LinkMesh_Architecture_Plan.md:1365:- M3D-C1 本身能够进行多区域模拟，是 User 根据同门实际展示确认的求解器能力。
+LinkMesh_Architecture_Plan.md:1367:- LinkMesh 新多区域网格的 M3D-C1 实际兼容性为 **PENDING**，待网格生成后真实试用。
+LinkMesh_Architecture_Plan.md:1368:- 本阶段不调查或修改 M3D-C1 classification、TXT、SMB、helper、C1 或求解器源码。
+LinkMesh_Architecture_Plan.md:1412:| `regions generate --target mesh_only` | 多区域 | `multi_array_file` | IMPLEMENTED；N-region Mesh2D STRUCTURALLY CHECKED，PNG GENERATED 并人工复核 |
+LinkMesh_Architecture_Plan.md:1413:| `regions generate --target trimeg` | 多区域 | `multi_array_file` | IMPLEMENTED；真实 HDF5 生成、h5py 回读和 MATLAB/TRIMEG 加载 PENDING |
+LinkMesh_Architecture_Plan.md:1440:| `mesh_only` | 无 | 不写 HDF5、TXT、SMB |
+LinkMesh_Architecture_Plan.md:1442:| `m3dc1` | `model_path`、`smb_path` | 总写 TXT；未使用 `--no-smb` 时写 SMB |
+LinkMesh_Architecture_Plan.md:1541:| 多区域调查 I | OFT 官方能力、`multi_array_file`、轻量包含、Region ID/dx 与 CLI/map 契约 | **DESIGNED / DOCUMENTATION COMPLETED** |
+LinkMesh_Architecture_Plan.md:1542:| 多区域调查 II | OFT setup、两层、四层、sibling、混合树、编号、dx 和 no-plasma 对照探针 | **COMPLETED；五类案例 GENERATED / STRUCTURALLY CHECKED** |
+LinkMesh_Architecture_Plan.md:1543:| 多区域实现 I | Reader、空行与至少双 block 检查、基础检查、轻量包含、synthetic role plan、setup-only 编号、`regions inspect`、TOML regions map 与 inspection PNG | **IMPLEMENTED / PASSED** |
+LinkMesh_Architecture_Plan.md:1544:| 多区域实现 II | `regions generate`、map/结构重验、Region dx、N-region OFT Adapter、Mesh2D 与 mesh PNG | **IMPLEMENTED；真实 two-level/four-level GENERATED，Mesh2D STRUCTURALLY CHECKED，PNG 人工复核 PASSED** |
+LinkMesh_Architecture_Plan.md:1545:| 多区域实现 III | `regions generate --target trimeg` 复用 complete-11 Writer | **IMPLEMENTED；真实 HDF5、h5py 和 MATLAB/TRIMEG 验收 PENDING** |
+LinkMesh_Architecture_Plan.md:1548:| M5 第一条 | M3D-C1 TXT+SMB+PNG CLI | **PASSED；时间推进 PENDING** |
+LinkMesh_Architecture_Plan.md:1551:无 GFile Plotter 以及 EAST `Mesh2D`、TXT、SMB、PNG 生成侧均已完成。EAST
+LinkMesh_Architecture_Plan.md:1575:- `trimeg` 不调用 SMB Writer；
+LinkMesh_Architecture_Plan.md:1588:  支路只在 Plotter 汇合，`GFileData` 不得传给 Mesher、Writer、ModelSpec 或 helper；
+LinkMesh_Architecture_Plan.md:1593:  `Mesh2D`、TRIMEG 11 dataset 值和 M3D-C1 几何/classification 输入；
+LinkMesh_Architecture_Plan.md:1596:- EAST TXT、rank-0 SMB 和 PNG 生成、PNG 人工检查、M3D-C1 加载、初始化与时间推进
+LinkMesh_Architecture_Plan.md:1599:- M3D-C1 只构造一次 `M3DC1ModelSpec`；
+LinkMesh_Architecture_Plan.md:1600:- SMB 基础路径不插 rank；
+LinkMesh_Architecture_Plan.md:1601:- helper 定位由 SMB Writer 管理；
+LinkMesh_Architecture_Plan.md:1694:## 7. M3D-C1 TXT、SMB 与 native helper 契约
+LinkMesh_Architecture_Plan.md:1696:### 7.1 TXT 与 SMB 配套关系
+LinkMesh_Architecture_Plan.md:1698:`build_single_face_model_spec(mesh)` 必须只调用一次。TXT Writer 和 SMB Writer
+LinkMesh_Architecture_Plan.md:1699:必须接收同一个 `M3DC1ModelSpec` 对象。
+LinkMesh_Architecture_Plan.md:1711:### 7.2 目标 SCOREC/PUMI 环境
+LinkMesh_Architecture_Plan.md:1715:- PUMI 2.2.9；
+LinkMesh_Architecture_Plan.md:1737:- `find_package(SCOREC 2.2.9 EXACT CONFIG REQUIRED ...)`；
+LinkMesh_Architecture_Plan.md:1738:- `SCOREC::mds`；
+LinkMesh_Architecture_Plan.md:1739:- `SCOREC::apf`；
+LinkMesh_Architecture_Plan.md:1740:- `SCOREC::gmi`；
+LinkMesh_Architecture_Plan.md:1741:- `SCOREC::pcu`；
+LinkMesh_Architecture_Plan.md:1744:不得使用不存在的 `SCOREC_INCLUDE_DIRS` 或 `SCOREC_LIBRARIES`。
+LinkMesh_Architecture_Plan.md:1753:- `writeNative()`。
+LinkMesh_Architecture_Plan.md:1758:### 7.3 Python SMB Writer
+LinkMesh_Architecture_Plan.md:1765:    spec: M3DC1ModelSpec,
+LinkMesh_Architecture_Plan.md:1777:3. 确定性构造 mesh entity classification。
+LinkMesh_Architecture_Plan.md:1783:9. 不创建 GMI/APF/MDS entity，不读取或修改 SMB 字节。
+LinkMesh_Architecture_Plan.md:1784:10. 不硬编码 PUMI 前缀，不实现 loader/validator。
+LinkMesh_Architecture_Plan.md:1788:classification 的唯一责任层是 Python Writer。C++ helper 只执行交换契约，不猜测。
+LinkMesh_Architecture_Plan.md:1803:11. 禁止最近距离、容差最近邻、投影或启发式 classification。
+LinkMesh_Architecture_Plan.md:1821:6. 输出 SMB 基础路径：`uint64 byte_length` + 不含 NUL 的 UTF-8 字节。
+LinkMesh_Architecture_Plan.md:1833:13. mesh vertex classification：N 条
+LinkMesh_Architecture_Plan.md:1838:15. triangle classification：T 条
+LinkMesh_Architecture_Plan.md:1851:- 不承载 PUMI 指针、SMB 字节、MPI ownership、C1 field、高阶节点、field、
+LinkMesh_Architecture_Plan.md:1872:不得依赖任意 PUMI 日志判断成功。
+LinkMesh_Architecture_Plan.md:1881:4. 查找并验证 classification entities。
+LinkMesh_Architecture_Plan.md:1887:10. 调用 `acceptChanges()`、`verify()`、`writeNative()`。
+LinkMesh_Architecture_Plan.md:1908:| 文档组件名 | LinkMesh SCOREC helper |
+LinkMesh_Architecture_Plan.md:1912:| 环境变量 | `LINKMESH_SCOREC_HELPER` |
+LinkMesh_Architecture_Plan.md:1917:2. `LINKMESH_SCOREC_HELPER`；
+LinkMesh_Architecture_Plan.md:1922:目录、服务器固定路径或 Python 包同目录 helper。更换 SCOREC/PUMI、编译器、MPI
+LinkMesh_Architecture_Plan.md:1926:### 7.8 LinkMesh SCOREC helper 职责边界
+LinkMesh_Architecture_Plan.md:1928:helper 是 LinkMesh 自有 native Adapter，连接 Python SMB Writer 与服务器
+LinkMesh_Architecture_Plan.md:1929:SCOREC/PUMI C++ 环境。它接收 Python Writer 按正式内部交换 schema 产生的数据，
+LinkMesh_Architecture_Plan.md:1930:负责 GMI/APF/MDS mesh 构造、classification 应用、PUMI 生命周期管理和 native SMB
+LinkMesh_Architecture_Plan.md:1934:计算边界来源；不承担 M3D-C1 消费端职责；当前不是通用 SCOREC 工具，只服务于
+LinkMesh_Architecture_Plan.md:1935:LinkMesh 的 M3D-C1 native SMB 写出。LCFS、`array_file`、未来 `first_wall` 或
+LinkMesh_Architecture_Plan.md:1936:`flux_surface` 只要在 Writer 前形成相同合法的 `Mesh2D` 和 `M3DC1ModelSpec`，
+LinkMesh_Architecture_Plan.md:1942:- classification 或 `M3DC1ModelSpec` 拓扑契约变化；
+LinkMesh_Architecture_Plan.md:1943:- 多 face、多 loop、孔洞或多区域能力正式获批；
+LinkMesh_Architecture_Plan.md:1944:- SCOREC/PUMI API 或版本变化；
+LinkMesh_Architecture_Plan.md:1958:筛选输出未显示 SCOREC/PUMI 动态库，不能据此声称 helper 不依赖 SCOREC/PUMI。
+LinkMesh_Architecture_Plan.md:1961:定位，不自动解决 MPI、SCOREC/PUMI、系统 C++ 库或 ABI 兼容。
+LinkMesh_Architecture_Plan.md:1968:- 正式 TXT+SMB 外部加载：**PASSED**；
+LinkMesh_Architecture_Plan.md:1972:319 字节 probe、955 bytes synthetic SMB、173 bytes TXT、真实运行文件大小和
+LinkMesh_Architecture_Plan.md:1973:SHA-256 只用于运行追踪，不是格式常量或测试期望。LinkMesh 不建设 SMB loader、
+LinkMesh_Architecture_Plan.md:1984:3. 每个 Case 保存配置、GFile、M3D-C1 输入、TXT、SMB、PNG 和日志。
+LinkMesh_Architecture_Plan.md:2004:  → Mesh2D + TXT + rank-0 SMB + PNG
+LinkMesh_Architecture_Plan.md:2014:多区域，不得把 EAST 外部计算边界改写为 LCFS、第一壁或内部磁面。
+LinkMesh_Architecture_Plan.md:2038:- TXT、rank-0 SMB、PNG；
+LinkMesh_Architecture_Plan.md:2047:2. 无立即网格、connectivity 或 classification 错误；
+LinkMesh_Architecture_Plan.md:2090:SCOREC/PUMI、M3D-C1 或 TRIMEG 消费验证。本地未运行的测试必须记录为
+LinkMesh_Architecture_Plan.md:2095:SMB、PNG，并执行 M3D-C1/TRIMEG 真实消费验收和保存命令、日志、环境及产物。
+LinkMesh_Architecture_Plan.md:2140:9. SCOREC/PUMI 版本、来源和链接信息；
+LinkMesh_Architecture_Plan.md:2170:可删除并从源码重建，可按 PUMI、MPI 和编译器组合区分 `<toolchain-id>`；Python
+LinkMesh_Architecture_Plan.md:2179:- 保持已验证的 SCOREC/PUMI imported targets 和 MPI 发现方式，除非直接证据要求修改；
+LinkMesh_Architecture_Plan.md:2188:- 不复制 SCOREC/PUMI 库进 Git，不以 `sudo` 全局安装为当前默认方案。
+LinkMesh_Architecture_Plan.md:2212:真实 GFile 和 `array_file`、所有批准 profile，生成 HDF5/TXT/SMB/PNG，调用 helper
+LinkMesh_Architecture_Plan.md:2245:设置 `LINKMESH_SCOREC_HELPER`，不进入 `/home/lxzeng`，也不需要知道源码或构建目录。
+LinkMesh_Architecture_Plan.md:2255:`LINKMESH_SCOREC_HELPER`，仅在直接证据要求时准备动态库环境，调用 release 中的
+LinkMesh_Architecture_Plan.md:2268:支持、正式 MPI 来源、SCOREC/PUMI 正式位置和版本、系统库与 ABI 管理、备份、配额及
+LinkMesh_Architecture_Plan.md:2278:4. 审计 helper 的完整动态库、MPI、SCOREC/PUMI、编译器和 ABI 信息。
+LinkMesh_Architecture_Plan.md:2376:- M4-1A ModelSpec + TXT：**PASSED**；
+LinkMesh_Architecture_Plan.md:2379:- Python SMB Writer 专项：17 passed；
+LinkMesh_Architecture_Plan.md:2381:- helper 目标环境构建、`verify()`、`writeNative()` 和生命周期：通过。
+LinkMesh_Architecture_Plan.md:2394:- rank-0 SMB 44823 bytes；
+LinkMesh_Architecture_Plan.md:2403:| LinkMesh CLI 生成 TXT+SMB+PNG | **PASSED** |
+LinkMesh_Architecture_Plan.md:2405:| TXT+SMB 加载 | **PASSED** |
+LinkMesh_Architecture_Plan.md:2420:- EAST TXT+SMB+PNG 生成：**PASSED**；
+LinkMesh_Architecture_Plan.md:2455:- EAST Mesh2D 与 TXT+SMB+PNG 生成侧：**PASSED**；
+LinkMesh_Architecture_Plan.md:2464:### 9.7A multi-array 多区域调查和未来验收
+LinkMesh_Architecture_Plan.md:2505:4. 输入 block 重排后仍可生成对应多区域网格；
+LinkMesh_Architecture_Plan.md:2525:多区域输出或真实求解已经实现。首版仍依赖已定义的输入前提、轻量检查和人工 PNG；
+LinkMesh_Architecture_Plan.md:2537:   `M3DC1ModelSpec` 或 helper。
+LinkMesh_Architecture_Plan.md:2542:6. M3D-C1 TXT/SMB 的几何和 classification 输入保持相同。
+LinkMesh_Architecture_Plan.md:2578:   M3D-C1/SCOREC/PUMI 加载、初始化、时间推进和物理确认不得由 mock 替代，继续按
+LinkMesh_Architecture_Plan.md:2609:- M3D-C1 ModelSpec/TXT 与 Python/helper exchange schema；
+LinkMesh_Architecture_Plan.md:2660:- MPI、PUMI、编译器及链接信息已记录；
+LinkMesh_Architecture_Plan.md:2661:- 能生成真实 SMB；
+LinkMesh_Architecture_Plan.md:2675:- 输出可被目标 M3D-C1/SCOREC/PUMI 软件栈加载；
+LinkMesh_Architecture_Plan.md:2699:- PUMI 版本、API、编译器或 MPI ABI 变化；
+LinkMesh_Architecture_Plan.md:2700:- 多区域、多 face、三维、自适应或并行能力；
+LinkMesh_Architecture_Plan.md:2705:### 10.2 PUMI/API 停止条件
+LinkMesh_Architecture_Plan.md:2709:- `Mesh2D` 与 `M3DC1ModelSpec` 无法无歧义映射；
+LinkMesh_Architecture_Plan.md:2710:- classification 依赖最近距离、容差吸附或投影猜测；
+LinkMesh_Architecture_Plan.md:2714:- 只能手写 SMB 字节；
+LinkMesh_Architecture_Plan.md:2715:- 必须引入多 face、多区域、Simmetrix、三维或并行分区；
+LinkMesh_Architecture_Plan.md:2718:- helper、编译器、PUMI 或 MPI ABI 无法确认相容；
+LinkMesh_Architecture_Plan.md:2742:- 必须修改 `Mesh2D`、Writer、ModelSpec 或 helper exchange 才能完成 PNG 叠加；
+LinkMesh_Architecture_Plan.md:2750:- 未经生成侧探针和后续 C1/classification 调查批准的 LinkMesh M3D-C1 多区域或多
+LinkMesh_Architecture_Plan.md:2751:  geometric face；M3D-C1 求解器本身具备多区域模拟能力不自动开放 LinkMesh 输出；
+LinkMesh_Architecture_Plan.md:2756:- `split_smb`、`part*.smb`、SMB loader 或 validator；
+LinkMesh_Architecture_Plan.md:2757:- 手写、解析、修改、拼接或模板化 SMB；
+LinkMesh_Architecture_Plan.md:2766:- 修改 M3D-C1、TokaMaker 或 SCOREC/PUMI 只读参考源码。
+LinkMesh_Architecture_Plan.md:2774:N-region `Mesh2D` 已实现。当前 P2 主线完成多区域 TRIMEG 接线，等待真实 HDF5、
+LinkMesh_Architecture_Plan.md:2797:5. OFT topology、SCOREC/PUMI geometric classification 与 M3D-C1 C1 有限元连续性
+LinkMesh_Architecture_Plan.md:2800:7. 若升级当前 single-region/single-face 契约，`M3DC1ModelSpec`、TXT、
+LinkMesh_Architecture_Plan.md:2801:   classification、exchange schema 和 helper 分别需要哪些修改。
+LinkMesh_Architecture_Plan.md:2804:开放空间变密度、M3D-C1 多区域或多 face，也不得修改当前 Writer 和 helper 契约。
+LinkMesh_Architecture_Plan.md:2828:- 下一步执行真实多区域 HDF5 生成、h5py complete-11 回读、标准 MATLAB/TRIMEG
+LinkMesh_Architecture_Plan.md:2829:  consumer 加载，并继续保持 M3D-C1 多区域输出为 PENDING / NOT OPEN；
+LinkMesh_Architecture_Plan.md:2852:- 多 face、三维、自适应网格和并行分区继续未开放。
+LinkMesh_Architecture_Plan.md:2856:M5 第一条 `m3dc1 + single_region + lcfs` 真实 CLI、PNG、TXT+SMB 加载和
+LinkMesh_Architecture_Plan.md:2858:array_file`、OFT/Triangle、Mesh2D、TXT+SMB+PNG 生成侧和 PNG 人工几何检查已通过；
+LinkMesh_Architecture_Plan.md:2869:和 `LINKMESH_SCOREC_HELPER`。Release 外部三文件构建、launcher、bootstrap、
+LinkMesh_Architecture_Plan.md:2882:因此不修改 `Mesh2D`、TRIMEG 11 数据集、HDF5 Writer、M3D-C1 ModelSpec、TXT、
+LinkMesh_Architecture_Plan.md:2883:SMB、classification 或 helper exchange。当前授权 TRIMEG Loader 和正式 11 数据集
+LinkMesh_Architecture_Plan.md:2890:`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，不得提前写死
+LinkMesh_Architecture_Plan.md:2893:OFT 单区域静态空间变密度、Triangle refinement、多区域界面拓扑、M3D-C1 C1 与
+LinkMesh_Architecture_Plan.md:2894:多区域/多 face 兼容性调查继续保留为 P2。动态自适应、磁面对齐、M3D-C1 多区域、
+LinkMesh_Architecture_Plan.md:2895:多 face、三维和并行分区均未开放。
+LinkMesh_Architecture_Plan.md:2905:v4.5 补充 OFT 官方 `gs_Domain`、`Region` 与 ITER 多区域示例证据，确认 OFT
+LinkMesh_Architecture_Plan.md:2922:分 Region dx 和 N-region `Mesh2D` 已实现；真实 two-level/four-level 多区域网格已
+LinkMesh_Architecture_Plan.md:2925:`regions generate` 的多区域 TRIMEG 接线为 **IMPLEMENTED**，但本轮真实多区域
+LinkMesh_Architecture_Plan.md:2927:**PENDING**。M3D-C1 求解器本身的多区域能力与 LinkMesh 多区域 M3D-C1 输出仍未开放
+LinkMesh_Architecture_Plan.md:2929:single-face ModelSpec 自动推导多 face classification 或 C1 兼容性。
+History.md:3:1. 完成 LinkMesh 项目文档体系初始化：建立 CONTEXT.md 敏捷纪律规范、清洗三份参考白皮书死链并重定向至 LinkMesh/CONTEXT.md、新建 LinkMesh_Architecture_Plan.md 单事实真理源蓝图文档（v1.0），确立"TokaMaker/Triangle 唯一底座 → TRIMEG HDF5 + M3DC1 .smb 双轨翻译"核心架构战略。
+History.md:17:8. 完成 LinkMesh 技术蓝图最小化重构（蓝图升至 v1.7）：确立 OFT 优先数据流（GFile → OFT GEQDSKEquilibrium → GFileData → OFT gs_Domain/build_mesh → Mesh2D → TRIMEG HDF5 / M3DC1 .smb）；LinkMesh 最小化为输入编排、统一对象适配、目标格式翻译和 CLI；删除 LinkMesh 固定区域编号（1=plasma/2=vacuum/3=wall）全局表述，改为 OFT 区域模型输出原样传递；根据 loadfemmesh_h5.m 直接证据修正 TRIMEG HDF5 消费契约（明确 boundary_segments/boundary_markers/node_markers 非 TRIMEG 直接消费字段，/femmesh/tria 第四列含义标注为待真实样例核对）；Mesh2D 重新定义为轻量统一网格对象，boundary_segments/boundary_markers/node_markers 降级为可选内部/适配字段；新增 M2-0 OFT 可行性验证里程碑；明确不修改、不维护 OFT 分支；保留 M4 对 M3DC1 特有要求的 LinkMesh 侧适配空间。
+History.md:19:9. 完成 M2 OFT Adapter 正式网格生成适配层实现与正式验收（蓝图升至 v1.10，M2 总体 PASSED；本轮源码提交号待 User 补充）：确立并跑通 OFT-first 正式 M2 路径（真实 GFile → read_gfile/OFT GEQDSKEquilibrium → GFileData → oft_adapter.generate_mesh → build_oft_domain_from_gfile 构造 OFT gs_Domain → mesh_from_oft_domain 调 OFT Mesh/build_mesh/liboft_triangle 得 pts/lc/reg → Mesh2D → plot_mesh 区域着色）。以 M2-0（Linux x86_64 / Python 3.12.13 / OpenFUSIONToolkit 26.6 正式 Conda 环境；gs_Domain/Mesh/Region/run_triangle/liboft_triangle.so 可用；合成两区域、合成三区域、真实 DIII-D 多区域可行性均通过）为实现前直接运行证据，实现 oft_adapter.py 三层接口：mesh_from_oft_domain(domain)→Mesh2D 为通用正区域数量 N 核心（含 N=1 与 N>3，build_mesh() 后从 domain.region_info 读取最终区域 ID 并按最终集合校验，不写死区域数量/名称/类型/整数 ID）、build_oft_domain_from_gfile(gfile_data,...) 承担有壁三区域/无壁两区域默认策略且不调用 build_mesh()、generate_mesh(gfile_data,...) 只组合前两层；LinkMesh 原样保存 OFT reg，不重编号、不排序、不压缩、不执行 +1。Linux 服务器实际运行 `python -m pytest -v tests/test_oft_adapter.py` 最终退出码 0（覆盖三层接口、N 区域转换、输入/输出防御与最终区域 ID 时序；测试总数与耗时未记录，不臆造 N passed），mock 测试不能替代真实 OFT 动态库与真实 DIII-D 验收。真实 DIII-D 样例 g192185.02440 经正式 CLI 路径 `--no-hdf5 --no-smb --plot <PNG> --verbose` 跑通：972 节点、1872 三角形、3 区域；nodes/pts (972,2) float64、triangles/lc (1872,3) int32、region_ids/reg (1872,) int32；节点索引范围 0..971；区域统计 {1:633,2:678,3:561}；OFT 最终区域元数据 PLASMA id=1 type=plasma、OUTER id=2 type=boundary、VACUUM id=3 type=vacuum；最小三角形面积 3.0697138006999725e-06 m²、最大 0.01121952731171436 m²；重复顶点三角形 0、面积不大于 1e-12 m² 三角形 0、非正有向面积三角形 0；实际最小内角 20.222037126210235°；CLI 退出码 0（区域物理语义须结合 OFT 区域元数据解释，不按整数编号固定推断）。区域着色 PNG 经 User 人工检查通过：标题英文、无 Glyph missing、统计框显示 Nodes:972/Triangles:1872、不再显示误导性 Boundary segments:0、OFT region 1/2/3 三色可区分且图例与填色一致、region 1 位于 LCFS 内、region 3 位于 LCFS 与第一壁之间、region 2 位于第一壁与人工 outer boundary 之间、LCFS 红线与 First wall 蓝虚线闭合、磁轴位于 LCFS 内、无明显缺口/翻折/自交/空洞（PNG 为临时验收产物，路径不作为永久归档）。真实第一壁触发 OFT Repeated points / Sliver / Small feature 警告，因网格完整生成、无退化三角形、最小内角与区域/PNG 验收通过，记录为当前非阻塞诊断项（未修复、本轮不新增几何修补算法）。M2 总体 PASSED，但 M2 通过不等于 M3/M4/M5 通过。
+History.md:27:13. 完成历史 Python Triangle 路径删除，正式网格路径收敛到 OFT Adapter（已由 User 在 Linux 服务器确认）：LinkMesh 历史 Python `triangle` 包 Wrapper（mesher/triangle_wrapper.py）、其专属测试（tests/test_triangle_wrapper.py）、CLI 历史边界构造函数（_build_boundary_config()、_resample_closed_curve()）以及对 Python `triangle` 包的直接依赖声明均已删除；BoundaryConfig 历史数据结构随之退出正式代码。删除后正式网格生成路径唯一保留 OFT/TokaMaker-Triangle（经 mesher/oft_adapter.py 三层接口），Mesh2D 唯一正式定义仍在 src/linkmesh/mesh.py，OFT Adapter、HDF5 Writer、Plotter、Reader 与 SMB 占位逻辑不受影响。删除以静态搜索确认无正式运行时调用者为前置，未改变正式 OFT 数据流。
+History.md:33:16. 完成蓝图 v2.0 精简重构与 Mesh2D 中间对象再定位（本条为文档任务，仅编辑 LinkMesh_Architecture_Plan.md 与 History.md，未修改任何源码/测试/样例，未运行任何代码或测试）：将蓝图有意精简为约十个短章节的单事实真理源，删除逐版本补丁重复章节、已完成任务长篇日志、旧 Aider 实施提示、Python Triangle 删除详细步骤与初学者教学内容；将 Mesh2D 正式定位为面向多个下游模拟代码的统一、持久、求解器无关中间网格对象（保存下游共同需要且网格生成后无法可靠反推的规范几何/拓扑/标记，Writer 只做目标格式映射不猜测原始几何，可从 triangles 确定性派生的边与邻接默认不重复存储，禁止凭推测预置 C1 自由度/高阶节点/PUMI 句柄/MPI ownership/M3DC1 私有数组/运行时场）；规划新增 Mesh2D.outer_boundary（(B,2) float64、列为 R/Z、单位 m、有序、顺时针、末尾不重复首点隐式闭合、至少 3 个互异有限点、无相邻重复点、无零长度闭合边、P0 单闭环、不含 OFT/Triangle 后续 Steiner 点、不等同最终 idxevert、B 可小于 nvert_ex、不规定固定起点），并在蓝图中明确其与现存兼容字段 boundary_segments/boundary_markers/node_markers 不同义不同名（不改名不删除既有字段）；将 TRIMEG HDF5 契约扩展为完整 11 数据集（保持已确认 8 数据集规则不变，新增 nbcRZ (1,1) float64=B、Rbc (B,1) float64=outer_boundary[:,0]、Zbc (B,1) float64=outer_boundary[:,1]，Rbc/Zbc 直接读 mesh.outer_boundary，禁止升序 idxevert 反推，nbcRZ 不要求等于 nvert_ex）；区分 M3 core（8 核心数据集、h5py 回读、MATLAB 核心加载与绘图已 PASSED）与 M3 complete-11（outer_boundary 传递与 nbcRZ/Rbc/Zbc 写出 PENDING IMPLEMENTATION）。当前未完成事项：Mesh2D.outer_boundary 尚未实施、完整 11 数据集 Writer 尚未实施、M4 PUMI C/C++ API 与 model file 与 C1/高阶只读侦察尚未开始、outer boundary 形状（矩形/放大 LCFS/D 形/椭圆/包络）待 User 与导师确认、linkmesh.in 配置文件需求尚未设计、单区域 MVP 是否作为 M4 起点待 User 单独确认。
+History.md:35:17. 完成 M4-0 前置侦察、综合契约与蓝图固化（M4-0E，蓝图升至 v2.1；文档任务，仅编辑 LinkMesh_Architecture_Plan.md 与 History.md，未修改任何业务源码/测试/参考源码/报告，未运行代码/编译，未执行 Git 提交）。证据来源：老师提供的 meshgen 生成端与 m3dc1_scorec 消费端源码、刘老师会议确认的 A 级事实、M4-0C1/C2/C3/D/D1/D2 逐轮只读侦察报告。已确认成果并写入蓝图：M3DC1 P0 输出为配套 TXT model file + SMB mesh file；SMB 必须由 PUMI/APF/MDS 官方 C/C++ API 生成（LinkMesh 不定义/不手写/不拼接/不修改/不逆向 SMB 字节流），至少承载全量 mesh vertices/triangles 且形成可加载、与 TXT geometric model 相容的 classified mesh；TXT model 字段顺序与拓扑以生成端 save_model()/save_multi_rgn_model() 与消费端 load_model() 双向源码为黄金标尺（非 CSV），P0 输出完整 numFaces>0 face 段；geometric classification 必需、model 先于 mesh 加载、region_ids 不自动映射为 face tag；C1 field（每 vertex 6 数值分量，非 6 几何节点）不属于初始 SMB，初始 mesh load 后删除已有 field/numbering 仅保留可选 norm_curv，edge orientation/法向由运行时派生，adaptation/restart field 不升级为初始要求；OFT/Triangle 线性三角网格与 M3D-C1 初始静态网格条件兼容、无网格层硬阻塞；M3DC1 P0 限定 single-region single-face，m3dc1+nested_three_region 当前禁止；采用 M3DC1ModelSpec 目标专用对象（承载 geometric vertex/edge/loop/face 拓扑、edge 方向、稳定 model tag、四类 loop 标签、curve 表示、edge 分段，与 Mesh2D 分离，不存 PUMI 句柄/SMB 字节/C1 field/高阶节点/MPI ownership/adaptation metadata）；固化两层输入架构（TOML linkmesh.in schema_version=1、tomllib 读取、未知键严格报错、--config/--no-config 互斥、当前目录自动发现、EffectiveConfig 优先级 默认<linkmesh.in<显式 CLI）与 target/profile/boundary source 分层及兼容矩阵（boundary source lcfs/flux_surface/first_wall/array_file/artificial_outer，flux_surface 禁止径向缩放 LCFS 伪造磁面、待真实轮廓提取，array_file 首版两列 CSV (B,2)）；收紧 outer_boundary 正式定义（进入 Triangle 前有序离散外边界、(B,2) float64、顺时针、隐式闭合、单一简单闭环禁止非相邻边自交、独立所有权、TRIMEG 必填其他按目标契约、不是人工矩形四角/不是 idxevert/不含 Steiner 点）与 Rbc/Zbc/nbcRZ 映射（nbcRZ=len、Rbc/Zbc 直读两列、禁止从 idxevert 反推、不要求 nbcRZ==nvert_ex）；定义 M4 实现停止条件（目标版本 SCOREC/PUMI 与 makeEmptyMdsMesh/createVertex/createEntity/acceptChanges/verify/writeNative 签名与顺序、classification 本地判定、单进程 residence/文件命名/triangle 方向未确认前不得完成实现，PUMI API 记为实现候选不写成固定接口）与 Level 1–4 验收（Level 1 TXT 静态由 LinkMesh 测试、Level 2 SMB 轻量加载与 Level 3 TXT+SMB 配套由唐同学、Level 4 完整 M3D-C1 由后续/导师；M4 至少通过 Level 1–3 方可 PASSED）。M4-0E 文档验收后窄范围修正：将 M3 complete-11 状态由"字段/传递/Writer 全部尚未实现"更正为——提交 71fe09f 已存在 Mesh2D.outer_boundary、11 数据集 Writer 与相关测试的实现尝试，但 OFT Adapter 将人工矩形四控制角点错误作为 outer_boundary，处于 PENDING CORRECTION AND VALIDATION，尚未通过架构、真实 GFile、h5py 与 MATLAB/Octave 完整验收；同时明确 outer_boundary 契约要求单一简单闭环并禁止非相邻边自交，而 Mesh2D.__post_init__ 尚未完整实现自交检查，完整自交验证及测试列入返回 M3 complete-11 的必补事项。未完成事项：M3 complete-11 未通过、71fe09f 数据来源待修正、outer_boundary 完整自交验证与测试待补齐；M4 PUMI/APF/MDS 目标版本与精确 API 待实现阶段确认；M4 业务代码（TXT model Writer、PUMI Adapter、SMB 输出）尚未开始；唐同学 Level 2/3 尚未执行；两层输入架构与 boundary source 提取接口尚未实现；M5 尚未开始。下一步：User 验收本轮蓝图与 History 后返回 M3 complete-11，修正 outer_boundary 数据来源并补齐自交验证，完成 11 数据集、h5py、MATLAB/Octave、真实 GFile 回归验收，再按严格顺序推进 M4 实现。本轮为文档固化，不代表 M3 complete-11 或 M4 已通过。
+History.md:55:（八）M1–M3 最终状态与下一阶段：M1、M2、M3 core、M3 complete-11、M3 完整闭环全部 PASSED，M1–M3 已关闭并归档。下一阶段不是立即实现 M4：先把蓝图第 6A 节输入层补齐为字段级接口，随后实现 linkmesh.in + CLI + EffectiveConfig，再实现首批 single_region + lcfs/first_wall/array_file，输入层通过后才进入 M4 model 与 SMB 业务实现；M4 的 SCOREC/PUMI 目标版本与 API 停止条件继续有效。本条为历史归档，未开始输入层源码实现，未开始 M4。
+History.md:57:20. 完成 M1–M3 最新真实验收归档与主线切换至 M4 的文档阶段任务（蓝图升至 v2.5；本轮仅修改 `LinkMesh_Architecture_Plan.md` 与 `History.md`，未修改业务源码、测试、MATLAB 脚本、HDF5、PNG、配置、参考源码或报告，未创建新文件，未提供或虚构 Git 提交号、pytest 计数、SMB/PUMI/M3D-C1 运行结果）。User 最新直接证据更新并取代旧记录中 `single_region + lcfs` 仍处修复/待真实验收的阶段状态：第一条真实 CLI 为 DIII-D `g192185.02440`、`target=trimeg + profile=nested_three_region + boundary_source=artificial_outer`，退出码 0，972 节点、1872 三角形、3 区域、902 内部节点、70 拓扑外边界节点、`outer_boundary` 70 点，成功生成 HDF5、PNG 与运行日志；第二条为 fixed-boundary `gNT_example` 的同一 nested 组合，退出码 0，3412 节点、6692 三角形、3 区域、3282 内部节点、130 拓扑外边界节点、`outer_boundary` 130 点，成功生成 HDF5、PNG 与运行日志；第三条为 DIII-D `g192185.02440`、`target=trimeg + profile=single_region + boundary_source=lcfs + plasma_dx=0.08 m`，退出码 0，344 节点、631 三角形、1 区域、289 内部节点、55 拓扑外边界节点、`outer_boundary` 55 点，成功生成 HDF5、PNG 与运行日志，原 LCFS 相邻近重复控制点导致的 OFT Region 回写边界失败已不再阻塞真实链路，故 `single_region + lcfs` 真实 CLI 与 TRIMEG 消费状态正式更新为 PASSED。三份 LinkMesh HDF5 经 `h5ls` 均确认写出完整 11 个 `/femmesh` 数据集（`nvert/ntria/nvert_in/nvert_ex/vert/tria/idxivert/idxevert/nbcRZ/Rbc/Zbc`），继续符合 `vert=(N,2)`、`tria=(T,3)`、文件端 1-based、无第四列、不写 `region_ids`、`Rbc/Zbc` 来自 `Mesh2D.outer_boundary`、`nbcRZ` 不要求恒等于 `nvert_ex` 的正式契约；OFT `Repeated points`、`Sliver`、`Small feature` 仍是诊断 warning，不是 Triangle 失败。MATLAB 使用老师原始 `docs/trimeg/loadfemmesh_h5.m` 对标准示例 `femmesh_65402_t1_nr16core.h5` 与 LinkMesh `single_region + lcfs` 的 `mesh.h5` 完成 A/B 只读加载、基础检查和绘图并通过：标准示例约 981 节点/1847 三角形，LinkMesh 为 344 节点/631 三角形且 `nbcRZ=55`；两者均表现为单一闭合计算域内部三角剖分，未见节点索引、跨域错误连线或布局读取错误。该证据确认两者在“单闭合域内部网格化”拓扑形态上相容，但不固定 `Rbc/Zbc` 的物理来源，也不证明 TRIMEG 永久使用 LCFS；因此 `single_region + first_wall` 保留为有价值的后续来源但不再阻塞 M4，`array_file` 与需要真实磁面提取且禁止缩放 LCFS 伪造的 `flux_surface` 同样后置，近期不继续扩建大型 Fake OFT/Mock 体系，未来边界来源以少量关键单测加真实 GFile/OFT 26.6/CLI/PNG/HDF5 验收为主。两层输入架构保持有效；仓库当前不创建面向用户的标准 `linkmesh.in` 示例，待 TRIMEG 与未来 M3DC1 TXT+SMB 都通过真实消费端验收后再形成能够表达双下游目标的示例，缺少示例不表示配置架构未实现。User 正式授权项目主线进入 M4 业务实现：以已验收的 `single_region + lcfs` `Mesh2D` 作为 P0 第一份真实输入，限定 single-region/single-face，先实现或固化 `M3DC1ModelSpec` 与 TXT geometric model Writer，再核对目标 SCOREC/PUMI/APF/MDS 版本和官方 API，构造 classified APF/MDS mesh 并经官方 `writeNative` 或目标版本等价接口写 `.smb`，最后执行 Level 1–3 验收。M4 当前仍为 NOT IMPLEMENTED / NOT PASSED，未生成 `.smb`，Level 2/3 未执行；目标版本精确 API、classification、本地 residence/命名/triangle 方向、TXT 与 SMB classification 相容性及官方库可用性停止条件继续有效，禁止手写、拼接、修改、模板复制或逆向 SMB 字节流。
+History.md:59:21. 完成 M4-1A 与 M4-1B 实际成果的蓝图升级和历史归档（蓝图升至 v2.8；本轮为纯文档任务，仅修改 `LinkMesh_Architecture_Plan.md` 与 `History.md`，未修改业务源码、测试、`CONTEXT.md`、reference map、M3DC1/meshgen/SCOREC/PUMI 参考源码，未创建 probe、报告、SMB、TXT、测试或源码，未运行测试、编译、probe、服务器命令或 Git 操作）。M4-1A 已实际实现 `src/linkmesh/m3dc1_model.py`、`src/linkmesh/writers/m3dc1_model_writer.py` 与 `tests/test_m3dc1_model_writer.py`：完成 single-region、single-face、single-loop `M3DC1ModelSpec`，由 `Mesh2D.outer_boundary` 构造 geometric vertices、directed LIN edges（P0 `LIN=1`）、loop 与 face；TXT Writer 按 `save_model()`/`save_multi_rgn_model()` ↔ `load_model()` 双向契约写出五整数头、loop、vertex、edge/curve、`numFaces` 与 face 段，不依赖 PUMI/SCOREC/MPI/Simmetrix/`make_model`/SMB，不输出两列 CSV、不复制 `east.txt`、不固定 104 个点。本地提交事实：`1260b4c` 为上述三个 M4-1A 文件的初始草稿提交、无提交消息；`9eb7a17` 为 M4-1A 后续实现修改提交、无提交消息；`49dd3ec` 只涉及重复 reference map，不属于 M4-1A 源码提交。User 提供的服务器直接证据：`python -m pytest -q tests/test_m3dc1_model_writer.py` 得到 52 passed in 0.23s、退出码 0；`tests/test_mesh.py` 与 `tests/test_hdf5_writer.py` 相关回归得到 101 passed in 0.37s；独立 TXT 实际写出冒烟验证 `M4_1A_SMOKE=PASS`，生成完整 model TXT，头部为 `1 -1 1 -1 -1`，最小样例含 4 geometric vertices、4 geometric edges、1 loop 与 1 face。M4-1A 与 Level 1 正式状态更新为 PASSED，但不表示 M4 总体通过。M4-1B 首要兼容环境确认并完成实现入口 probe：SCOREC/PUMI 2.2.9、Git commit `f87525cae7597322edfb2ccf1c7d4437402d948`、Spack hash `333b2ut`、GCC 13.3.0、目标 MPI 工具链 `/usr/bin/mpicxx`，调查安装实例为 `/opt/spack/opt/spack/linux-zen4/pumi-2.2.9-333b2utt2vneffaporuf7kaenhpow7x5`（只作环境追踪证据，不得硬编码进业务源码）。目标 SCOREC 2.2.9 CMake 接入已确认使用 `find_package(SCOREC 2.2.9 EXACT CONFIG REQUIRED ...)` 与 imported targets `SCOREC::mds`、`SCOREC::apf`、`SCOREC::gmi`、`SCOREC::pcu`，并使用相容 MPI C++ target；首次配置失败源于错误假设 `SCORECConfig.cmake` 提供 `SCOREC_INCLUDE_DIRS`/`SCOREC_LIBRARIES`，改用 imported targets 后配置、头文件发现、编译与静态链接成功，该过程不是 PUMI 安装或 LinkMesh 架构失败。目标 PUMI 2.2.9 probe 已编译运行确认 `apf::makeEmptyMdsMesh(model,2,false)`、`Mesh2::createVertex` 与 `Mesh2::createEntity` 调用形式可用，成功创建 3 个 classified vertices、3 个 classified edges和 1 个 classified triangle，`acceptChanges()`、写出前 `verify()` 与官方 `writeNative()` 成功；传入基础名 `m4_pumi_probe.smb` 后，单进程 rank 0 实际生成非空 `m4_pumi_probe0.smb`。该文件为 319 字节，SHA-256 为 `bc56e915075146af11a7d4af9f77f578fa1517c0d12efa5814b57e4aa3a740f9`，二者仅为本次 probe 追踪证据，不是格式常量、未来测试期望或可复制模板。人工 analytic-cell probe 的同进程重载未通过：一次因把实际 rank 文件名交给再次插 rank 的 loader 而尝试打开 `m4_pumi_probe00.smb`，修正为基础名后仍在人工 model 重载路径发生段错误；当前不能确认唯一根因，不得归因于已证实的 analytic model 拓扑、资源生命周期或 PUMI loader 缺陷，也不得写成 SMB 格式或正式 LinkMesh 方案失败。该人工 probe 不再继续修补，其重载不属于正式 Level 2/3；正式加载、classification 相容性、计数、坐标、connectivity、`verify` 与可视化转入 M4-2 产生真实 LinkMesh TXT+SMB 候选后的 Level 2/3。M4-1B 实现入口 probe 状态更新为 COMPLETED / PASSED，M4-2 更新为 READY；M4-2 尚未实现、Level 2/3 尚未执行，M4 总体仍为 NOT PASSED。
+History.md:61:22. 完成 M4-2 编码前 Python/C++ 集成与构建边界的窄范围蓝图补充（蓝图升至 v2.9；本轮仅修改 `LinkMesh_Architecture_Plan.md` 与 `History.md`）。正式集成链固定为 `src/linkmesh/writers/smb_writer.py` → 独立 `linkmesh-m3dc1-smb-helper` 进程 → SCOREC/PUMI 2.2.9 GMI/APF/MDS/PCU 官方 API → 串行 rank-0 native SMB；原生组件唯一落点为 `native/m3dc1_smb_helper/main.cc` 与同目录最小 `CMakeLists.txt`。选择独立 helper 是因为首要兼容实例为静态库，需要隔离 MPI/PCU/GMI/APF/MDS 生命周期，并避免在 P0 引入 Python ABI 扩展体系；helper 是 LinkMesh 正式目标格式 Adapter，不是第二网格生成器。蓝图同时固化 schema v1 little-endian 内部交换契约、Python classification 唯一责任层、corner 与拓扑边界的确定性映射规则、交换文件成功清理/失败保留策略、helper 结构化退出状态、SCOREC imported targets、helper 定位优先级、生命周期与最小测试分层；禁止最近邻 classification、运行时编译、通用 native plugin、Mock PUMI 生命周期及任何 SMB 字节实现。本轮未实现业务源码、测试、C++、CMake、配置或样例，未修改 `CONTEXT.md`、`Project_Tree.md`、`requirements.txt`、`pyproject.toml`、reference map 或 M3DC1/meshgen/SCOREC/PUMI 参考源码，未运行测试、编译、probe、服务器命令或 Git 操作。M4-1A 与 Level 1 仍为 PASSED，M4-1B 仍为 COMPLETED / PASSED，M4-2 仍为 READY / NOT IMPLEMENTED / NOT PASSED，Level 2/3 尚未执行，M4 总体仍为 NOT PASSED。
+History.md:63:23. 完成 M4 生成侧、M5 第一条真实 CLI 最小闭环及项目验收边界同步归档（蓝图升至 v3.1；本条记录当前已完成事实，不改写第 20–22 条在其发生时真实有效的阶段状态）。实施顺序为：先将蓝图更新到 M4-2 LinkMesh 生成侧 `IMPLEMENTED / PASSED`、外部 M3D-C1/SCOREC 消费验收 `PENDING` 并授权 M5 第一条 `target=m3dc1 + profile=single_region + boundary_source=lcfs`；随后完成配置阶段闸门与 CLI 编排接入。配置层只放行该唯一 M3DC1 组合，并要求 GFile、TXT model 与未插入 rank 的 SMB 基础路径；CLI 只读取一次 GFile、只生成一次 `Mesh2D`、只调用一次 `build_single_face_model_spec(mesh)`，并把同一个 `M3DC1ModelSpec` 同时交给 `write_m3dc1_model(spec, model_path)` 与 `write_smb(mesh, spec, smb_base_path)`，可选 PNG 继续由现有 `plot_mesh(..., show_region_ids=True)` 生成。相关代码提交由 User 提供为 `d516358`（`feat: 接入 M3DC1 单区域 LCFS CLI 闭环输出`）和后续 docstring 精确匹配补丁提交 `1e8296e`（无提交消息）；更早的 M4-2 helper 严格验证、无效注册调用删除及 MDS model ownership 修正提交分别为 `f27562b`、`6e94321`、`41fdd71`。本地 Aider 未执行有效测试，本地环境缺少 `pytest`；测试和真实运行均在服务器进行。
+History.md:65:服务器配置与 CLI 专项测试实际结果为 **145 passed、2 failed**，不得归档为全套测试通过。第一项失败是旧测试期待 `ConfigError`，而未开放的 `m3dc1 + single_region + first_wall` 实际以 `NotImplementedError` 正确拒绝；组合拒绝行为成立，异常类型测试预期待清理。第二项失败是旧测试仍期待默认 `trimeg` 流程调用 SMB Writer，而当前正式 target 分派规定 `trimeg` 只进入 HDF5 分支、不进入 M3DC1 SMB 分支；旧测试预期待清理。相邻回归命令因引用不存在的 Plotter 测试路径而未执行，不能记为通过或失败。本轮不修改这些测试；两项测试债务不覆盖真实 GFile CLI 闭环通过的直接证据。
+History.md:67:服务器随后使用真实 DIII-D GFile 完成第一条正式用户 CLI 最小闭环：`target=m3dc1`、`profile=single_region`、`boundary_source=lcfs`、`plasma_dx=0.08 m`；数据流为 GFile → `read_gfile()` → LCFS → OFT single-region mesh → `Mesh2D` → 一次 `build_single_face_model_spec(mesh)` → 同一个 spec 驱动 TXT Writer 与 SMB Writer → Plotter PNG → CLI 正常退出。该次运行读取 LCFS 原始点 81、第一壁点 88，OFT 唯一边界点 55，生成 344 个节点、631 个三角形和 1 个区域；实际输出 TXT 2275 bytes、rank-0 SMB 44823 bytes、PNG 235388 bytes，日志完整运行到结束，SMB Writer/helper 实际完成 SCOREC/PUMI 2.2.9 `writeNative()`。这些大小和计数只作为本次运行身份与直接证据，不是格式常量或其他输入的测试期望。
+History.md:69:User 已人工检查该 PNG并判定通过：LCFS 轮廓显示合理，网格覆盖单区域，未观察到明显孔洞、越界、折叠或显著异常单元。PNG 人工检查只支持几何自检，不证明 SMB 可被 M3D-C1 正确消费。配套 TXT+SMB 已交给同门执行真实 M3D-C1/SCOREC 外部消费验收，当前状态仍为 `PENDING`；不得将其写成已通过，也不得因此把 M4 生成侧或 M5 第一条真实 CLI 闭环降回未通过。当前开放范围仍严格限定 single-region、single-face、LCFS 计算域；多区域、多 face、三维、环向分区与并行 split 未开放。当前组内建议使用一份 LinkMesh 服务同层级多个 Case，每个 Case 保存自己的配置、GFile、M3D-C1 输入和网格产物；先独立生成 TXT/SMB/PNG并人工检查，再提交求解，不在每次 `sbatch` 中无条件覆盖网格。近期采用无需 `sudo` 的源码或 Conda 用户级部署，服务器全局安装待工具稳定后再评估。
+History.md:73:25. 完成面向组内用户的单区域 M3D-C1 标准配置示例：新增 `examples/m3dc1_single_region/linkmesh.in.example`。该示例采用当前 TOML `schema_version=1`，表达 `target=m3dc1`、`profile=single_region`、`boundary_source=lcfs`、GFile 输入、`plasma_dx`、TXT model 输出、SMB 基础路径输出、PNG 输出及 `verbose` 日志；其存在用于说明当前已开放配置契约，不表示用户级安装、全局部署或完整模拟流程已经完成。
+History.md:75:26. 确认 LinkMesh 配套 TXT+SMB 的 M3D-C1 外部加载与初始化成果：组内同学已成功将 LinkMesh 生成的配套 TXT+SMB 加载到 M3D-C1，并使用该配套文件完成 M3D-C1 初始化。当前外部消费状态严格分层为：TXT+SMB 加载 **PASSED**；M3D-C1 初始化 **PASSED**；M3D-C1 时间推进主循环 **PENDING**；中等或长时运行稳定性 **PENDING**；物理结果正确性 **PENDING**。成功加载与初始化不得扩大表述为完整 M3D-C1 模拟、时间推进、长期稳定性或物理科学验证已经通过；PNG 人工检查也不构成时间推进或物理正确性证据。本条不记录未经提供的时间步数、运行时长、物理结果、测试输出、提交号或日志。
+History.md:77:27. 完成当前有效技术蓝图的章节结构整理：蓝图形成连续的第 1 至第 10 节；输入、配置与 CLI 集中到第 5 节；TRIMEG HDF5 契约集中到第 6 节；M3D-C1 TXT、SMB 与 native helper 契约集中到第 7 节；真实场景、使用与部署路线集中到第 8 节；里程碑、测试与验收集中到第 9 节；变更纪律、停止条件与待决事项集中到第 10 节。本次整理未改变正式字段、接口、HDF5 契约、SMB 交换契约、CLI 参数、实现状态或验收结论；同时清理旧 CLI 重复说明，配置权威优先级继续保持 `内建默认值 < linkmesh.in < 用户显式 CLI`。
+History.md:79:28. 下一阶段主线转为 EAST 真实场景调查：首先调查老师提供的 EAST 样例边界，判断其是 LCFS、GFile 第一壁还是独立二维闭合轮廓，当前边界类型尚未确认。若为 LCFS，复用现有 `single_region + lcfs`；若为第一壁或独立闭合轮廓，先完成蓝图契约确认，再决定实施 `single_region + first_wall` 或 `single_region + array_file`；随后使用足够细密的 EAST 网格进入 M3D-C1 时间推进主循环。EAST 材料调查、细密网格生成和时间推进均未在本条中记为完成。TCV/TRIMEG 保持为并行的第二条真实场景验证路线，当前未将 TCV 边界调查或 TRIMEG 实际消费记为完成。当前仍未实现或未开放：`single_region + first_wall`、`single_region + array_file`、`flux_surface`、多 face、三维、自适应网格和并行分区。
+History.md:81:29. 完成 EAST counted R-Z boundary text 与 `single_region + array_file` 生成侧闭环。EAST 输入为 104 个 R-Z 米制边界点；Reader、配置和 CLI 分派成功进入单区域 OFT/Triangle 路径，生成 `Mesh2D` 185 个节点、329 个三角形和 1 个区域。EAST PNG 已生成并由 User 完成人工几何检查，结论为 PASSED。通过当前旧环境变量 `LINKMESH_M3DC1_SMB_HELPER` 指向既有个人开发构建产物后，TXT、rank-0 SMB 和 PNG 生成命令成功完成，证明 `array_file` 在形成合法 `Mesh2D` 和 `M3DC1ModelSpec` 后可复用现有 helper 完成 M3D-C1 生成侧输出。该结果不表示 EAST M3D-C1 加载、初始化、时间推进、中等或长时稳定性或物理正确性通过；这些消费层级继续 PENDING。第 28 条的未实现状态是当时真实历史，本条以较新直接证据更新当前状态，不改写旧条目。
+History.md:83:30. 完成组内交付架构与 LinkMesh SCOREC helper 部署侦察的蓝图固化（蓝图升至 v3.6；本轮按顺序仅更新 `LinkMesh_Architecture_Plan.md`、`History.md` 和 `Project_Tree.md`，未修改 Python、C++、CMake、测试、依赖、构建产物或部署脚本，未执行 helper 重命名，未创建打包文件、包装脚本、modulefile 或共享 release，本地测试与 Linux 科学计算验证均为 NOT RUN）。当前服务器直接事实包括：源码由 User 从本地上传到 `/home/lxzeng/LinkMesh_server`，不采用服务器 `git pull` 工作流；个人开发环境为 `/home/lxzeng/miniconda3/envs/linkmesh`、Python 3.12.13，LinkMesh 通过 `PYTHONPATH=/home/lxzeng/LinkMesh_server/src` 导入，OFT 26.6 从 Conda `site-packages` 导入；当前 helper 仍为旧名称 `linkmesh-m3dc1-smb-helper`，由旧环境变量指向 `/home/lxzeng/LinkMesh_runs/m4_2_helper_build/linkmesh-m3dc1-smb-helper`。helper 是 Linux x86-64 动态链接 ELF，含 debug_info、未 strip，已筛选 `ldd` 未见 `not found`，观察到系统 `libmpi.so.40` 和 `libstdc++.so.6`；筛选结果未显示 SCOREC/PUMI 动态库不能证明不存在依赖，完整动态库和链接审计仍 PENDING。User 批准一次性强制迁移到源码目录 `native/linkmesh_scorec_helper/`、target/可执行文件 `linkmesh-scorec-helper` 和环境变量 `LINKMESH_SCOREC_HELPER`，不保留旧名称兼容分支或符号链接；迁移尚未实施。User 同时批准本地 Windows Git Bash 源码开发、Linux 个人开发验证、个人干净发布候选和组内版本化共享稳定 release 四类环境分层；正式发布不得依赖 `PYTHONPATH`，普通组员不自行安装 Conda、不编译 helper、不设置 helper 环境变量、不依赖维护者个人目录。共享根目录、权限和 module 能力仍待导师确认，使用 `<GROUP_SOFTWARE_ROOT>` 占位；Python 正式打包、CMake install、新构建目录、个人候选环境、不安装 triangle 的端到端裁决、完整二进制审计、包装入口、modulefile、第一个共享 release 和普通用户验收均保持 PENDING。
+History.md:87:32. 完成 LinkMesh v4.0 纯文档重基线，项目主线由“建立网格生成和格式输出闭环”切换为“OFT 高级网格能力侦察和真实求解反馈”。本条采用分层状态归档：counted R-Z 二维边界 Reader 与 `single_region + array_file` 数据链为 **IMPLEMENTED**；LinkMesh 的 M3D-C1 analytic model TXT、native SMB 与 TRIMEG 完整 11 数据集 HDF5 生成链均为 **IMPLEMENTED**，相应文件已经能够 **GENERATED**；EAST M3D-C1 网格已 **DELIVERED** 给组内同学继续运行，但本条没有新增其 `LOADED`、`INITIALIZED` 或 `TIME-STEPPED` 证据，后续时间推进、中长时稳定性和 `PHYSICALLY VALIDATED` 状态继续 **PENDING**；既有 DIII-D TXT+SMB 的外部 `LOADED` 与 `INITIALIZED` 证据继续有效，但不得外推为后续交付网格或完整物理模拟已经通过。已从卢老师提供的既有 TRIMEG HDF5 取得计算域边界，并由 LinkMesh 重新生成新的 TRIMEG HDF5；新文件已 **DELIVERED** 给卢老师测试，在收到直接反馈前，最新 TRIMEG 外部消费和物理测试继续 **PENDING**。当前正式 helper 接口已统一为源码目录 `native/linkmesh_scorec_helper/`、CMake target/可执行文件 `linkmesh-scorec-helper`、定位变量 `LINKMESH_SCOREC_HELPER`，定位顺序为显式 `helper_path`、该环境变量、再到 `PATH`；当前 TRIMEG CLI 使用 `--hdf5` 与完全同义的 `--h5`，旧 `--output` 不属于当前接口。组内交付环境和环境管理原则已经讨论完成，但正式共享根目录、权限、modulefile、版本化 release、包装入口和普通用户验收仍等待老师协助实施，状态为 **PENDING**。User 已批准下一阶段调查 OFT 26.6 单区域静态空间变网格密度、OFT 多区域共享界面拓扑，以及 OFT topology、SCOREC/PUMI classification 与 M3D-C1 C1 连续性和多 geometric face 之间的关系；这些均为调查任务，不是已实现能力。根目录蓝图升级为 v4.0；精简前完整 3.x 蓝图由只读快照 `docs/linkmesh/LinkMesh_Architecture_Plan_v3.7.md` 承载，详细执行计划由只读 `docs/linkmesh/work_plan.md` 承载。本轮只修改 `Project_Tree.md`、`History.md` 和根目录 `LinkMesh_Architecture_Plan.md`，未修改业务源码、native helper、测试、示例、依赖、`CONTEXT.md` 或 `docs/linkmesh/` 资料，未运行 OFT、M3D-C1、TRIMEG、SCOREC/PUMI、native 构建或任何自动测试，未产生新的真实求解器验收结果。
+History.md:89:33. 完成 `multi_array_file` 多区域网格生成前置只读侦察和知识库技术文档迭代（蓝图升至 v4.4；本轮仅修改 `docs/linkmesh/multi_array_regions_investigation_report.md`、`LinkMesh_Architecture_Plan.md`、`Project_Tree.md` 与 `History.md`，未修改业务源码、tests、requirements、OFT/Triangle 参考源码、M3D-C1、native helper、Release、examples、CONTEXT 或 work plan，未运行测试、OFT 探针、Triangle、M3D-C1 或任何生成命令）。User 已确认新来源命名为 `boundary_source="multi_array_file"`，旧 `array_file` 单曲线契约保持不变，现有无子命令 CLI 保持当前功能，新功能使用显式 `regions` 子命令并分为“代码几何检查、包含树、Region 着色与人工复核”和“按 Region 常数 dx 生成多区域网格”两个明确阶段；`regions` 支持配置和完整长 CLI，优先级保持程序默认值 < 配置文件 < 显式 CLI；multi-array 文件由重复 counted R-Z blocks 顺序组成直到 EOF；首版要求恰好一条唯一 root，其他曲线严格位于 root 内，任意曲线对只能严格包含或完全分离，允许一个父曲线包含多个 sibling，禁止自交、相交、相切、重合、部分重叠、歧义包含、hole 和多 root；几何必须由代码检查，PNG 只供人工复核；分区域尺度使用显式 LinkMesh Region ID 映射，不依靠 OFT 输出顺序；`nested_three_region` 暂不修改、删除或优化。两阶段具体 CLI 表达尚未最终批准；调查比较 `regions --inspect/--generate`、`regions inspect/generate` 和 `regions --mode`，推荐嵌套 `inspect/generate` 子命令，仍待 User 裁决。region map 是否强制、配置 schema/发现规则、region-dx 完整覆盖或全局回退规则、数值容差和是否引入 Shapely/GEOS同样保持待裁决。
+History.md:95:本轮只形成未运行的最小探针方案：两层、四层、单父双 sibling、sibling+多层混合、明显不同 dx、自交、交叉、相切、重合、部分重叠、多 root、block 重排、LinkMesh ID 与最终 OFT attribute 对照，以及共享界面节点/边唯一性、裂缝、重复/重叠 triangle、非流形边、退化 triangle 和各 Region triangle 数检查。当前最终状态严格为 **DESIGNED / READ-ONLY INVESTIGATION COMPLETED / NOT IMPLEMENTED / NOT PROBED**：未实现 multi-array Reader，未实现 `regions` 子命令，未生成新的 N-region `Mesh2D`，未验证 sibling、深层嵌套或任意 N 拓扑，未修改 `nested_three_region`。User 根据同门实际展示确认 M3D-C1 本身能够进行多区域模拟；这是求解器能力和项目需求事实，不等于 LinkMesh 当前已经生成或验证了适用于该模拟的新多区域网格。LinkMesh 新网格的 M3D-C1 加载、初始化、时间推进和实际模拟兼容性均须在生成侧完成后另行真实验证。
+History.md:97:34. 完成 `multi_array_file / regions` 多区域网格设计的知识库一致性修订（蓝图升至 v4.5；本轮只修改 `LinkMesh_Architecture_Plan.md`、`Project_Tree.md`、`History.md` 与 `docs/linkmesh/multi_array_regions_investigation_report.md`，未修改业务源码、tests、requirements、work plan、Release 源码、native helper、examples、OFT/Triangle 或 M3D-C1 外部源码，未运行自动测试、OFT 探针、Triangle 或 M3D-C1，未生成新的多区域网格）。User 最新裁决正式采用 `linkmesh regions inspect` 与 `linkmesh regions generate` 二级子命令；旧无子命令入口保持不变，不同子解析器可定义同名参数但作用域隔离，inspect 和 generate 分别拥有独立 required fields 与 `--plot` 语义。User 裁决不建立第二套面向用户的 LinkMesh Region 编号：OFT 完成内部编号后进入 Triangle 并从 `triangleattributelist` 读回的最终 Region attribute 直接作为正式 Region ID，用于 regions map、inspection PNG、`--region-dx`、`Mesh2D.region_ids` 和后续验证；`curve_id` 只按 `multi_array_file` block 顺序追踪输入曲线，不是 Region ID，也不要求等于最终 Region ID。User 决定 inspect 输出用户可读的 regions map，用于展示最终 Region ID、curve_id、parent/children 和颜色，并让用户按最终 Region ID 设置 dx；map 的文件名、TOML/schema、颜色和 SHA-256 是否为正式字段、generate 是否强制读取 map，以及用户确认如何表达仍待后续裁决。
+History.md:105:初版 Release 已经发送给同门和老师，当前反馈为可以正常使用；该事实更新了此前“尚未生成或尚未交付”的笼统状态，但只记录到实际 DELIVERED 和当前用户反馈，不外推时间推进、长期稳定性或物理结果。User 根据同门实际展示确认 M3D-C1 求解器本身能够进行多区域模拟；VDOM 研究需要第一壁外薄层面电流 Region 和更外层模拟 Region，并需要不同常数 dx。LinkMesh `multi_array_file` 多区域 `Mesh2D`、`regions inspect/generate` 和 regions map 当前均为 **DESIGNED / NOT IMPLEMENTED**；OFT 官方多 Region 和分 Region 常数 dx 能力为 **CONFIRMED**；OFT 自动包含树为 **NOT PROVIDED**；OFT 最小探针为 **NOT RUN**；LinkMesh 新多区域网格尚未生成，其 M3D-C1 实际兼容性继续为 **PENDING**，待网格生成后真实试用。本轮未调查或修改 M3D-C1 classification、TXT、SMB、helper、C1 行为或求解器源码。
+History.md:113:当前严格状态为：OFT 五类合成案例 **GENERATED**；探针修复 **IMPLEMENTED**；修复后重跑与完整结构验收 **PENDING**；`multi_array_file`、`regions inspect/generate`、regions map 和生产 N-region `Mesh2D` 仍为 **DESIGNED / NOT IMPLEMENTED**；M3D-C1 求解器多区域能力仍为 User-confirmed，但 LinkMesh 新多区域网格的 M3D-C1 加载、初始化、时间推进和物理兼容性仍为 **PENDING**。
+History.md:115:36. 完成 OFT 26.6 multi-array 多区域、Region 编号和 no-plasma 行为调查的最终收敛，并完成 synthetic plasma compatibility role 与用户 physical label 隔离方案的正式设计归档（本轮只修改 `LinkMesh_Architecture_Plan.md`、`Project_Tree.md`、`History.md` 和 `docs/linkmesh/multi_array_regions_investigation_report.md`；未修改业务源码、tests、依赖、work plan、OFT/Triangle、M3D-C1、Writer、native helper、Release、examples 或外部格式）。User 在正式 OpenFUSIONToolkit 26.6 Linux 环境重跑修正后的 `scripts/probe_oft_multi_array_regions.py`，五类案例的 generation、mesh structure、numbering 和 overall 状态全部 PASS，证据层级更新为 **GENERATED / STRUCTURALLY CHECKED**：`two_level_nested` 为 353 points、664 cells、2 regions，dx variant 为 449 points、841 cells、2 regions；`four_level_nested` 为 539 points、1035 cells、4 regions，dx variant 为 640 points、1221 cells、4 regions；`one_parent_two_siblings` 为 420 points、792 cells、3 regions，dx variant 为 603 points、1141 cells、3 regions；`mixed_tree` 为 457 points、866 cells、4 regions，dx variant 为 627 points、1188 cells、4 regions；`reordered_input` 为 457 points、866 cells、4 regions，dx variant 为 621 points、1183 cells、4 regions。由此确认 OFT 26.6 能生成两层严格嵌套、四层严格嵌套、单父双 sibling、sibling 加深层嵌套组合及输入重排后的多区域网格，支持不同 Region 使用不同常数 dx，并通过探针规定的基本数组、Region、单元、重复 triangle、edge incidence 和网格结构检查；该结果不外推到异常 polygon、自交、相切、重合、近退化输入、LinkMesh 生产业务或 M3D-C1 使用。
+History.md:121:User 批准 OFT technical role 与用户物理语义隔离：technical role 只用于 OFT Domain 组装、强制前置条件和内部编号，不表示用户确认的材料或求解器语义；`physical_label` 是 regions map 的可选用户字段，默认空字符串，留空不阻塞 inspect 或 generate，当前不参与包含树、technical role、Region ID、dx、Writer、M3D-C1 classification 或求解器物理语义。User 同时批准 deterministic synthetic plasma compatibility role：唯一 root 使用 `boundary`；全部内部 Region 中最大深度 leaf 使用 `plasma`，并列时取最小 `curve_id`；其他内部 Region 使用 `vacuum`。synthetic plasma 不新增曲线、Region、网格层或物理材料，不是 M3D-C1 真实 plasma classification，也不根据坐标、面积、颜色、名称或 `physical_label` 猜测。当前单区域 Adapter 已使用 OFT plasma technical role 建网，但只向 `Mesh2D` 传播 `pts/lc/reg` 和边界，未发现 technical role 被传播为 Writer 或外部格式的用户物理语义。
+History.md:123:本轮最终状态：OFT 26.6 N-region 能力调查 **COMPLETED**；OFT Region 编号主逻辑调查 **COMPLETED / 运行探针确认**；OFT no-plasma 行为调查 **COMPLETED**；synthetic plasma compatibility role **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；`multi_array_file`、轻量包含树、`regions inspect/generate`、regions map、inspection PNG、分 Region dx CLI/config 和生产 N-region `Mesh2D` 均为 **DESIGNED / NOT IMPLEMENTED**；LinkMesh 新多区域网格的 M3D-C1 加载、初始化、时间推进和物理兼容性继续 **PENDING**。当前无需继续扩展 OFT 探针，可以准备第一批业务实现：multi-array Reader、基础检查、轻量 parent/child 推导、唯一 root、deterministic synthetic role plan、`regions inspect`、regions map 和 inspection PNG；第一批验收后再实施 `regions generate`、setup-only 编号核对、`--mesh-dx`、`--region-dx`、正式 N-region `Mesh2D`、mesh PNG、Region triangle count 和基本结构检查。
+History.md:127:User 正式裁决 regions map 首版采用 TOML，是 inspect 必须输出、generate 必须读取的正式用户产物；generate 必须同时读取原始 multi-array 文件和 map。最小字段为 `schema_version=1`、`region_id`、`curve_id`、`parent_region_id`、`child_region_ids`、`color` 和 `physical_label`；唯一 root 使用 `parent_region_id=0`，children 按正式 Region ID 升序写出。`physical_label` 是可编辑的普通 TOML 字符串，默认空，不要求非空或唯一，不参与 synthetic plasma、technical role、Region ID、dx、Writer、M3D-C1 classification 或求解器行为；`color` 只作确定性显示元数据，不表示物理材料。
+History.md:133:OFT 26.6 N-region、nested/sibling/mixed topology、分 Region常数 dx、setup-only、fresh rebuild、dx-change 编号调查均保持 **PASS / COMPLETED**；输入重排影响为 **OBSERVED**；no-plasma 行为为 **CONFIRMED REJECTED**；synthetic plasma policy 为 **DESIGNED / USER-APPROVED / NOT IMPLEMENTED**。M3D-C1 求解器本身多区域能力的 User-confirmed 事实与 LinkMesh 新多区域输出尚未实现、其兼容性仍 PENDING 的状态继续严格分离。当前产品接口裁决已完成，不需要继续执行 OFT 能力探针，技术文档足以进入第一批 inspect 源码实现；但 `multi_array_file` Reader、`regions inspect`、TOML regions map、synthetic role Adapter、`regions generate` 和生产 N-region `Mesh2D` 仍均为 **NOT IMPLEMENTED**。
+History.md:137:38. 完成 multi-array 第一、二批生产业务及多区域 TRIMEG 接线实现归档（蓝图升至 v4.9）。第一批已实现重复 counted R-Z blocks Reader、空行规则、至少双 block、基础几何检查、curve_id、轻量唯一根包含树、parent/children、deterministic synthetic plasma compatibility role、OFT setup-only 最终 Region ID、`regions inspect`、TOML regions map 与 inspection PNG。第二批已实现 generate 对原始输入与 map 的重建核对、全局 `mesh_dx`、按最终 Region ID 的 `region_dx`、无全局默认时完整覆盖、独立 TOML/CLI 配置合并、N-region OFT/Triangle、`Mesh2D`、每 Region triangle count 与多区域 mesh PNG。未知 Region ID、缺失 dx、重复 Region ID及 map/input 不一致均已被正确拒绝，输入 multi-array 文件和 regions map 未被修改；inspect/generate 的帮助分组、CLI 错误呈现和旧无子命令入口作用域均已收口。
+History.md:139:User 提供的直接服务器证据为：本轮开始前精简后的七模块自动测试基线 **96 passed**；`linkmesh regions generate --help` 成功；two-level 与 four-level 真实 OFT/Triangle 多区域网格生成成功；统一 mesh_dx、最终 Region ID 局部覆盖、无 mesh_dx 时完整 Region 覆盖、TOML generate 配置和 CLI 覆盖 TOML 均成功；最终 `Mesh2D` 含 nodes、triangles、region_ids 与 root outer_boundary，每个 Region 均有三角形；多区域 mesh PNG 已生成并由 User 人工复核。状态严格记录为：多区域 OFT/Triangle **GENERATED**，生产 N-region `Mesh2D` **STRUCTURALLY CHECKED**，多区域 PNG **GENERATED / USER-REVIEWED**。96 passed 是本轮实现前服务器基线，不是本轮修改后的测试结果。
+History.md:143:本轮未修改 `Mesh2D`、regions map schema、dx 规则、OFT Adapter、HDF5 Writer、M3D-C1、SMB helper 或 TRIMEG complete-11 schema。静态核对现有 Writer 只消费 `Mesh2D`，没有单 Region 限制，不根据 region_ids 拒绝 N-region；`vert`/`tria` 不转置，`tria` 仍为 `(T,3)` 且仅在 Writer 内转 1-based，不增加 Region ID 第四列；`region_ids` 不写出；`idxevert` 来自最终拓扑外边界，`idxivert` 为补集，`nbcRZ/Rbc/Zbc` 来自 root outer_boundary。内部 Region 界面保留在共形拓扑中，但当前 TRIMEG 文件不携带 LinkMesh Region 标签。
+History.md:147:本轮多区域 TRIMEG 接线状态为 **IMPLEMENTED**。在 User 真实运行前，多区域 HDF5 仍为 **NOT GENERATED / PENDING**；h5py complete-11 真实回读为 **PENDING**；标准 MATLAB/TRIMEG consumer 加载为 **PENDING**。mock Writer 测试和 PNG 均不能提升这些状态。M3D-C1 多区域、多 geometric face、Region ID 到 face tag、physical_label classification、C1 兼容性、TXT/SMB/helper schema 修改继续为 **PENDING / NOT OPEN**。
+Project_Tree.md:5:- 文档状态：当前有效（对应技术蓝图 v4.9；multi-array inspect/generate、N-region Mesh2D 与 PNG 已实现并完成真实 OFT/Triangle 结构验收；多区域 TRIMEG 接线已实现，真实 HDF5、h5py 和 MATLAB/TRIMEG 验收待执行）
+Project_Tree.md:30:      ├── M3D-C1 analytic model TXT + PUMI native SMB
+Project_Tree.md:34:OFT/Triangle 是 LinkMesh 唯一的二维三角剖分底座。PUMI 不重新生成三角网格，只负责建立目标几何分类、构造 APF/MDS 网格并调用官方接口写出 native SMB。
+Project_Tree.md:36:LinkMesh 当前不建设 M3D-C1 消费端、SMB loader、SMB validator、多区域 M3D-C1 模型、三维网格或并行分区工具。
+Project_Tree.md:49:| PUMI native SMB Writer 与 C++ helper | 生成侧 PASSED |
+Project_Tree.md:52:| M3D-C1 TXT+SMB 加载 | PASSED |
+Project_Tree.md:70:| 多区域 N-region `Mesh2D` | STRUCTURALLY CHECKED |
+Project_Tree.md:71:| 多区域 mesh PNG | GENERATED；已由 User 人工复核 |
+Project_Tree.md:82:| M3D-C1 求解器多区域模拟能力 | User 根据同门实际展示确认 |
+Project_Tree.md:83:| LinkMesh 新多区域网格的 M3D-C1 使用 | 尚未生成或验证 |
+Project_Tree.md:85:| OFT 多区域拓扑 | 待调查 |
+Project_Tree.md:86:| M3D-C1 多区域、多 geometric face 与 C1 兼容性 | 待调查，未开放 |
+Project_Tree.md:94:TXT、rank-0 SMB、PNG：已生成
+Project_Tree.md:96:TXT+SMB 加载：PASSED
+Project_Tree.md:113:regions generate 多区域 TRIMEG：
+Project_Tree.md:143:M3D-C1 本身能够进行多区域模拟：
+Project_Tree.md:146:LinkMesh 新多区域网格：
+Project_Tree.md:150:既有 TXT+SMB 已完成 M3D-C1 加载和初始化；后续交付给组内同学的网格仍在继续运行。
+Project_Tree.md:235:├── M3DC1/
+Project_Tree.md:246:- LinkMesh SCOREC helper 的当前正式源码位于 `native/linkmesh_scorec_helper/`。
+Project_Tree.md:248:  `LINKMESH_SCOREC_HELPER`。
+Project_Tree.md:249:- `M3DC1/` 和 `TOKAMAKER/` 是外部参考源码区域，不是 LinkMesh 自有业务模块。
+Project_Tree.md:253:- `scripts/probe_oft_multi_array_regions.py` 是 OFT 26.6 多区域生成、基本结构、
+Project_Tree.md:273:  SMB、TRIMEG 或 M3D-C1 外部消费。
+Project_Tree.md:370:  → 共享 M3DC1ModelSpec
+Project_Tree.md:371:  → TXT Writer + SMB Writer/native helper
+Project_Tree.md:372:  → TXT + rank-0 SMB
+Project_Tree.md:376:TXT Writer 和 SMB Writer 使用同一个 `M3DC1ModelSpec`，以保持 geometric vertices、edges、loop、face 和分类标签一致。SMB 是由 PUMI 写出的 native 二进制文件。当前 TXT+SMB 已完成 M3D-C1 加载和初始化；时间推进仍待验证。
+Project_Tree.md:387:- **输出**：标准工作流按目标生成 HDF5 或配套 TXT/SMB/PNG；多区域 generate 默认
+Project_Tree.md:392:- **不负责**：网格算法、边界重采样、几何分类、SMB 字节实现或 helper 生命周期。
+Project_Tree.md:436:1 个区域，并成功生成 TXT、rank-0 SMB 和 PNG；M3D-C1 加载、初始化和时间推进仍待
+Project_Tree.md:446:- **不负责**：第二种剖分后端、参考 GFile 绘图、PUMI 网格生成、
+Project_Tree.md:459:生成并完成结构检查。该结果不开放异常 polygon、M3D-C1 多区域或多 face。
+Project_Tree.md:469:- **不负责**：调用 OFT、PUMI、h5py、CLI 或任何 Writer。
+Project_Tree.md:474:- **职责**：构造 single-loop、single-face 的 `M3DC1ModelSpec`。
+Project_Tree.md:475:- **输出**：TXT Writer 和 SMB Writer 共同使用的 analytic geometric model。
+Project_Tree.md:476:- **不负责**：调用 PUMI、生成 SMB、读取固定外部 TXT 模板或处理多 face 模型。
+Project_Tree.md:480:- **输入**：已经验证的 `M3DC1ModelSpec`。
+Project_Tree.md:482:- **输出**：与 SMB 配套使用的 TXT model 文件。
+Project_Tree.md:483:- **不负责**：生成网格、调用 PUMI、写 SMB 或自行分配另一套几何标签。
+Project_Tree.md:487:- **输入**：`Mesh2D`、同一个 `M3DC1ModelSpec`、SMB 基础路径。
+Project_Tree.md:489:- **输出**：由 helper 和 PUMI 写出的 rank-0 native SMB。
+Project_Tree.md:490:- **不负责**：在 Python 中实现 SMB 字节格式、加载或反向验证 SMB、运行 M3D-C1 求解器。
+Project_Tree.md:492:用户提供的 `mesh.smb` 是基础路径。锁定的 PUMI 目标版本在单进程 rank 0 下实际生成类似：
+Project_Tree.md:498:rank 插入由 SMB Writer/helper 与 PUMI 管理，不由普通用户手工改写。
+Project_Tree.md:520:  判断 SMB/HDF5 是否可被求解器消费或替代数值验收。
+Project_Tree.md:538:  → 在具有相容 SCOREC/PUMI 和 MPI 的环境中编译
+Project_Tree.md:541:  → PUMI writeNative()
+Project_Tree.md:542:  → rank-0 native SMB
+Project_Tree.md:552:6. helper 不重新剖分网格；它只根据 Python 提供的节点、连接关系、几何模型和分类信息构造 APF/MDS 网格，并调用 SCOREC/PUMI 官方接口写出 native SMB。
+Project_Tree.md:553:7. helper 连接 Python SMB Writer 与 SCOREC/PUMI；它不读取 GFile 或边界文件，不调用
+Project_Tree.md:562:- 编译后的 helper 可由 SMB Writer 按正式定位规则找到；
+Project_Tree.md:563:- helper 所依赖的 SCOREC/PUMI 与 MPI 环境相容。
+Project_Tree.md:570:显式定位变量：LINKMESH_SCOREC_HELPER
+Project_Tree.md:571:定位顺序：helper_path → LINKMESH_SCOREC_HELPER → PATH
+Project_Tree.md:574:服务器构建目录属于仓库外产物，不是 Git 源码。helper 的目标 SCOREC/PUMI 版本、
+Project_Tree.md:684:在本轮读取或修改。现有 `Mesh2D`、TRIMEG Writer、M3D-C1 Writer、SMB helper、旧
+Project_Tree.md:703:M3D-C1/SCOREC/PUMI 加载、初始化、时间推进或物理验收。
+Project_Tree.md:713:- TXT、rank-0 SMB 和 PNG 已实际生成。
+Project_Tree.md:715:- 配套 TXT+SMB 已完成 M3D-C1 外部加载和初始化。
+Project_Tree.md:717:- 历史上对未开放组合异常类型的过时预期，以及要求 TRIMEG target 调用 SMB Writer
+Project_Tree.md:739:### `M3DC1/`
+Project_Tree.md:743:LinkMesh 不修改 M3D-C1/SCOREC/PUMI 消费端，也不把这些源码当作 LinkMesh 自有业务模块。该目录同样属于外部只读参考区。
+Project_Tree.md:772:6. 阅读 `src/linkmesh/m3dc1_model.py`、`src/linkmesh/writers/m3dc1_model_writer.py` 和 `src/linkmesh/writers/smb_writer.py`，理解 TXT 与 SMB 如何共享模型语义。
+Project_Tree.md:773:7. 阅读 `native/linkmesh_scorec_helper/main.cc` 和对应 `CMakeLists.txt`，理解 Python 与 SCOREC/PUMI 的边界。
+Project_Tree.md:776:如果只想运行 LinkMesh，不需要先阅读 helper 的内部交换契约或 PUMI 生命周期细节。
+Project_Tree.md:843:- 生成的 TXT、SMB 和 PNG；
+Project_Tree.md:860:- 配置决定目标、区域策略、网格尺度以及 TXT、SMB、PNG 输出路径。
+Project_Tree.md:885:4. SMB Writer 能按正式定位规则找到 helper；
+Project_Tree.md:886:5. helper 所需的 SCOREC/PUMI 与 MPI 环境正确。
+Project_Tree.md:911:- 只修改 M3D-C1 求解参数、且网格需求不变时，可以复用已确认的 TXT 和 SMB。
+Project_Tree.md:912:- TXT、SMB 和 PNG 应与产生它们的配置文件一起保存，便于复现。
+Project_Tree.md:924:  → 生成 TXT、rank-0 SMB 和 PNG
+Project_Tree.md:933:- 可能覆盖已经人工确认的 TXT、SMB 和 PNG；
+Project_Tree.md:935:- LinkMesh、OFT、PUMI、MPI 和 M3D-C1 的错误会混入同一份作业日志；
+Project_Tree.md:942:  → 生成 TXT、SMB、PNG
+Project_Tree.md:947:正式求解脚本可以检查 TXT 和 rank-0 SMB 是否存在，但不应默认重新生成并覆盖它们。
+Project_Tree.md:960:- 通过 SCOREC/PUMI helper 写出串行 rank-0 native SMB；
+Project_Tree.md:964:- 通过 TXT+SMB 完成 M3D-C1 加载和初始化。
+Project_Tree.md:968:- M3D-C1 多区域；
+Project_Tree.md:977:- SMB loader 或 validator；
+Project_Tree.md:981:多区域、三维和并行分区不能从当前单区域闭环外推为已经支持。
+Project_Tree.md:987:multi-array 多区域路线的 OFT 前置调查、inspect 和 generate 生产链已经完成。下一步是：
+Project_Tree.md:990:2. 使用 `regions generate --target trimeg --hdf5 <path>` 生成真实多区域 HDF5。
+Project_Tree.md:997:7. M3D-C1 多区域、多 face、classification 和 C1 兼容性继续单独调查，当前不开放。
+Project_Tree.md:999:M3D-C1 本身能够进行多区域模拟，是 User 根据同门实际展示确认的能力；该事实不表示
+Project_Tree.md:1000:LinkMesh 当前已生成或验证新多区域网格。
+Project_Tree.md:1013:OFT 单区域空间变密度、Triangle refinement、多区域拓扑以及 M3D-C1 C1 与多
+Project_Tree.md:1015:M3D-C1 多区域、多 face、三维和并行分区仍未开放。
+Project_Tree.md:1019:验证 OFT 26.6、`linkmesh-scorec-helper`、SCOREC/PUMI、MPI、C++ runtime 和 ABI，
+Project_Tree.md:1031:OFT 自动包含树未提供。M3D-C1 求解器本身的多区域能力不等于 LinkMesh 多区域输出
+Project_Tree.md:1043:| TXT 与 SMB 如何共享模型 | `src/linkmesh/m3dc1_model.py` |
+Project_Tree.md:1048:| OFT 或 M3D-C1 外部实现如何工作 | `TOKAMAKER/`、`M3DC1/`，仅限只读查证 |
+Project_Tree.md:1061:- PUMI/APF/MDS 生命周期细节；
+Project_Tree.md:1063:- 多区域或未来功能设计。

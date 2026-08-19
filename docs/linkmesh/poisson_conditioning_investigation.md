@@ -2,14 +2,83 @@
 
 ## 1. 调查状态
 
-- 调查状态：**STOPPED / DEPENDENCY DECISION REQUIRED**
+- 调查状态：**REVISED DESIGN / IMPLEMENTATION PENDING**
 - Poisson benchmark：**USER-APPROVED / NOT IMPLEMENTED**
-- 稀疏条件数估算方法：**METHOD PENDING**
+- 稀疏条件数估算方法：**DEPENDENCY-FREE LANCZOS / DESIGNED / NOT IMPLEMENTED**
 - 源码、测试、真实矩阵和 quality plot 信息框：**NOT IMPLEMENTED / NOT RUN**
 - 本轮未修改业务源码、测试、依赖、CLI、配置、`Mesh2D`、Writer、Plotter、
   mesh quality、refinement、helper、OFT/Triangle、native ABI、目标格式或 work plan。
 
-## 2. 直接证据
+## 2. 修订后的正式方案
+
+本项目不新增 SciPy 或其他运行依赖。后续实现使用现有 NumPy 与 Python 标准库，
+并在独立窄职责模块 `src/linkmesh/poisson_conditioning.py` 中提供仅服务于该
+benchmark 的内部数据结构。
+
+固定 benchmark 为单位扩散系数二维连续三节点线性三角形有限元：
+
+```text
+-Delta u = f
+```
+
+每个最终 `Mesh2D` 节点对应一个标量自由度。由最终三角形拓扑提取无向 edge incidence：
+incidence=1 的节点施加齐次 Dirichlet，incidence=2 的边（包括 Region interface）
+保持普通内部边，incidence>2 继续视为非流形错误。不得仅依赖 `outer_boundary` 坐标，
+也不得通过浮点坐标近邻猜测边界节点。右端项不属于本 benchmark。
+
+后续实现可使用以下内部结构：
+
+- P1 局部刚度矩阵解析组装；
+- COO-like triplets；
+- 合并重复项；
+- CSR-like `row_ptr`、`col_idx`、`values`；
+- 稀疏 matrix-vector multiplication；
+- Dirichlet 自由度消除后的对称 `K_ff`。
+
+该结构不是 LinkMesh 公共稀疏矩阵 API，不修改 `Mesh2D`，不构造生产规模 dense
+矩阵，不显式计算逆，不实现通用稀疏矩阵库。
+
+条件数使用 dependency-free Lanczos：
+
+1. 以确定性初始向量启动；
+2. 通过稀疏 matrix-vector multiplication 迭代；
+3. 将 `K_ff` 投影为较小的对称三对角矩阵 `T_m`；
+4. 只使用 NumPy `eigvalsh(T_m)` 获取 Ritz 值；
+5. 取最大和最小正 Ritz 值；
+6. 计算：
+
+```text
+condition_estimate = lambda_max_estimate / lambda_min_estimate
+```
+
+实现必须固定并记录初始向量或随机种子、最大阶数、收敛容差、最大迭代次数、Ritz
+值稳定性或残差检查，以及有限精度下的重正交策略。必须区分 `converged`、
+`not_converged` 和 `failed`，未收敛或无效 Ritz 值时不得伪造条件数。禁止使用
+`numpy.linalg.cond` 处理全局矩阵、SciPy `eigsh`/`splu`/`onenormest`、完整特征谱、
+显式逆和预条件器。
+
+报告同时包含原始条件数与：
+
+```text
+dof_normalized_condition = condition_estimate / N_free
+```
+
+该指标仅用于相同计算域、benchmark、边界条件、P1 离散和 Lanczos 设置之间的相对
+比较，不是新的矩阵条件数，也不是严格不变量。必须同时报告两者，不设置通用阈值，
+不用于不同 PDE、装置、边界条件或有限元阶次之间的绝对排名。
+
+quality plot 的 Q 着色保持不变：`Q=0` 红、`Q=0.5` 蓝、`Q=1` 绿，normalization
+固定 `[0,1]`。条件数不映射为逐 triangle 颜色，也不与 Q 合并为综合评分。只有请求
+`--quality-plot` 时才执行 benchmark，并在信息框中显示 benchmark 名称、free DOFs、
+matrix NNZ、Ritz 值、两个条件指标、estimator 名称和状态；未请求时不增加计算成本。
+该设计不新增 CLI/TOML 字段，也不改变现有 `--plot`。
+
+至少需要记录的报告字段包括 benchmark name、finite element、boundary condition、
+total nodes、Dirichlet DOFs、free DOFs、matrix NNZ、两个 Ritz 值、raw condition
+estimate、DOF-normalized indicator、Lanczos iterations、tolerance、convergence
+status 和 failure stage/reason。
+
+## 3. 直接证据
 
 ### 2.1 实时仓库依赖事实
 
@@ -78,7 +147,20 @@
 - `PoissonConditioningReport` 的最终字段；
 - 后续测试矩阵和真实验收状态。
 
-## 4. 所需最小 User 裁决
+## 4. 已完成的 User 裁决
+
+User 已明确：
+
+- 项目不新增 SciPy；
+- 不引入其他稀疏矩阵库；
+- 不建立通用条件数 pass/fail 阈值；
+- 原始条件数和 `condition / N_free` 均需报告；
+- 条件诊断只用于相同研究问题中不同网格配置的比较；
+- quality plot 保持 Q 颜色和 `[0,1]` normalization；
+- 不加入预条件器；
+- 该 benchmark 不代表 TRIMEG、M3D-C1 或下游求解器真实矩阵。
+
+后续实现仍需单独授权源码和测试修改；本轮仅完成文档方案修订。
 
 继续设计前，需要 User 在独立依赖变更任务中明确批准以下二选一方案之一。
 
@@ -198,6 +280,43 @@ Plotter 只能接收已经计算完成的不可变 Poisson report 并显示信�
 Lanczos/ARPACK 替代算法，也不批准引入另一套未声明稀疏库。
 
 ## 8. 本轮结论
+
+原先由“requirements.txt 不含 SciPy”触发的停止报告已经完成方案转向，不再等待
+SciPy 版本裁决，也不改回 SciPy 方案。当前正式方向为仅使用现有 NumPy 与标准库的
+dependency-free Lanczos 估算，但实现仍未开始。
+
+必须继续保留的实现停止条件包括：当前 NumPy 无法执行小型三对角
+`eigvalsh`、无法可靠提取 final `Mesh2D` 拓扑外边界、无法在不修改 `Mesh2D` 的前提
+下完成数据流、Lanczos 无法形成可验证的收敛状态，或实现被迫新增依赖、CLI/TOML
+字段、Writer/Reader/refinement/外部接口修改。遇到这些情况必须停止并报告准确文件、
+符号、实时证据、冲突条款和所需最小裁决。
+
+最终状态：
+
+- P1 Poisson stiffness conditioning benchmark：**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
+- dependency-free Lanczos estimator：**DESIGNED / NOT IMPLEMENTED**；
+- raw condition estimate：**DESIGNED / NOT IMPLEMENTED**；
+- DOF-normalized indicator：**DESIGNED / NOT IMPLEMENTED**；
+- quality plot conditioning information box：**DESIGNED / NOT IMPLEMENTED**；
+- universal condition threshold：**NOT ADOPTED**；
+- preconditioner benchmark：**OUT OF SCOPE**；
+- SciPy 和其他新增运行依赖：**OUT OF SCOPE**。
+
+明确回答：
+
+- 不新增 SciPy 或其他运行依赖：**是**；
+- benchmark 为单位系数 P1 Poisson：**是**；
+- 对 final triangle 拓扑外边界施加齐次 Dirichlet：**是**；
+- 内部 Region interface 作为普通内部边：**是**；
+- 使用无依赖内部稀疏结构：**设计为是，源码尚未实现**；
+- 避免 dense 矩阵、完整特征谱和显式逆：**是**；
+- 使用 Lanczos 估算：**是，源码尚未实现**；
+- 同时报告 raw condition 和 `condition / N_free`：**设计为是，源码尚未实现**；
+- 明确归一化不是严格不变量：**是**；
+- 不设置通用阈值：**是**；
+- 不加入预条件器：**是**；
+- 保持 Q 热图颜色与 normalization：**是**；
+- Poisson conditioning 仍为 NOT IMPLEMENTED：**是**。
 
 当前不能诚实地完成“根据实时 SciPy 版本锁定稀疏条件估算方法”的蓝图迭代，因为
 `requirements.txt` 没有 SciPy，项目也没有最低 SciPy 版本契约。按照 User 明确给出的
