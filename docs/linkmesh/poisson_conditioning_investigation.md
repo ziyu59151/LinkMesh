@@ -117,27 +117,113 @@ LinkMesh 自行实现稀疏 LU、Lanczos、ARPACK 替代品或矩阵逆估算器
 当前无需修改 `Mesh2D`、Writer、目标格式、helper、OFT/Triangle 或 native ABI，
 也不需要新增公开 CLI/TOML 字段。
 
-## 6. 本轮结论
+## 6. 实时 Mesh2D 与 quality plot 只读复核
+
+### 6.1 Mesh2D 与拓扑边界
+
+实时 `src/linkmesh/mesh.py::Mesh2D` 提供：
+
+- `nodes`：约定 shape `(N,2)`，坐标为 `[R,Z]`；正式数据契约为
+  `float64`；
+- `triangles`：约定 shape `(T,3)`，内部使用 0-based 整数节点索引；
+- `region_ids`：shape `(T,)`，保存每个 triangle 的 OFT 最终 Region ID；
+- `outer_boundary`：可选 `(B,2) float64` 有序最外层输入几何边界，顺时针、
+  隐式闭合，不包含 Triangle 后续插入的全部边界 Steiner nodes。
+
+因此，`outer_boundary` 不能直接充当 Poisson Dirichlet 自由度集合。实时
+`Mesh2D.triangles` 足以确定性构造每个 triangle 的三条无向边并统计 incidence：
+
+- incidence `=1`：final mesh 的拓扑外边界 edge；
+- incidence `=2`：普通内部 edge，包括共形 Region interface；
+- incidence `>2`：non-manifold，应作为诊断失败。
+
+incidence `=1` edges 的全部端点可可靠形成齐次 Dirichlet node 集合，无需修改
+`Mesh2D`、增加 marker 字段或进行浮点坐标近邻猜测。Region ID 不参与外边界判定，
+所以内部 Region interface 不会被误作 Dirichlet 边界。
+
+### 6.2 final Mesh2D 到 quality plot 的实时调用链
+
+实时 `src/linkmesh/cli.py` 已确认：
+
+- 根命令先生成 initial mesh，再完成可选 local refinement，并把
+  `refinement_result.mesh` 作为 final `Mesh2D`；
+- `regions generate` 先生成 initial N-region mesh，再完成 transition/local
+  combined refinement，并把 `refinement_result.mesh` 作为 final `Mesh2D`；
+- 两条路径均在 `quality_plot_path` 非空时，基于同一个 final `Mesh2D` 调用
+  `calculate_triangle_shape_quality(mesh)`，随后调用
+  `plot_triangle_shape_quality(mesh, triangle_shape_quality, path)`；
+- quality plot 并不总是伴随完整 `calculate_mesh_quality()` 报告：完整报告当前只在
+ 相应 verbose 条件成立时计算，而逐 triangle Q 在请求 quality plot 时独立计算；
+- 实时 Plotter 使用固定 `Q=0 red / Q=0.5 blue / Q=1 green` 连续颜色映射和
+  `Normalize(vmin=0.0, vmax=1.0)`。
+
+因此，未来“请求现有 quality plot 时才计算 Poisson benchmark；未请求时无新增成本”
+在当前编排结构上可表达，不需要新增公开 CLI/TOML 字段，也不要求修改 `Mesh2D`、
+Writer、refinement、helper、OFT/Triangle、native ABI 或目标格式。后续若获准实施，
+Plotter 只能接收已经计算完成的不可变 Poisson report 并显示信息框，不能组装矩阵、
+执行分解或估算特征值。
+
+## 7. 蓝图冲突与停止裁决
+
+### 7.1 冲突位置
+
+当前 `LinkMesh_Architecture_Plan.md` v5.8 没有把 SciPy 定义为正式运行依赖，也没有
+定义 Poisson conditioning 模块、估算器版本下界或稀疏分解资源边界。与此同时，
+实时 `requirements.txt` 不含 SciPy。
+
+因此，把以下任一内容现在写成正式、可实施的蓝图契约都会超出直接证据：
+
+- 锁定 `scipy.sparse` 的生产组装格式；
+- 锁定 `eigsh`、shift-invert、`splu`、`LinearOperator` 或 `onenormest`；
+- 宣称当前最低 SciPy 版本支持候选算法；
+- 最终裁决 spectral `cond2` 或 estimated `cond1`；
+- 宣称代表性数万自由度 Case 的 LU fill-in、峰值内存或收敛已经验证。
+
+这与蓝图先行纪律及当前任务“不得新增依赖”的边界直接冲突，并触发 User 明确规定的
+停止条件。故本轮不得修改正式蓝图、History、Project Tree 或组内使用说明来制造一个
+依赖前提尚未成立的正式功能定义。
+
+### 7.2 所需最小裁决
+
+恢复任务所需的最小 User 裁决为：
+
+1. 单独批准 SciPy 成为 LinkMesh 正式运行依赖；
+2. 结合目标 Python、Linux Release 和服务器环境批准最低 SciPy 版本；
+3. 允许只读核对该版本官方 API 和目标服务器安装事实；
+4. 允许执行独立小型方法探针和代表性 final `Mesh2D` 资源探针；
+5. 探针后再裁决 spectral `cond2` 或 estimated `cond1`；
+6. 另行授权修改依赖文件、业务源码和 tests。
+
+若不批准 SciPy，则必须重新定义目标；当前不批准 LinkMesh 自行实现稀疏 LU、
+Lanczos/ARPACK 替代算法，也不批准引入另一套未声明稀疏库。
+
+## 8. 本轮结论
 
 当前不能诚实地完成“根据实时 SciPy 版本锁定稀疏条件估算方法”的蓝图迭代，因为
 `requirements.txt` 没有 SciPy，项目也没有最低 SciPy 版本契约。按照 User 明确给出的
 停止条件，本轮在依赖核对处停止。
+
+本轮修改范围仅为补充本专项停止报告中的实时 `Mesh2D`、拓扑边界、quality plot
+调用链、蓝图冲突和最小裁决证据。未修改正式蓝图、History、Project Tree、组内使用
+说明、业务源码、tests、依赖、examples、Reader、Writer、Plotter、Mesh quality、
+refinement、helper、OFT/Triangle、native ABI、目标格式或任何 work plan。
 
 明确回答：
 
 - 固定 benchmark 方向是否为单位系数 P1 Poisson：**是，User 已批准方向**。
 - 是否拟对全部拓扑外边界施加齐次 Dirichlet：**是**。
 - 内部 Region interface 是否保持内部边：**是**。
+- 是否使用全局稀疏矩阵：**设计方向是，但依赖尚未批准**。
 - 是否允许生产实现使用 dense 全局矩阵：**否**。
 - 是否允许计算完整特征谱：**否**。
 - 是否允许显式求逆：**否**。
-- 最终推荐 spectral `cond2` 还是 one-norm：**PENDING；倾向调查 spectral
-  `cond2`，但依赖与方法证据不足，尚未正式锁定**。
-- 是否报告 raw condition：**设计方向是**。
-- 是否报告 condition / `N_free`：**设计方向是**。
+- 最终推荐 spectral `cond2` 还是 one-norm：**METHOD PENDING；数学上优先调查
+  spectral `cond2`，但实时依赖和代表性探针证据不足，尚未正式锁定**。
+- 是否使用稀疏 LU：**候选方法需要，但尚未形成正式实现契约**。
+- 是否同时报告 raw condition 和 condition / `N_free`：**设计方向是**。
 - 是否明确归一化不是严格不变量：**是**。
 - 是否设置通用阈值：**否**。
 - 是否加入预条件器：**否**。
-- 是否改变 Q 热图颜色：**否**。
+- 是否改变 Q 热图颜色或 `[0,1]` normalization：**否**。
 - 是否新增公开 CLI/TOML 字段：**本轮否**。
 - Poisson conditioning 是否仍为 NOT IMPLEMENTED：**是**。
