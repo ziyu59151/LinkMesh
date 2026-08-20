@@ -988,3 +988,98 @@ def test_root_mesh_dx_default_toml_and_cli_priority(tmp_path):
 
     assert toml_config.mesh_dx == 0.06
     assert cli_config.mesh_dx == 0.04
+
+
+def test_regions_config_boundary_list_is_optional_and_preserves_old_source(
+    tmp_path,
+):
+    inspect_config = load_regions_inspect_config(
+        RegionsInspectOverrides(
+            multi_array_file="multi.rz",
+            regions_map="regions.toml",
+            plot="inspect.png",
+        ),
+        cwd=tmp_path,
+    )
+    assert inspect_config.multi_array_file_path == (
+        tmp_path / "multi.rz"
+    ).resolve()
+    assert inspect_config.boundary_list_path is None
+
+    generate_config = load_regions_generate_config(
+        RegionsGenerateOverrides(
+            multi_array_file="multi.rz",
+            regions_map="regions.toml",
+            plot="mesh.png",
+            mesh_dx=0.08,
+        ),
+        cwd=tmp_path,
+    )
+    assert generate_config.multi_array_file_path == (
+        tmp_path / "multi.rz"
+    ).resolve()
+    assert generate_config.boundary_list_path is None
+
+
+def test_regions_config_preserves_boundary_list_path_and_source_exclusivity(
+    tmp_path,
+):
+    inspect_path = tmp_path / "inspect.toml"
+    inspect_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "boundary_list = 'boundaries.toml'\n"
+        "regions_map = 'regions.toml'\n"
+        "plot = 'inspect.png'\n",
+        encoding="utf-8",
+    )
+    inspect_config = load_regions_inspect_config(
+        RegionsInspectOverrides(),
+        config_arg=str(inspect_path),
+        cwd=tmp_path,
+    )
+    assert inspect_config.multi_array_file_path is None
+    assert inspect_config.boundary_list_path == (
+        tmp_path / "boundaries.toml"
+    ).resolve()
+
+    generate_path = tmp_path / "generate.toml"
+    generate_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "boundary_list = 'boundaries.toml'\n"
+        "regions_map = 'regions.toml'\n"
+        "plot = 'mesh.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n",
+        encoding="utf-8",
+    )
+    generate_config = load_regions_generate_config(
+        RegionsGenerateOverrides(),
+        config_arg=str(generate_path),
+        cwd=tmp_path,
+    )
+    assert generate_config.multi_array_file_path is None
+    assert generate_config.boundary_list_path == (
+        tmp_path / "boundaries.toml"
+    ).resolve()
+
+    conflict_path = tmp_path / "conflict.toml"
+    conflict_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'multi.rz'\n"
+        "boundary_list = 'boundaries.toml'\n"
+        "regions_map = 'regions.toml'\n"
+        "plot = 'inspect.png'\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError, match="互斥"):
+        load_regions_inspect_config(
+            RegionsInspectOverrides(),
+            config_arg=str(conflict_path),
+            cwd=tmp_path,
+        )

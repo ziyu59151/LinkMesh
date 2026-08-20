@@ -163,10 +163,10 @@ class RegionsInspectConfig:
     config_path: Optional[Path]
     mode: Literal["inspect"]
     multi_array_file_path: Optional[Path]
-    boundary_list_path: Optional[Path]
     regions_map_path: Path
     plot_path: Path
     verbose: bool
+    boundary_list_path: Optional[Path] = None
 
 
 @dataclass
@@ -199,7 +199,6 @@ class RegionsGenerateConfig:
     mode: Literal["generate"]
     target: Literal["mesh_only", "trimeg", "m3dc1"]
     multi_array_file_path: Optional[Path]
-    boundary_list_path: Optional[Path]
     regions_map_path: Path
     plot_path: Optional[Path]
     quality_plot_path: Optional[Path]
@@ -213,6 +212,7 @@ class RegionsGenerateConfig:
     transition_gradient: Optional[float]
     local_refinement: tuple[LocalRefinementConfig, ...]
     verbose: bool
+    boundary_list_path: Optional[Path] = None
 
 
 @dataclass
@@ -903,12 +903,49 @@ def load_regions_inspect_config(
         "verbose",
         config_path,
     )
-    multi_array_file_path = required_path("multi_array_file")
+    explicit_multi_array = overrides.multi_array_file is not UNSET
+    explicit_boundary_list = overrides.boundary_list is not UNSET
+    if explicit_multi_array and explicit_boundary_list:
+        raise ConfigError(
+            "regions inspect 的 multi_array_file 与 boundary_list 互斥，"
+            "不能同时通过 CLI 提供"
+        )
+
+    toml_multi_array = values.get("multi_array_file")
+    toml_boundary_list = values.get("boundary_list")
+    if (
+        not explicit_multi_array
+        and not explicit_boundary_list
+        and toml_multi_array is not None
+        and toml_boundary_list is not None
+    ):
+        raise ConfigError(
+            "regions inspect 的 multi_array_file 与 boundary_list 互斥，"
+            "不能同时在 TOML 中定义"
+        )
+
+    if explicit_boundary_list or (
+        not explicit_multi_array
+        and toml_boundary_list is not None
+    ):
+        multi_array_file_path = None
+        boundary_list_path = required_path("boundary_list")
+    else:
+        boundary_list_path = None
+        multi_array_file_path = required_path("multi_array_file")
+
     regions_map_path = required_path("regions_map")
     plot_path = required_path("plot")
 
     resolved_paths = (
-        ("multi_array_file", multi_array_file_path),
+        (
+            "boundary_list"
+            if boundary_list_path is not None
+            else "multi_array_file",
+            boundary_list_path
+            if boundary_list_path is not None
+            else multi_array_file_path,
+        ),
         ("regions_map", regions_map_path),
         ("plot", plot_path),
     )
@@ -927,6 +964,7 @@ def load_regions_inspect_config(
         config_path=config_path,
         mode="inspect",
         multi_array_file_path=multi_array_file_path,
+        boundary_list_path=boundary_list_path,
         regions_map_path=regions_map_path,
         plot_path=plot_path,
         verbose=verbose,
@@ -981,7 +1019,38 @@ def load_regions_generate_config(
         "regions target",
         config_path,
     )
-    multi_array_file_path = required_path("multi_array_file")
+
+    explicit_multi_array = overrides.multi_array_file is not UNSET
+    explicit_boundary_list = overrides.boundary_list is not UNSET
+    if explicit_multi_array and explicit_boundary_list:
+        raise ConfigError(
+            "regions generate 的 multi_array_file 与 boundary_list 互斥，"
+            "不能同时通过 CLI 提供"
+        )
+
+    toml_multi_array = values.get("multi_array_file")
+    toml_boundary_list = values.get("boundary_list")
+    if (
+        not explicit_multi_array
+        and not explicit_boundary_list
+        and toml_multi_array is not None
+        and toml_boundary_list is not None
+    ):
+        raise ConfigError(
+            "regions generate 的 multi_array_file 与 boundary_list 互斥，"
+            "不能同时在 TOML 中定义"
+        )
+
+    if explicit_boundary_list or (
+        not explicit_multi_array
+        and toml_boundary_list is not None
+    ):
+        multi_array_file_path = None
+        boundary_list_path = required_path("boundary_list")
+    else:
+        boundary_list_path = None
+        multi_array_file_path = required_path("multi_array_file")
+
     regions_map_path = required_path("regions_map")
 
     def optional_output_path(name: str) -> Optional[Path]:
@@ -1138,6 +1207,7 @@ def load_regions_generate_config(
         mode="generate",
         target=target,
         multi_array_file_path=multi_array_file_path,
+        boundary_list_path=boundary_list_path,
         regions_map_path=regions_map_path,
         plot_path=plot_path,
         quality_plot_path=quality_plot_path,
