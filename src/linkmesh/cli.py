@@ -317,7 +317,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="加载严格的 regions inspect TOML 配置；仅 CLI，不是 TOML 字段",
     )
-    inspect_input_group.add_argument(
+    inspect_input_sources = inspect_input_group.add_mutually_exclusive_group()
+    inspect_input_sources.add_argument(
         "--multi-array-file",
         dest="multi_array_file",
         default=UNSET,
@@ -325,6 +326,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "TOML: regions.multi_array_file；"
             "包含多个重复 counted R-Z 闭合轮廓的输入文件"
+        ),
+    )
+    inspect_input_sources.add_argument(
+        "--boundary-list",
+        dest="boundary_list",
+        default=UNSET,
+        metavar="PATH",
+        help=(
+            "TOML: regions.boundary_list；"
+            "引用多个独立 counted R-Z 坐标文件的 schema-v1 TOML 清单"
         ),
     )
     inspect_output_group.add_argument(
@@ -405,7 +416,8 @@ def build_parser() -> argparse.ArgumentParser:
             "trimeg 写 HDF5，m3dc1 写 model TXT 和 SMB；TOML: regions.target"
         ),
     )
-    generate_input_group.add_argument(
+    generate_input_sources = generate_input_group.add_mutually_exclusive_group()
+    generate_input_sources.add_argument(
         "--multi-array-file",
         dest="multi_array_file",
         default=UNSET,
@@ -413,6 +425,16 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "与 inspect 使用相同的重复 counted R-Z blocks 输入文件；"
             "TOML: regions.multi_array_file"
+        ),
+    )
+    generate_input_sources.add_argument(
+        "--boundary-list",
+        dest="boundary_list",
+        default=UNSET,
+        metavar="PATH",
+        help=(
+            "与 inspect 使用相同的 boundary-list TOML 清单；"
+            "TOML: regions.boundary_list"
         ),
     )
     generate_input_group.add_argument(
@@ -940,10 +962,23 @@ def _print_mesh_quality_report(report) -> None:
             )
 
 
+def _read_regions_boundaries(cfg):
+    """Read the selected multi-region source into the shared plan input."""
+    if cfg.boundary_list_path is not None:
+        from linkmesh.readers.boundary_list_reader import read_boundary_list
+
+        return read_boundary_list(cfg.boundary_list_path)
+
+    from linkmesh.readers.boundary_reader import read_multi_boundary_file
+
+    return read_multi_boundary_file(cfg.multi_array_file_path)
+
+
 def _run_regions_inspect(args: argparse.Namespace) -> None:
     """Execute the first-batch inspect chain without Triangle generation."""
     overrides = config_mod.RegionsInspectOverrides(
         multi_array_file=args.multi_array_file,
+        boundary_list=args.boundary_list,
         regions_map=args.regions_map,
         plot=args.plot,
         verbose=True if args.verbose else UNSET,
@@ -954,7 +989,6 @@ def _run_regions_inspect(args: argparse.Namespace) -> None:
     )
 
     from linkmesh.mesher.oft_adapter import inspect_multi_region_ids
-    from linkmesh.readers.boundary_reader import read_multi_boundary_file
     from linkmesh.regions import (
         assign_final_region_ids,
         build_region_plan,
@@ -963,7 +997,7 @@ def _run_regions_inspect(args: argparse.Namespace) -> None:
     )
     from linkmesh.utils.plotter import plot_regions_inspection
 
-    blocks = read_multi_boundary_file(cfg.multi_array_file_path)
+    blocks = _read_regions_boundaries(cfg)
     plan = build_region_plan(blocks)
     region_ids = inspect_multi_region_ids(plan)
     numbered_plan = assign_final_region_ids(plan, region_ids)
@@ -989,6 +1023,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
     overrides = config_mod.RegionsGenerateOverrides(
         target=args.target,
         multi_array_file=args.multi_array_file,
+        boundary_list=args.boundary_list,
         regions_map=args.regions_map,
         plot=args.plot,
         quality_plot=args.quality_plot,
@@ -1019,7 +1054,6 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
         generate_multi_region_mesh,
         inspect_multi_region_ids,
     )
-    from linkmesh.readers.boundary_reader import read_multi_boundary_file
     from linkmesh.regions import (
         assign_final_region_ids,
         build_region_plan,
@@ -1030,7 +1064,7 @@ def _run_regions_generate(args: argparse.Namespace) -> None:
     from linkmesh.utils.plotter import plot_regions_mesh
 
     records = read_regions_map(cfg.regions_map_path)
-    blocks = read_multi_boundary_file(cfg.multi_array_file_path)
+    blocks = _read_regions_boundaries(cfg)
     plan = build_region_plan(blocks)
     region_ids = inspect_multi_region_ids(plan)
     numbered_plan = assign_final_region_ids(plan, region_ids)

@@ -23,6 +23,28 @@ def _load(tmp_path: Path, **overrides):
     )
 
 
+def test_regions_source_cli_overrides_toml_source(tmp_path):
+    config_path = tmp_path / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'inspect'\n"
+        "multi_array_file = 'old.rz'\n"
+        "regions_map = 'map.toml'\n"
+        "plot = 'plot.png'\n",
+        encoding="utf-8",
+    )
+
+    config = load_regions_inspect_config(
+        RegionsInspectOverrides(boundary_list="new.toml"),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+
+    assert config.multi_array_file_path is None
+    assert config.boundary_list_path == (tmp_path / "new.toml").resolve()
+
+
 def test_regions_inspect_config_is_isolated_and_cli_overrides_toml(tmp_path):
     config_dir = tmp_path / "regions-config"
     config_dir.mkdir()
@@ -131,6 +153,30 @@ def test_regions_inspect_config_rejects_normalized_toml_cli_collision(
             config_arg=str(config_path),
             cwd=tmp_path,
         )
+
+
+def test_regions_generate_source_cli_overrides_toml_source(tmp_path):
+    config_path = tmp_path / "regions.toml"
+    config_path.write_text(
+        "schema_version = 1\n"
+        "[regions]\n"
+        "mode = 'generate'\n"
+        "boundary_list = 'old.toml'\n"
+        "regions_map = 'map.toml'\n"
+        "plot = 'plot.png'\n"
+        "[regions.mesh]\n"
+        "mesh_dx = 0.08\n",
+        encoding="utf-8",
+    )
+
+    config = load_regions_generate_config(
+        RegionsGenerateOverrides(multi_array_file="new.rz"),
+        config_arg=str(config_path),
+        cwd=tmp_path,
+    )
+
+    assert config.boundary_list_path is None
+    assert config.multi_array_file_path == (tmp_path / "new.rz").resolve()
 
 
 def test_regions_generate_config_merges_toml_and_cli_region_dx(tmp_path):

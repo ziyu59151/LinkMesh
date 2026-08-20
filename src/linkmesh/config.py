@@ -1101,8 +1101,18 @@ def load_regions_generate_config(
                 "regions generate target=m3dc1 需要同时提供 model 和 smb"
             )
 
+    source_name = (
+        "boundary_list"
+        if boundary_list_path is not None
+        else "multi_array_file"
+    )
+    source_path = (
+        boundary_list_path
+        if boundary_list_path is not None
+        else multi_array_file_path
+    )
     resolved_paths = [
-        ("multi_array_file", multi_array_file_path),
+        (source_name, source_path),
         ("regions_map", regions_map_path),
     ]
     for name, path in (

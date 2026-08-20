@@ -227,10 +227,15 @@ def _interior_point(polygon: np.ndarray, curve_id: int) -> np.ndarray:
 
 
 def build_region_plan(blocks: Sequence[np.ndarray]) -> RegionPlan:
-    """Build a deterministic unique-root containment tree from input blocks."""
+    """Build a deterministic unique-root containment tree from boundary records.
+
+    ``blocks`` may contain the legacy ordered ``(N, 2)`` arrays or objects
+    exposing ``curve_id`` and ``points`` (the boundary-list reader record).
+    Both forms enter the same containment and Region-plan algorithm.
+    """
     if len(blocks) < 2:
         raise RegionsError(
-            "multi_array_file 至少需要两个 blocks；"
+            "multi-region 输入至少需要两个 blocks；"
             "单一区域请使用 array_file + single_region"
         )
 
@@ -238,8 +243,19 @@ def build_region_plan(blocks: Sequence[np.ndarray]) -> RegionPlan:
     areas: dict[int, float] = {}
     interior_points: dict[int, np.ndarray] = {}
 
-    for curve_id, block in enumerate(blocks, start=1):
-        points, area = _validate_curve(block, curve_id)
+    for index, block in enumerate(blocks, start=1):
+        if hasattr(block, "curve_id") and hasattr(block, "points"):
+            curve_id = int(block.curve_id)
+            points_in = block.points
+        else:
+            curve_id = index
+            points_in = block
+
+        if curve_id <= 0 or curve_id in curves:
+            raise RegionsError(
+                f"curve_id={curve_id} 非法或重复"
+            )
+        points, area = _validate_curve(points_in, curve_id)
         curves[curve_id] = points
         areas[curve_id] = area
         interior_points[curve_id] = _interior_point(points, curve_id)

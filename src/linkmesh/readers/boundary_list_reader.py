@@ -39,9 +39,7 @@ def _error(list_path: Path, message: str) -> BoundaryListError:
 
 
 def _strip_comment(line: str) -> str:
-    match = _COMMENT_PATTERN.match(line)
-    assert match is not None
-    return match.group(1).strip()
+    return line.split("#", 1)[0].strip()
 
 
 def _parse_curve_id(value: Any, list_path: Path, index: int) -> int:

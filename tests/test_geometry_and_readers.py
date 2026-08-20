@@ -9,6 +9,10 @@ import numpy as np
 import pytest
 
 from linkmesh.mesh import Mesh2D
+from linkmesh.readers.boundary_list_reader import (
+    BoundaryListError,
+    read_boundary_list,
+)
 from linkmesh.readers.boundary_reader import (
     BoundaryFormatError,
     read_boundary_file,
@@ -174,6 +178,77 @@ def test_multi_boundary_reader_ignores_empty_lines_and_preserves_blocks(
     np.testing.assert_array_equal(blocks[1][0], [0.5, 0.5])
 
 
+def test_boundary_list_reader_reads_comments_paths_and_curve_ids(tmp_path):
+    boundary_dir = tmp_path / "boundaries"
+    boundary_dir.mkdir()
+    (boundary_dir / "outer.pts").write_text(
+        "# outer boundary\n"
+        "4  # point count\n"
+        "0 0  # R Z\n"
+        "0 3\n"
+        "3 3\n"
+        "3 0\n",
+        encoding="utf-8",
+    )
+    (boundary_dir / "inner.pts").write_text(
+        "4\n"
+        "1 1\n"
+        "1 2\n"
+        "2 2\n"
+        "2 1\n",
+        encoding="utf-8",
+    )
+    list_path = boundary_dir / "boundaries.toml"
+    list_path.write_text(
+        "schema_version = 1\n\n"
+        "[[boundaries]]\n"
+        'file = "outer.pts"\n'
+        "curve_id = 10\n\n"
+        "[[boundaries]]\n"
+        'file = "inner.pts"\n',
+        encoding="utf-8",
+    )
+
+    records = read_boundary_list(list_path)
+
+    assert [record.curve_id for record in records] == [10, 1]
+    assert [record.source_path for record in records] == [
+        (boundary_dir / "outer.pts").resolve(),
+        (boundary_dir / "inner.pts").resolve(),
+    ]
+    assert all(record.points.dtype == np.float64 for record in records)
+    assert all(_signed_area(record.points) < 0.0 for record in records)
+
+
+def test_boundary_list_reader_rejects_duplicate_references_and_bad_ids(
+    tmp_path,
+):
+    point_file = tmp_path / "curve.pts"
+    point_file.write_text(
+        "4\n0 0\n0 1\n1 1\n1 0\n",
+        encoding="utf-8",
+    )
+    duplicate_path = tmp_path / "duplicate.toml"
+    duplicate_path.write_text(
+        "schema_version = 1\n"
+        "[[boundaries]]\nfile = 'curve.pts'\ncurve_id = 1\n"
+        "[[boundaries]]\nfile = './curve.pts'\ncurve_id = 2\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(BoundaryListError, match="重复引用"):
+        read_boundary_list(duplicate_path)
+
+    bad_id_path = tmp_path / "bad-id.toml"
+    bad_id_path.write_text(
+        "schema_version = 1\n"
+        "[[boundaries]]\nfile = 'curve.pts'\ncurve_id = true\n"
+        "[[boundaries]]\nfile = 'curve.pts.2'\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(BoundaryListError, match="curve_id"):
+        read_boundary_list(bad_id_path)
+
+
 def test_multi_boundary_reader_rejects_single_and_truncated_blocks(tmp_path):
     single = tmp_path / "single"
     single.write_text("3\n0 0\n1 0\n0 1\n", encoding="utf-8")
@@ -187,6 +262,31 @@ def test_multi_boundary_reader_rejects_single_and_truncated_blocks(tmp_path):
     )
     with pytest.raises(BoundaryFormatError, match="EOF"):
         read_multi_boundary_file(truncated)
+
+
+def test_boundary_list_records_reuse_region_plan_and_map_semantics():
+    from linkmesh.readers.boundary_list_reader import BoundaryRecord
+
+    root = np.array([[-1, -1], [-1, 3], [5, 3], [5, -1]], dtype=float)
+    child = np.array([[0, 0], [0, 2], [2, 2], [2, 0]], dtype=float)
+
+    plan = build_region_plan(
+        (
+            BoundaryRecord(10, root, Path("outer.pts")),
+            BoundaryRecord(20, child, Path("inner.pts")),
+        )
+    )
+
+    assert plan.root_curve_id == 10
+    assert plan.by_curve_id()[10].child_curve_ids == (20,)
+    assert plan.by_curve_id()[20].parent_curve_id == 10
+
+    from linkmesh.regions import assign_final_region_ids, region_map_entries
+
+    numbered = assign_final_region_ids(plan, {10: 2, 20: 1})
+    records = region_map_entries(numbered)
+    assert {record.curve_id for record in records} == {10, 20}
+    assert len(records) == 2
 
 
 def test_region_plan_supports_nested_siblings_and_synthetic_tie_break():

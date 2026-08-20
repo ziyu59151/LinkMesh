@@ -251,6 +251,7 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
         (
             "--config",
             "--multi-array-file",
+            "--boundary-list",
             "--regions-map",
             "--plot",
             "--verbose",
@@ -287,6 +288,40 @@ def test_regions_inspect_help_is_scoped_and_grouped(capsys):
         "Output",
         "Runtime",
     )
+
+
+def test_regions_cli_rejects_root_and_parent_boundary_list_scope():
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--boundary-list", "boundaries.toml"])
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["regions", "--boundary-list", "boundaries.toml"])
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "regions",
+                "inspect",
+                "--multi-array-file",
+                "multi.rz",
+                "--boundary-list",
+                "boundaries.toml",
+            ]
+        )
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "regions",
+                "generate",
+                "--multi-array-file",
+                "multi.rz",
+                "--boundary-list",
+                "boundaries.toml",
+            ]
+        )
 
 
 def test_regions_inspect_runs_setup_only_map_and_plot(
@@ -352,6 +387,7 @@ def test_regions_generate_help_is_scoped(capsys):
             "--config",
             "--target",
             "--multi-array-file",
+            "--boundary-list",
             "--regions-map",
             "--mesh-dx",
             "--region-dx",
