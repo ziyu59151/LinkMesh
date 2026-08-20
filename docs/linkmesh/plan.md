@@ -1,5 +1,113 @@
 # LinkMesh 组内使用说明
 
+> 本文只提供组内 Case 使用索引和示例，不定义正式接口或技术契约。正式定义以
+> 根目录 `LinkMesh_Architecture_Plan.md` 为准。
+
+## Multi-file boundary list input（尚未实现）
+
+`Multi-file boundary list input` 已获 User 批准，但当前仍为
+**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**。正式参数为
+`--boundary-list`，只属于 `regions inspect` 和 `regions generate`，不属于根命令或
+`regions` 父命令，并且不能与 `--multi-array-file` 混用。
+
+### 1. inspect 配置
+
+```toml
+schema_version = 1
+
+[regions]
+mode = "inspect"
+boundary_list = "boundaries/boundaries.toml"
+regions_map = "regions.toml"
+plot = "regions-inspection.png"
+
+[runtime]
+verbose = true
+```
+
+### 2. boundary list TOML
+
+路径相对 boundary list 文件自身解析：
+
+```toml
+schema_version = 1
+
+[[boundaries]]
+file = "outer.pts"
+curve_id = 1
+
+[[boundaries]]
+file = "wall.pts"
+
+[[boundaries]]
+file = "plasma.pts"
+curve_id = 7
+```
+
+`file` 是独立 counted R-Z 坐标文件。`curve_id` 可以省略；省略时按清单顺序分配
+当前未占用的最小正整数，并跳过全部显式 ID。清单记录重排后必须重新执行 inspect。
+
+### 3. 带注释的 counted R-Z 坐标文件
+
+例如 `boundaries/outer.pts`：
+
+```text
+# outer boundary
+4  # valid point count
+0.0 0.0  # R Z
+0.0 1.0
+
+1.0 1.0  # empty lines are ignored
+1.0 0.0
+```
+
+坐标文件中的 `#` 整行注释、行尾注释和空行不计入 `N`。它仍然必须表示一条严格
+counted、隐式闭合的 R-Z 边界。`!`、`//`、CSV、多条曲线和元数据列不支持。
+
+### 4. generate 配置
+
+```toml
+schema_version = 1
+
+[regions]
+mode = "generate"
+boundary_list = "boundaries/boundaries.toml"
+regions_map = "regions.toml"
+plot = "mesh.png"
+quality_plot = "mesh_quality.png"
+
+[regions.mesh]
+mesh_dx = 0.08
+transition_gradient = 5.0
+
+[runtime]
+verbose = true
+```
+
+`generate` 仍必须重新读取 boundary list 及其坐标文件，并读取、验证用户确认过的
+regions map。只读 regions map 不能替代原始坐标输入。
+
+### 5. 两种来源不能混用
+
+同一配置或同一次 CLI 不能同时选择：
+
+```text
+--multi-array-file boundaries.rz
+--boundary-list boundaries/boundaries.toml
+```
+
+CLI 显式来源会整体覆盖 TOML 中的另一种来源，但不会与 TOML 来源拼接。两种来源
+最终进入同一个 Region plan 和同一个 regions map schema。
+
+### 6. physical_label 与根 array_file
+
+`physical_label` 继续由 regions map 提供，inspect 默认写空字符串，用户可以填写
+或留空，不要求唯一，也不影响 Region plan、OFT technical role、dx、Writer 或
+求解器行为。边界清单不新增第二个物理语义字段。
+
+根单区域 `array_file` 保持原有单文件、单曲线 counted R-Z 契约，不支持 boundary
+list；根命令仍只生成一个 Region。
+
 本文面向日常 Case 使用。正式字段、兼容矩阵和迁移边界以根目录
 `LinkMesh_Architecture_Plan.md` 为准，严格配置 schema 的实现以
 `src/linkmesh/config.py` 为准。

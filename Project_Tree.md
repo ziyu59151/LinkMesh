@@ -2,17 +2,120 @@
 
 - 文档主受众：Human-facing
 - 知识库用途：人类导读
-- 文档状态：当前有效（对应技术蓝图 v5.8；根命令及 legacy nested 源码收口已经完成，
-  `regions inspect/generate` 是唯一多区域入口；全局 `transition_width`、
-  `transition_gradient` 及根/regions R-Z point local refinement 均已实现并完成
-  生成侧真实验收；Triangle shape quality Q plot 已获批准，源码实现仍 PENDING）
-- 最高依据：根目录 `LinkMesh_Architecture_Plan.md`
-- 事实边界：本文档是面向组内研究人员的轻量仓库地图，不定义正式接口、字段契约或验收标准。遇到目录职责、数据结构、文件格式、模块接口或阶段状态争议时，以 `LinkMesh_Architecture_Plan.md` 为最终裁决依据；详细运行证据与测试记录见 `History.md`。
-- 主要用途：帮助首次接触 LinkMesh 的研究人员快速理解项目用途、当前能力、源码布局、最短运行方式、原生 helper 的位置以及后续查证入口。
+- 文档状态：当前有效，配套技术蓝图 v5.10
+- 本文职责：仓库导航、阅读入口和日常使用索引
+- 技术定义：以根目录 `LinkMesh_Architecture_Plan.md` 为准
+- 完成事实：以 `History.md` 为准
+- 组内使用：以 `docs/linkmesh/plan.md` 为准
+- 开发纪律：以 `CONTEXT.md` 为准
 
-> AI 代理执行开发任务时，应先阅读 `CONTEXT.md` 和 `LinkMesh_Architecture_Plan.md`。本文件不是第二份技术蓝图，也不能替代正式技术契约。
+本文不定义 CLI、TOML、Reader、Region ID、Mesh2D、Writer、文件格式或验收标准。
+遇到冲突时不得用本文覆盖正式蓝图、实时源码或直接运行证据。
 
 ---
+
+## 1. 顶层目录
+
+```text
+LinkMesh/
+├── CONTEXT.md
+├── LinkMesh_Architecture_Plan.md
+├── Project_Tree.md
+├── History.md
+├── examples/
+├── src/linkmesh/
+├── tests/
+├── docs/
+├── native/
+├── packaging/
+└── scripts/
+```
+
+主要用途：
+
+| 路径 | 用途 |
+|---|---|
+| `src/linkmesh/` | LinkMesh 自有 Python 业务源码 |
+| `src/linkmesh/readers/` | GFile 和 counted R-Z 输入 Reader |
+| `src/linkmesh/mesher/` | OFT/Triangle Adapter 与 refinement |
+| `src/linkmesh/writers/` | TRIMEG、M3D-C1 TXT/SMB 输出 |
+| `src/linkmesh/utils/` | PNG 几何和质量检查工具 |
+| `native/` | LinkMesh SCOREC/PUMI helper 源码 |
+| `tests/` | 内部契约与薄编排回归 |
+| `docs/trimeg/` | TRIMEG 只读消费证据 |
+| `docs/linkmesh/` | 调查报告、组内使用说明和历史资料 |
+| `packaging/release/` | Release 构建与运行时脚本 |
+| `scripts/` | 独立调查或验证工具，不是业务入口 |
+
+大型 `M3DC1/`、`TOKAMAKER/` 等外部源码目录只用于只读查证，不属于 LinkMesh
+自有业务模块。
+
+---
+
+## 2. 当前主要入口
+
+```text
+python -m linkmesh
+  └── 根命令：单区域
+
+python -m linkmesh regions inspect
+  └── 多区域原始输入检查、Region map 和 inspection PNG
+
+python -m linkmesh regions generate
+  └── 多区域 Mesh2D、可选 refinement、PNG 和目标格式输出
+```
+
+当前多区域正式入口只有 `regions inspect/generate`。现有 `multi_array_file` 已实现；
+`Multi-file boundary list input` 已获批准但仍为 **DESIGNED / USER-APPROVED /
+NOT IMPLEMENTED**，预计落在 `readers`、`config`、`cli` 和 regions 编排层，不改变
+Mesh2D、Writer、helper 或外部格式。
+
+---
+
+## 3. 关键模块一行导读
+
+| 文件/目录 | 作用 |
+|---|---|
+| `src/linkmesh/config.py` | 严格 TOML schema、配置发现、优先级和 required-fields |
+| `src/linkmesh/cli.py` | CLI 参数解析与工作流编排 |
+| `src/linkmesh/readers/` | GFile、单曲线 counted R-Z 和多区域原始输入读取 |
+| `src/linkmesh/regions.py` | 多区域 Region plan、map 和结构核对 |
+| `src/linkmesh/mesh.py` | 统一 `Mesh2D` 中间对象 |
+| `src/linkmesh/mesher/` | OFT/Triangle 网格生成和已批准 refinement |
+| `src/linkmesh/writers/` | HDF5、M3D-C1 TXT/native SMB 输出 |
+| `src/linkmesh/utils/plotter.py` | 几何 PNG 和 Triangle shape quality PNG |
+| `native/linkmesh_scorec_helper/` | SCOREC/PUMI native SMB helper |
+
+---
+
+## 4. 文档身份与查找入口
+
+| 要查什么 | 阅读什么 |
+|---|---|
+| 正式接口、字段、格式、禁止事项、验收边界 | `LinkMesh_Architecture_Plan.md` |
+| 已完成能力、真实运行、外部消费和 PENDING 状态 | `History.md` |
+| 组内 Case 管理和简短使用示例 | `docs/linkmesh/plan.md` |
+| 开发纪律、只读边界和修改流程 | `CONTEXT.md` |
+| TRIMEG Loader 和消费证据 | `docs/trimeg/` |
+| M3D-C1/PUMI 外部实现 | `M3DC1/`、`TOKAMAKER/`（只读） |
+
+`docs/linkmesh/` 下的 work plan 仅记录人类阶段计划，不是技术契约；执行开发任务前
+应先阅读 `CONTEXT.md` 和当前技术蓝图，但不得把本导航文档当作第二份蓝图。
+
+---
+
+## 5. 推荐阅读顺序
+
+1. `Project_Tree.md`：了解仓库入口和文件职责。
+2. `CONTEXT.md`：了解开发纪律和读写边界。
+3. `LinkMesh_Architecture_Plan.md`：查阅正式技术契约。
+4. `src/linkmesh/cli.py`、`src/linkmesh/config.py`：了解用户输入和配置流。
+5. `src/linkmesh/readers/`、`src/linkmesh/regions.py`：了解边界和多区域数据流。
+6. `src/linkmesh/mesh.py`：了解统一中间网格对象。
+7. `src/linkmesh/mesher/`、`src/linkmesh/writers/`：了解生成和输出边界。
+8. `History.md`：查阅真实证据和未完成验收。
+
+本文不复制字段表、公式、测试计数、探针细节、外部 API 调用链或实现算法。
 
 ## 1. LinkMesh 是什么
 

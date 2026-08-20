@@ -3,7 +3,7 @@
 
 - 文档主受众：Aider-facing
 - 知识库用途：参考架构
-- 文档状态：正式版 **5.9**（根命令 legacy nested 源码收口已经完成；全局
+- 文档状态：正式版 **5.10**（根命令 legacy nested 源码收口已经完成；全局
   `transition_width`、`transition_gradient` 及根命令/`regions generate` 的可重复
   R-Z point local refinement 均已实现并完成生成侧真实验收；Triangle shape quality
   plot 已实现并完成当前仓库验收；M3D-C1 消费、时间推进、稳定性和物理正确性继续
@@ -2982,6 +2982,340 @@ M3D-C1 加载、初始化和时间推进仍必须分别验收，不得由生成�
 - PNG 不替代加载、初始化、时间推进、稳定性或物理正确性验收。
 
 ---
+
+## 5.7C Multi-file boundary list input
+
+状态：
+
+- `multi_array_file`：**IMPLEMENTED / PRESERVED**；
+- `boundary-list input`：**DESIGNED / USER-APPROVED / NOT IMPLEMENTED**；
+- `--boundary-list`：**APPROVED / SOURCE IMPLEMENTATION PENDING**；
+- `boundary-list inspect`：**DESIGNED / NOT IMPLEMENTED**；
+- `boundary-list generate`：**DESIGNED / NOT IMPLEMENTED**；
+- shared regions map：**PRESERVED / REQUIRED**；
+- root `array_file`：**IMPLEMENTED / UNCHANGED**。
+
+本能力的正式名称为 **Multi-file boundary list input**。它是现有
+`multi_array_file` 之外的第二种多区域原始边界组织方式，不改变现有
+`multi_array_file`、根命令 `array_file` 或 regions map schema。
+
+### 5.7C.1 入口、作用域与来源选择
+
+正式 CLI 参数固定为：
+
+```text
+--boundary-list PATH
+```
+
+该参数只属于：
+
+```text
+linkmesh regions inspect
+linkmesh regions generate
+```
+
+它不得加入根单区域命令、`linkmesh regions` 父命令或其他子命令。根命令仍只支持
+单个 `array_file`，不恢复 nested 根入口，也不新增根命令多区域
+`boundary_source`。
+
+`regions inspect` 和 `regions generate` 的原始输入来源选择组为：
+
+```text
+--multi-array-file PATH
+--boundary-list PATH
+```
+
+有效配置必须且只能选择一种来源：
+
+- 只选择 `multi_array_file`：合法；
+- 只选择 `boundary_list`：合法；
+- 两者都没有：required-field 失败；
+- 同一配置同时设置两者：失败；
+- 同一次 CLI 同时提供两者：由 argparse 互斥组失败。
+
+CLI 来源覆盖 TOML 来源时按整体来源选择处理：
+
+- TOML 选择 `multi_array_file`、CLI 显式提供 `boundary_list`：最终只使用
+  CLI 的 `boundary_list`；
+- TOML 选择 `boundary_list`、CLI 显式提供 `multi_array_file`：最终只使用
+  CLI 的 `multi_array_file`；
+- 不合并两个来源，不拼接两组曲线，不从一个来源补齐另一个来源；
+- 未提供 CLI 来源时，继续使用 TOML 选择；
+- 总体优先级仍为内建默认值 < TOML < 显式 CLI。
+
+`regions inspect` 使用哪一种来源，后续 `regions generate` 就必须重新读取同一种
+原始输入，并与用户确认过的 regions map 核对。regions map 不能替代任何原始坐标
+文件，也不保存 `boundary_list` 路径。
+
+准确 TOML 路径为：
+
+```toml
+schema_version = 1
+
+[regions]
+multi_array_file = "boundaries"
+# 或：
+boundary_list = "boundaries.toml"
+```
+
+同一 `[regions]` 表不得同时设置 `multi_array_file` 和 `boundary_list`。不得新增
+根命令 `[domain].boundary_source` 枚举值，不得把清单内容嵌入
+`linkmesh.in`。
+
+### 5.7C.2 边界清单 TOML schema
+
+`boundary_list` 本身是一个独立 TOML 文件：
+
+```toml
+schema_version = 1
+
+[[boundaries]]
+file = "outer_boundary.pts"
+curve_id = 1
+
+[[boundaries]]
+file = "wall_boundary.pts"
+
+[[boundaries]]
+file = "plasma_boundary.pts"
+curve_id = 7
+```
+
+顶层正式字段：
+
+- `schema_version`：必需，非布尔整数，必须为 `1`；
+- `boundaries`：必需，至少包含两个记录。
+
+每条 `[[boundaries]]` 记录正式字段：
+
+- `file`：必需、非空字符串；
+- `curve_id`：可选正整数。
+
+首版不在清单中增加 `region_id`、`parent`、`children`、
+`physical_label`、`color`、`dx`、mesh role、OFT technical role、
+plasma/vacuum 语义、face ID、loop ID、网格参数或 Writer 参数。标准 TOML `#`
+注释允许出现在清单文件中。
+
+清单未知顶层键、未知 section、未知记录字段、TOML 语法错误、缺失字段和类型错误
+必须严格失败。失败时不得生成部分 regions map。
+
+### 5.7C.3 curve_id 规则
+
+`curve_id` 可以显式提供，也可以省略。
+
+解析清单时：
+
+1. 显式 `curve_id` 必须是正整数；bool 不得作为整数接受；
+2. 全部显式 ID 必须唯一；
+3. 先收集全部显式 ID；
+4. 对省略 ID 的记录，按清单声明顺序处理；
+5. 每条省略 ID 的记录取得当前未被显式 ID或先前自动 ID占用的最小正整数；
+6. ID 不要求连续，也不要求等于最终 OFT Region ID；
+7. 自动 ID 确定性依赖清单记录顺序；
+8. 清单重排后必须重新执行 `regions inspect` 并使用新的 regions map；
+9. `generate` 不得根据旧 map 猜测、修复或重写新的 curve_id；
+10. 程序不得自动改写清单以填入自动分配的 ID。
+
+例如显式 ID 为 `1` 和 `3` 时，中间省略的记录自动取得 `2`。显式 ID 为 `2` 和
+`5` 时，两个省略记录依次取得 `1` 和 `3`。
+
+`curve_id` 仍只是输入曲线身份，不能替代正式最终 Region ID。最终 Region ID
+继续由 OFT setup/build 得到，并写入现有 regions map。
+
+### 5.7C.4 独立坐标文件格式与注释
+
+清单中的每个 `file` 引用一个独立 counted R-Z 坐标文件：
+
+```text
+N
+R1 Z1
+R2 Z2
+...
+RN ZN
+```
+
+`N` 表示有效坐标数据行数量。该 boundary-list 专用坐标文件允许：
+
+- 文件首尾空行；
+- 计数头和坐标数据之间空行；
+- 坐标数据之间空行；
+- 去除前导空白后以 `#` 开始的整行注释；
+- 计数头或坐标数据后的行尾 `#` 注释。
+
+空行和注释不计入 `N`。去除空行和注释后，每个文件必须严格包含一个十进制整数
+计数头、恰好 `N` 行 R-Z 双列有限浮点数据，并且不得存在额外有效数据。
+
+首版不支持 `!`、`//` 或其他注释语法，不支持多列元数据、单位声明、CSV 逗号、
+每点标签，也不支持在同一被引用文件中写入多条曲线。
+
+每个独立坐标文件继续沿用现有边界几何契约：
+
+- 至少三个互异有限点；
+- 首末点隐式闭合，末点不得重复首点；
+- 无相邻重复、零长度边、零面积或自交；
+- R 在前、Z 在后，单位为 m；
+- 方向规范化为顺时针并保持原起点；
+- 复用现有统一边界几何验证，不复制第二套几何数学。
+
+上述 `#` 注释规则只属于 boundary-list 引用的独立坐标文件。现有
+`multi_array_file` 仍只允许空行、不支持注释；根单区域 `array_file` 的严格
+Reader 契约保持不变。
+
+### 5.7C.5 路径与重复文件规则
+
+`boundary_list` 的 CLI/TOML 路径基准复用同作用域现有输入路径规则：
+
+- CLI 相对路径相对当前工作目录；
+- TOML 相对路径相对配置文件目录；
+- 路径规范化为绝对路径；
+- 不展开 `~` 或环境变量。
+
+清单记录中的 `file` 相对路径必须相对 boundary list 文件所在目录解析，不能相对
+当前工作目录解释；绝对路径保持绝对。错误信息必须同时指出清单路径、boundary
+记录和被引用路径。
+
+同一解析后文件身份不得被多个 boundary record 引用：
+
+1. 规范化后相同路径视为重复；
+2. 不同文本路径若解析为同一现有文件也视为重复；
+3. 符号链接或路径别名实际指向同一文件也视为重复；
+4. 重复必须在几何推导和 OFT/Triangle 调用前失败；
+5. 错误必须指出冲突的两个 boundary 记录及路径；
+6. 不自动去重，不保留第一条，也不因 curve_id 不同而放行；
+7. 不引入文件内容 SHA-256 或新的摘要契约。
+
+不同文件包含完全相同或重合曲线时，沿用现有多曲线几何检查拒绝。重复文件身份
+与曲线重合是不同失败层级，均不得延迟到 OFT/Triangle。
+
+### 5.7C.6 两种输入的共同数据流
+
+两种原始输入统一归一为同一组有序 boundary records：
+
+```text
+multi_array_file
+  → 重复 counted blocks Reader
+  → 有序 boundary records
+
+boundary_list
+  → boundary list Reader
+  → 多个独立 counted R-Z 坐标文件 Reader
+  → 有序 boundary records
+
+有序 boundary records
+  → curve_id
+  → 基础几何检查
+  → 轻量包含树
+  → deterministic synthetic technical-role plan
+  → OFT setup-only 最终 Region ID
+  → 现有 regions map
+  → inspection PNG
+```
+
+`generate` 的数据流保持为：
+
+```text
+原始 multi_array_file 或 boundary_list
+  + 用户确认的 regions map
+  → 重新读取原始输入
+  → 重新构建 boundary records 和 Region plan
+  → 现有 map 结构核对
+  → 复用现有 dx、transition、local refinement、OFT/Triangle、Mesh2D 和 Writer
+```
+
+两种输入不得建立两套 Region 算法、第二种 regions map 或第二套最终 Region ID
+语义。`physical_label` 继续复用现有 regions map 字段：inspect 默认空，用户可以
+编辑或留空，不要求唯一，不阻塞 generate，且不参与包含树、OFT technical role、
+Region ID、dx、Writer、M3D-C1 classification 或求解器行为。不得新增第二个
+curve physical semantics 字段。
+
+### 5.7C.7 失败边界
+
+清单层必须拒绝：
+
+- 清单文件缺失、不可读或 TOML 语法错误；
+- `schema_version` 缺失、类型错误或不是 `1`；
+- `boundaries` 缺失或少于两个记录；
+- 未知键、未知 section 或未知记录字段；
+- `file` 缺失、非字符串或空字符串；
+- `curve_id` 非法、为 bool、非正数或重复；
+- 重复文件身份。
+
+坐标文件层必须拒绝：
+
+- 被引用文件缺失或不可读；
+- 计数头缺失或非法；
+- 有效坐标行数量与 `N` 不一致；
+- 数据行不是 R-Z 双列；
+- 非数字、NaN 或 Inf；
+- 额外有效数据；
+- 少于三个互异点；
+- 相邻重复、零长度边、自交、零面积或其他现有非法边界。
+
+多曲线层必须沿用现有 regions 前提并拒绝：
+
+- 曲线自交；
+- 曲线间相交、相切、重合或部分重叠；
+- 歧义包含；
+- 多 root；
+- 不满足现有唯一 root、严格包含/分离和可达性规则的输入。
+
+任何失败都不得自动跳过、修复 curve_id、去重、切换到另一输入方式、转为单区域
+入口或生成不完整 map 后继续。
+
+### 5.7C.8 实现边界、测试与真实验收
+
+下一轮源码候选范围仅包括：
+
+- boundary-list 独立 Reader 或符合现有 readers 目录职责的窄职责文件；
+- `src/linkmesh/config.py`；
+- `src/linkmesh/cli.py`；
+- 现有 regions 编排文件；
+- 对应配置、CLI、Reader 和 regions 契约测试。
+
+实现应复用现有边界几何验证入口，不放宽或改写现有 `multi_array_file` 和根
+`array_file` 语法，不修改 Mesh2D、OFT/Triangle 数学、transition/local refinement、
+TRIMEG Writer、M3D-C1 builder/Writer/helper、HDF5/TXT/SMB 格式、regions map schema
+或外部依赖。不得引入 Simmetrix、SMD、SMS、DMG 或新的根命令。
+
+测试至少应覆盖：
+
+- inspect/generate 接受 `--boundary-list`，根命令和 regions 父命令拒绝；
+- 两种 CLI 来源互斥，TOML 同层冲突，CLI 来源整体覆盖 TOML 来源，来源缺失失败；
+- 准确 `[regions].boundary_list` 路径和帮助文本；
+- 显式、自动及显式/自动混合 curve_id；
+- 自动 ID 跳过全部显式 ID；
+- 非法、重复和 bool curve_id；
+- 清单未知字段、少于两个记录、缺失坐标文件；
+- 清单目录相对路径、规范化别名和符号链接重复；
+- 空行、整行注释、行尾注释、N 只统计有效坐标行；
+- 非法计数、列数、数值、额外数据和几何错误；
+- 现有 `multi_array_file` 仍拒绝注释，根 `array_file` 契约不回归；
+- 两种输入归一后的曲线、包含树、最终 Region map 结构一致；
+- generate 重新读取 boundary list，而不是只读取 map；
+- map 冲突继续提示重新 inspect；
+- 后续流程只生成并复用同一个 final Mesh2D，不改变 Writer 输入。
+
+真实验收至少应复用一个已验收的 two-level 或 four-level 多区域 Case，将原
+`multi_array_file` 拆成多个独立坐标文件和一个 boundary list，分别执行 inspect 和
+generate，人工检查 PNG/map，并比较曲线、Region、parent/children、Region 数量、
+triangle count、结构质量和 mesh PNG。应分别验证全部自动 ID 以及显式/自动混合 ID。
+这些自动测试、PNG 和生成侧检查不得提升为外部求解器消费证据。
+
+### 5.7C.9 当前状态
+
+本设计完成后，必须保持以下状态表述：
+
+| 能力 | 状态 |
+|---|---|
+| `multi_array_file` | **IMPLEMENTED / PRESERVED** |
+| `boundary-list input` | **DESIGNED / USER-APPROVED / NOT IMPLEMENTED** |
+| `--boundary-list` | **APPROVED / SOURCE IMPLEMENTATION PENDING** |
+| boundary-list inspect | **DESIGNED / NOT IMPLEMENTED** |
+| boundary-list generate | **DESIGNED / NOT IMPLEMENTED** |
+| shared regions map | **PRESERVED / REQUIRED** |
+| root `array_file` | **IMPLEMENTED / UNCHANGED** |
+
+不得把本节设计写成源码、测试、真实 Case 或生成产物已经完成。
 
 ## 6. TRIMEG HDF5 输出契约
 
