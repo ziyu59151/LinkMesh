@@ -149,6 +149,7 @@ class RegionsInspectOverrides:
     """Explicit CLI values for the isolated regions-inspect configuration."""
 
     multi_array_file: Any = UNSET
+    boundary_list: Any = UNSET
     regions_map: Any = UNSET
     plot: Any = UNSET
     verbose: Any = UNSET
@@ -161,7 +162,8 @@ class RegionsInspectConfig:
     schema_version: int
     config_path: Optional[Path]
     mode: Literal["inspect"]
-    multi_array_file_path: Path
+    multi_array_file_path: Optional[Path]
+    boundary_list_path: Optional[Path]
     regions_map_path: Path
     plot_path: Path
     verbose: bool
@@ -173,6 +175,7 @@ class RegionsGenerateOverrides:
 
     target: Any = UNSET
     multi_array_file: Any = UNSET
+    boundary_list: Any = UNSET
     regions_map: Any = UNSET
     plot: Any = UNSET
     quality_plot: Any = UNSET
@@ -195,7 +198,8 @@ class RegionsGenerateConfig:
     config_path: Optional[Path]
     mode: Literal["generate"]
     target: Literal["mesh_only", "trimeg", "m3dc1"]
-    multi_array_file_path: Path
+    multi_array_file_path: Optional[Path]
+    boundary_list_path: Optional[Path]
     regions_map_path: Path
     plot_path: Optional[Path]
     quality_plot_path: Optional[Path]
@@ -562,7 +566,13 @@ def _load_regions_inspect_toml(config_path: Path) -> dict[str, Any]:
     if not isinstance(runtime, dict):
         _fail(config_path, "[runtime]", "必须是 TOML table")
 
-    allowed_regions = {"mode", "multi_array_file", "regions_map", "plot"}
+    allowed_regions = {
+        "mode",
+        "multi_array_file",
+        "boundary_list",
+        "regions_map",
+        "plot",
+    }
     unknown_regions = set(regions) - allowed_regions
     if unknown_regions:
         _fail(
@@ -587,7 +597,7 @@ def _load_regions_inspect_toml(config_path: Path) -> dict[str, Any]:
                 "regions inspect 配置必须为字符串 \"inspect\"",
             )
         values["mode"] = "inspect"
-    for key in ("multi_array_file", "regions_map", "plot"):
+    for key in ("multi_array_file", "boundary_list", "regions_map", "plot"):
         if key in regions:
             values[key] = _check_str_path(
                 regions[key],
@@ -704,6 +714,7 @@ def _load_regions_generate_toml(
         "mode",
         "target",
         "multi_array_file",
+        "boundary_list",
         "regions_map",
         "plot",
         "quality_plot",
@@ -744,6 +755,7 @@ def _load_regions_generate_toml(
         )
     for key in (
         "multi_array_file",
+        "boundary_list",
         "regions_map",
         "plot",
         "quality_plot",

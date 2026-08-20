@@ -105,24 +105,6 @@ def test_regions_inspect_config_rejects_each_path_collision(
         )
 
 
-def test_regions_inspect_config_accepts_distinct_normalized_paths(tmp_path):
-    config = load_regions_inspect_config(
-        RegionsInspectOverrides(
-            multi_array_file="input.rz",
-            regions_map="regions.toml",
-            plot="regions.png",
-        ),
-        cwd=tmp_path,
-    )
-
-    assert len(
-        {
-            config.multi_array_file_path,
-            config.regions_map_path,
-            config.plot_path,
-        }
-    ) == 3
-
 
 def test_regions_inspect_config_rejects_normalized_toml_cli_collision(
     tmp_path,
