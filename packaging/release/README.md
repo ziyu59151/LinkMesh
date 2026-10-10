@@ -1293,6 +1293,32 @@ manifest/build-info.txt
 manifest/native-requirements.txt
 ```
 
+### 19.3 在新服务器上重新编译 helper（仅维护者）
+
+Release 已包含编译好的 `linkmesh-scorec-helper`，普通使用者不需要编译。仅当目标
+服务器缺少兼容 MPI，或需要更换 SCOREC/PUMI、MPI 或编译器时，维护者才在源代码
+仓库根目录按以下步骤重新编译：
+
+```bash
+# 前提：Linux x86-64、CMake ≥ 3.20、可用的 mpicxx、SCOREC/PUMI 2.2.9
+PUMI_PREFIX=/path/to/pumi-2.2.9        # 该前缀中应包含 SCORECConfig.cmake
+cmake -S native/linkmesh_scorec_helper -B "$HOME/LinkMesh_build/helper" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="$PUMI_PREFIX" \
+    -DMPI_CXX_COMPILER="$(command -v mpicxx)"
+cmake --build "$HOME/LinkMesh_build/helper" -j "$(nproc)"
+ldd "$HOME/LinkMesh_build/helper/linkmesh-scorec-helper"   # 不应出现 not found
+```
+
+产物为 `$HOME/LinkMesh_build/helper/linkmesh-scorec-helper`。重新打包时把
+`build_release.sh` 的 `--helper` 参数指向该产物即可（完整参数见
+`build_release.sh -h`）；脚本会校验 ELF 格式与动态库解析，并把 helper 的
+SHA-256 和 `file`/`ldd`/`readelf` 信息写入 `manifest/build-info.txt`。
+
+更换 SCOREC/PUMI、MPI 或编译器后，必须从空构建目录重新配置，不得复用旧
+`CMakeCache.txt`，也不得把既有二进制视为跨 ABI 可移植。编译与重新打包都需要
+源代码仓库，而不只是 Release 包。
+
 ## 20. 使用 CLI 参数
 
 ### 20.1 单区域
@@ -1504,6 +1530,9 @@ boundary_list = "boundary_list.toml"
 manifest/build-info.txt
 manifest/native-requirements.txt
 ```
+
+如果目标服务器缺少兼容的 MPI runtime，由维护者在源代码仓库中按 §19.3 重新
+编译 helper。
 
 TRIMEG HDF5 和普通 PNG 输出不调用 SCOREC helper，因此不要求 M3D-C1 helper 和 MPI 检查成功。
 
