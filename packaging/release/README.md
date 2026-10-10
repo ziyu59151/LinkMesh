@@ -1,18 +1,19 @@
-# LinkMesh Linux x86-64 Release
+# LinkMesh 0.2.0 Linux x86-64 Release
 
-LinkMesh 是用于生成二维 R-Z 非结构三角网格的命令行工具。
+LinkMesh 是一个用于生成二维 R-Z 非结构三角网格的命令行工具。
 
-主要工作流：
+主要功能包括：
 
 - 从 GFile/EQDSK 或单条 counted R-Z 边界生成单区域网格；
-- 从 multi-array 文件生成多区域网格；
+- 从一个 multi-array 文件生成多区域网格；
 - 从 boundary-list 清单及多个独立坐标文件生成多区域网格；
-- 按 Region 设置不同目标尺度；
-- 设置 interface transition refinement；
+- 为不同 Region 设置不同目标网格尺度；
+- 设置 Region interface 尺寸过渡；
 - 设置 R-Z point local refinement；
 - 输出 TRIMEG HDF5；
 - 输出 M3D-C1 model TXT 和 native SMB；
-- 生成网格几何 PNG 和三角形 Shape quality Q PNG。
+- 生成网格几何 PNG；
+- 生成三角形 Shape quality Q PNG。
 
 ## 1. 交付内容
 
@@ -20,20 +21,20 @@ LinkMesh 是用于生成二维 R-Z 非结构三角网格的命令行工具。
 
 ```text
 README.md
-linkmesh-release-<VERSION>-linux-x86_64.tar.gz
-linkmesh-release-<VERSION>-linux-x86_64.tar.gz.sha256
+linkmesh-release-0.2.0-linux-x86_64.tar.gz
+linkmesh-release-0.2.0-linux-x86_64.tar.gz.sha256
 ```
 
 其中：
 
-- `README.md`：安装、环境检查和运行指南；
+- `README.md`：环境准备、输入格式和运行说明；
 - `.tar.gz`：LinkMesh Linux x86-64 Release；
 - `.sha256`：Release 压缩包的 SHA-256 校验文件。
 
-Release 压缩包内部包含：
+Release 压缩包内部结构：
 
 ```text
-linkmesh-release-<VERSION>-linux-x86_64/
+linkmesh-release-0.2.0-linux-x86_64/
 ├── bin/
 │   ├── linkmesh
 │   ├── linkmesh-bootstrap.py
@@ -44,83 +45,74 @@ linkmesh-release-<VERSION>-linux-x86_64/
     └── site-packages/
         ├── linkmesh/
         ├── OpenFUSIONToolkit/
-        └── OpenFUSIONToolkit-*.dist-info/
+        └── openfusiontoolkit-26.6.dist-info/
 ```
 
 Release 已携带：
 
-- LinkMesh Python 包；
+- LinkMesh；
 - OpenFUSIONToolkit 26.6；
 - OpenFUSIONToolkit 配套原生库；
 - `linkmesh-scorec-helper`；
-- 静态链接进 helper 的 SCOREC/PUMI 组件；
+- helper 所需的 SCOREC/PUMI 核心组件；
 - LinkMesh 启动器；
-- LinkMesh 分层环境检查器；
-- 构建信息、依赖信息和内部 SHA-256 manifest。
+- 环境检查工具；
+- 构建和依赖信息；
+- Release 内部文件校验清单。
 
-Release 不携带：
+目标环境需要提供：
 
-- Python 解释器；
+- Linux x86-64；
+- Python 3；
 - NumPy；
-- h5py；
-- Matplotlib；
-- MPI runtime；
-- glibc；
-- libstdc++。
+- h5py，仅在输出 TRIMEG HDF5 时需要；
+- Matplotlib，仅在生成 PNG 时需要；
+- 兼容的 MPI runtime，仅在输出 M3D-C1 SMB 时需要；
+- 兼容的 glibc 和 libstdc++。
 
-目标系统必须是 Linux x86-64，并提供兼容的 Python 3 环境。
+## 2. 校验并解压
 
-其他 Python 3 版本是否可用，应以目标服务器上的 `linkmesh-check` 和真实运行结果为准。
-
-## 2. 校验与解压
-
-进入三个交付文件所在目录。
-
-先设置实际压缩包名称：
+进入三个交付文件所在目录：
 
 ```bash
-ARCHIVE="linkmesh-release-<VERSION>-linux-x86_64.tar.gz"
-CHECKSUM="${ARCHIVE}.sha256"
-```
-
-将 `<VERSION>` 替换为收到的实际版本，例如：
-
-```bash
-ARCHIVE="linkmesh-release-0.2.0-linux-x86_64.tar.gz"
-CHECKSUM="${ARCHIVE}.sha256"
+cd /path/to/LinkMesh-0.2.0-linux-x86_64-release
 ```
 
 检查文件：
 
 ```bash
-ls -lh README.md "$ARCHIVE" "$CHECKSUM"
+ls -lh \
+    README.md \
+    linkmesh-release-0.2.0-linux-x86_64.tar.gz \
+    linkmesh-release-0.2.0-linux-x86_64.tar.gz.sha256
 ```
 
 校验压缩包：
 
 ```bash
-sha256sum -c "$CHECKSUM"
+sha256sum -c \
+    linkmesh-release-0.2.0-linux-x86_64.tar.gz.sha256
 ```
 
-成功时应显示：
+校验成功时应显示：
 
 ```text
-linkmesh-release-<VERSION>-linux-x86_64.tar.gz: OK
+linkmesh-release-0.2.0-linux-x86_64.tar.gz: OK
 ```
 
 解压：
 
 ```bash
-tar -xzf "$ARCHIVE"
+tar -xzf linkmesh-release-0.2.0-linux-x86_64.tar.gz
 ```
 
 记录解压目录的绝对路径：
 
 ```bash
-RELEASE="$PWD/linkmesh-release-<VERSION>-linux-x86_64"
+RELEASE="$PWD/linkmesh-release-0.2.0-linux-x86_64"
 ```
 
-确认入口：
+确认主要入口：
 
 ```bash
 test -x "$RELEASE/bin/linkmesh"
@@ -133,47 +125,125 @@ ls -lh \
     "$RELEASE/bin/linkmesh-scorec-helper"
 ```
 
-检查 Release 内部文件：
+校验解压后的内部文件：
 
 ```bash
 cd "$RELEASE"
-
 sha256sum -c manifest/SHA256SUMS
-```
-
-完成后可以返回工作目录：
-
-```bash
 cd -
 ```
 
-Release 可以整体移动。移动后重新设置 `RELEASE` 即可。
+Release 目录可以整体移动。移动后重新设置 `RELEASE` 即可：
 
-## 3. Python 环境
+```bash
+RELEASE="/new/path/to/linkmesh-release-0.2.0-linux-x86_64"
+```
 
-Release 不包含 Python 解释器。
+## 3. 准备 Python 环境
 
-启动器按以下优先级选择 Python：
+Release 不包含 Python 解释器，也不自动修改用户的 Python 环境。
+
+运行 LinkMesh 的 Python 环境至少需要：
+
+```text
+Python 3
+NumPy
+```
+
+生成 TRIMEG HDF5 还需要：
+
+```text
+h5py
+```
+
+生成 PNG 还需要：
+
+```text
+Matplotlib
+```
+
+### 3.1 使用已有 Conda 环境
+
+激活已经安装相应依赖的环境：
+
+```bash
+conda activate linkmesh
+```
+
+检查 Python：
+
+```bash
+command -v python
+python --version
+```
+
+指定 LinkMesh 使用当前环境中的 Python：
+
+```bash
+export LINKMESH_PYTHON="$(command -v python)"
+```
+
+检查依赖：
+
+```bash
+"$LINKMESH_PYTHON" -c \
+    "import numpy; print('NumPy:', numpy.__version__)"
+
+"$LINKMESH_PYTHON" -c \
+    "import h5py; print('h5py:', h5py.__version__)"
+
+"$LINKMESH_PYTHON" -c \
+    "import matplotlib; print('Matplotlib:', matplotlib.__version__)"
+```
+
+如果允许修改当前 Conda 环境，可以安装缺失依赖：
+
+```bash
+conda install numpy h5py matplotlib
+```
+
+该命令会修改当前 Conda 环境。
+
+### 3.2 创建独立 Python venv
+
+如果系统提供 `python3` 和 `venv`，可以创建独立环境：
+
+```bash
+python3 -m venv "$HOME/venvs/linkmesh-release"
+source "$HOME/venvs/linkmesh-release/bin/activate"
+```
+
+安装依赖：
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install numpy h5py matplotlib
+```
+
+选择该环境中的 Python：
+
+```bash
+export LINKMESH_PYTHON="$(command -v python)"
+```
+
+确认：
+
+```bash
+"$LINKMESH_PYTHON" --version
+
+"$LINKMESH_PYTHON" -c \
+    "import numpy, h5py, matplotlib; print('Python dependencies: OK')"
+```
+
+### 3.3 Python 选择规则
+
+Release 启动器按照以下顺序选择 Python：
 
 1. `LINKMESH_PYTHON` 指定的解释器；
 2. 当前 `PATH` 中的 `python3`；
 3. 当前 `PATH` 中的 `python`。
 
-查看可用解释器：
-
-```bash
-command -v python3 || command -v python
-type -a python3 python 2>/dev/null
-```
-
-如果当前环境已经满足要求，可以直接运行：
-
-```bash
-"$RELEASE/bin/linkmesh-check" core
-"$RELEASE/bin/linkmesh" -h
-```
-
-如果服务器存在多个 Python，建议显式指定：
+如果服务器中有多个 Python，建议显式设置：
 
 ```bash
 export LINKMESH_PYTHON="/absolute/path/to/python"
@@ -185,7 +255,7 @@ export LINKMESH_PYTHON="/absolute/path/to/python"
 export LINKMESH_PYTHON="/home/user/miniconda3/envs/linkmesh/bin/python"
 ```
 
-`LINKMESH_PYTHON` 必须指向 Python 可执行文件，不能只指向环境目录。
+`LINKMESH_PYTHON` 必须指向 Python 可执行文件，而不是环境目录。
 
 确认选择结果：
 
@@ -193,90 +263,53 @@ export LINKMESH_PYTHON="/home/user/miniconda3/envs/linkmesh/bin/python"
 "$LINKMESH_PYTHON" --version
 ```
 
-使用 Release 不需要设置：
+## 4. 启动 LinkMesh
 
-```text
-PYTHONPATH
-LINKMESH_SCOREC_HELPER
+推荐使用 Release 自带的启动器：
+
+```bash
+"$RELEASE/bin/linkmesh" -h
 ```
 
-启动器会优先加载 Release 自带的 LinkMesh 和 OpenFUSIONToolkit，并自动选择 Release 内的 SCOREC helper。
+启动器会优先使用当前 Release 中的：
 
-不要使用下面的源码运行方式启动 Release：
+- LinkMesh；
+- OpenFUSIONToolkit 26.6；
+- SCOREC helper。
+
+因此，即使当前 Python 环境中存在其他 LinkMesh 或 OFT 安装，也可以明确使用当前 Release 的版本。
+
+用户也可以自行设置 `PYTHONPATH` 或使用：
 
 ```bash
 python -m linkmesh
 ```
 
-推荐始终使用：
+这种运行方式由当前 Python 环境和模块搜索路径决定。需要确认实际加载的是预期的 LinkMesh 和 OpenFUSIONToolkit：
+
+```bash
+python -c \
+    "import linkmesh; print(linkmesh.__file__)"
+
+python -c \
+    "import OpenFUSIONToolkit; print(OpenFUSIONToolkit.__file__)"
+```
+
+如果希望直接使用当前 Release，最简单的方式仍是：
 
 ```bash
 "$RELEASE/bin/linkmesh"
 ```
 
-### 3.1 Conda
+## 5. 环境检查
 
-激活已有环境：
-
-```bash
-conda activate linkmesh
-export LINKMESH_PYTHON="$(command -v python)"
-```
-
-检查依赖：
-
-```bash
-"$LINKMESH_PYTHON" -c "import numpy; print('NumPy:', numpy.__version__)"
-"$LINKMESH_PYTHON" -c "import h5py; print('h5py:', h5py.__version__)"
-"$LINKMESH_PYTHON" -c "import matplotlib; print('Matplotlib:', matplotlib.__version__)"
-```
-
-如需安装缺失依赖：
-
-```bash
-conda install numpy h5py matplotlib
-```
-
-该命令会修改当前 Conda 环境。共享环境中安装软件前应确认权限和使用约定。
-
-### 3.2 Python venv
-
-创建独立环境：
-
-```bash
-python3 -m venv "$HOME/venvs/linkmesh-release"
-source "$HOME/venvs/linkmesh-release/bin/activate"
-```
-
-安装 Python 依赖：
-
-```bash
-python -m pip install --upgrade pip
-python -m pip install numpy h5py matplotlib
-```
-
-选择该环境：
-
-```bash
-export LINKMESH_PYTHON="$(command -v python)"
-```
-
-确认：
-
-```bash
-"$LINKMESH_PYTHON" --version
-"$LINKMESH_PYTHON" -c "import numpy, h5py, matplotlib; print('Python dependencies: OK')"
-```
-
-## 4. 环境检查
-
-核心检查：
+运行基础检查：
 
 ```bash
 "$RELEASE/bin/linkmesh-check" core
 ```
 
-查看命令：
+查看 CLI：
 
 ```bash
 "$RELEASE/bin/linkmesh" -h
@@ -285,54 +318,54 @@ export LINKMESH_PYTHON="$(command -v python)"
 "$RELEASE/bin/linkmesh" regions generate -h
 ```
 
-按任务检查：
+根据任务运行检查：
 
 ```bash
-"$RELEASE/bin/linkmesh-check" trimeg
 "$RELEASE/bin/linkmesh-check" plot
+"$RELEASE/bin/linkmesh-check" trimeg
 "$RELEASE/bin/linkmesh-check" m3dc1
 ```
 
-全部检查：
+也可以执行全部检查：
 
 ```bash
 "$RELEASE/bin/linkmesh-check" all
 ```
 
-检查模式：
+各模式检查的内容：
 
-- `core`：Python、Release 内 LinkMesh、OFT 26.6 和 NumPy；
-- `trimeg`：core 加 h5py；
+- `core`：Python、Release 中的 LinkMesh、OFT 26.6 和 NumPy；
 - `plot`：core 加 Matplotlib；
-- `m3dc1`：helper、ELF、动态库和 MPI；
-- `all`：执行全部检查。
+- `trimeg`：core 加 h5py；
+- `m3dc1`：core 加 SCOREC helper、动态库和 MPI；
+- `all`：依次执行全部检查。
 
-状态含义：
+可能出现的状态：
 
-- `OK`：当前检查项满足诊断条件；
+- `OK`：该检查项满足当前运行条件；
 - `MISSING`：缺少该任务需要的条件；
-- `WARNING`：存在潜在兼容性问题；
-- `NOT CHECKED`：该项没有执行真实验证。
+- `WARNING`：存在需要注意的兼容性信息；
+- `NOT CHECKED`：该检查没有执行真实文件生成或下游加载。
 
-环境检查成功不等于求解器已经加载输出文件。
+环境检查不会生成网格，也不会调用外部求解器。
 
-## 5. 配置规则
+## 6. 配置文件规则
 
-LinkMesh 配置使用严格 TOML schema。
+LinkMesh 配置文件使用 TOML 语法。
 
-所有正式配置必须在顶层包含：
+所有正式配置必须在文件顶层包含：
 
 ```toml
 schema_version = 1
 ```
 
-不能写成：
+`schema_version` 必须是整数，不能写成：
 
 ```toml
 schema_version = "1"
 ```
 
-也不能把它放入任何 section。
+也不能放入 `[task]`、`[input]`、`[regions]` 等 section。
 
 配置优先级：
 
@@ -340,37 +373,38 @@ schema_version = "1"
 内建默认值 < TOML配置 < 显式CLI参数
 ```
 
-配置文件中的相对路径相对于配置文件所在目录解析。
+路径解析规则：
 
-CLI 中显式路径相对于执行命令时的当前目录解析。
+- 配置文件中的相对路径相对于配置文件所在目录；
+- CLI 中显式提供的相对路径相对于当前工作目录；
+- 绝对路径保持不变；
+- boundary-list 中的相对路径相对于 boundary-list 文件所在目录。
 
 建议每个 Case 使用独立目录：
 
 ```text
 case_directory/
-├── generate.toml
-├── input files
+├── configuration files
+├── boundary files
 └── output files
 ```
 
-## 6. 单区域输入
+配置文件名不是固定的。例如下面这些名称都可以：
 
-单区域命令为：
-
-```bash
-"$RELEASE/bin/linkmesh" [options]
+```text
+linkmesh.toml
+generate.toml
+case.toml
+linkmesh.in
 ```
 
-支持的边界来源包括：
+文件扩展名可以由用户选择，但文件内容必须符合 LinkMesh 的 TOML schema。
 
-- `lcfs`
-- `first_wall`
-- `array_file`
-- `flux_surface`
+## 7. Counted R-Z 边界文件
 
-### 6.1 Counted R-Z 文件
+Counted R-Z 文件用于保存一条有序闭合边界。
 
-单轮廓 counted R-Z 文件格式：
+格式为：
 
 ```text
 N
@@ -393,21 +427,66 @@ RN ZN
 
 要求：
 
-- 第一行是点数 `N`；
-- 后续恰好有 `N` 个坐标点；
-- 每行是 `R Z`；
+- 第一项是边界点数量 `N`；
+- 后续恰好包含 `N` 个坐标点；
+- 每个坐标点包含 `R Z` 两个数值；
+- `R` 在前，`Z` 在后；
 - 坐标单位为米；
-- 点按边界曲线顺序排列；
+- 点按边界曲线上的顺序排列；
 - 边界必须满足 LinkMesh 的闭合几何要求。
 
-### 6.2 单区域配置示例
+LinkMesh 不要求边界文件使用特定扩展名。
 
-目录：
+下面这些文件名都可以：
+
+```text
+boundary.txt
+boundary.pts
+wall.dat
+plasma.boundary
+first_wall
+```
+
+`.pts` 只表示“point coordinates”的常见命名习惯，不是 LinkMesh 的强制文件格式。
+
+程序判断的是文件内容，而不是扩展名。
+
+## 8. 单区域工作流
+
+单区域命令为：
+
+```bash
+"$RELEASE/bin/linkmesh" [options]
+```
+
+支持的边界来源：
+
+- `lcfs`
+- `first_wall`
+- `array_file`
+- `flux_surface`
+
+查看全部参数：
+
+```bash
+"$RELEASE/bin/linkmesh" -h
+```
+
+### 8.1 单区域 counted R-Z 示例
+
+目录示例：
 
 ```text
 single_region_case/
 ├── generate.toml
-└── boundary.pts
+└── boundary.txt
+```
+
+这里的文件名只是示例，也可以使用：
+
+```text
+case_config.toml
+plasma.pts
 ```
 
 `generate.toml`：
@@ -419,7 +498,7 @@ schema_version = 1
 target = "mesh_only"
 
 [input]
-array_file = "boundary.pts"
+array_file = "boundary.txt"
 
 [domain]
 boundary_source = "array_file"
@@ -453,9 +532,9 @@ mesh.png
 mesh_quality.png
 ```
 
-### 6.3 单区域局部加密
+### 8.2 单区域局部加密
 
-可在 `[mesh]` 后增加一个或多个 point local refinement：
+可以在配置中提供一个或多个 R-Z point local refinement：
 
 ```toml
 [[mesh.local_refinement]]
@@ -471,25 +550,27 @@ dx = 0.015
 width = 0.30
 ```
 
-字段单位均为米：
+字段含义：
 
-- `r`：点源 R 坐标；
-- `z`：点源 Z 坐标；
-- `dx`：点源目标尺度；
-- `width`：影响宽度。
+- `r`：加密点的 R 坐标，单位为米；
+- `z`：加密点的 Z 坐标，单位为米；
+- `dx`：加密区域的目标尺度，单位为米；
+- `width`：影响宽度，单位为米。
 
-`dx` 必须严格小于点所属 Region 的 baseline `mesh_dx`。
+`dx` 必须小于该点所在 Region 的基准 `mesh_dx`。
 
-## 7. 多区域工作流
+## 9. 多区域工作流
 
-多区域使用两个阶段：
+多区域网格使用两个阶段：
 
 ```text
 regions inspect
-→ 生成并检查regions map
+→ 检查边界和包含关系
+→ 生成regions map与inspection PNG
 
 regions generate
-→ 读取原始边界和经用户确认的regions map
+→ 读取原始边界和regions map
+→ 设置各Region网格尺度
 → 生成最终网格
 ```
 
@@ -500,18 +581,18 @@ regions generate
 "$RELEASE/bin/linkmesh" regions generate ...
 ```
 
-支持两种互斥输入来源：
+支持两种多区域输入方式：
 
 1. `multi_array_file`
 2. `boundary_list`
 
-两种来源不能同时使用。
+两种方式不能在同一次运行中混用。
 
-`regions map` 不保存完整坐标，因此 generate 仍必须读取原始边界输入。
+`regions map` 保存 Region 关系，但不保存完整边界坐标。因此，generate 仍然需要读取原始边界输入。
 
-## 8. Multi-array 输入
+## 10. Multi-array 输入
 
-Multi-array 文件在一个文件中连续保存多个 counted R-Z blocks：
+Multi-array 文件在一个文本文件中连续保存多个 counted R-Z blocks：
 
 ```text
 N1
@@ -525,9 +606,19 @@ R1 Z1
 RN2 ZN2
 ```
 
-至少需要两条边界。
+至少需要两个 boundary blocks。
 
-### 8.1 Inspect 配置
+文件扩展名不固定，例如可以使用：
+
+```text
+boundaries.txt
+regions.dat
+multi_boundary
+```
+
+### 10.1 Inspect 配置
+
+`inspect.toml`：
 
 ```toml
 schema_version = 1
@@ -549,70 +640,146 @@ verbose = true
     --config "$PWD/inspect.toml"
 ```
 
-检查：
+预期生成：
 
-```bash
-ls -lh regions.toml inspect.png
+```text
+regions.toml
+inspect.png
 ```
 
-人工检查 `inspect.png` 和 `regions.toml` 后，可按需要填写 `physical_label`。
+查看 map：
 
-`physical_label` 允许为空，不参与网格技术编号和建网过程。
+```bash
+sed -n '1,240p' regions.toml
+```
 
-## 9. Boundary-list 输入
+用户应检查：
 
-Boundary-list 使用一个 TOML 清单引用多个独立坐标文件。
+- 曲线编号；
+- Region 包含关系；
+- `inspect.png` 中的边界位置；
+- Region ID 是否与预期一致。
+
+## 11. Boundary-list 输入
+
+Boundary-list 用一个 TOML 清单分别引用多条独立边界坐标文件。
+
+这里有两类文件：
+
+1. Boundary-list 清单，内容使用 TOML 语法；
+2. 边界坐标文件，内容使用 counted R-Z 文本格式。
 
 目录示例：
 
 ```text
 boundary_list_case/
-├── boundaries.toml
-├── inner.pts
-├── outer.pts
-├── inspect.toml
-└── generate.toml
+├── boundary_list.toml
+├── inner_boundary.txt
+├── outer_boundary.txt
+├── inspect_config.toml
+└── generate_config.toml
 ```
 
-### 9.1 清单格式
+这些文件名不是固定要求。
 
-`boundaries.toml`：
+例如：
+
+- `boundary_list.toml` 可以改名为 `boundaries.toml`；
+- `inner_boundary.txt` 可以改名为 `inner.pts`；
+- `outer_boundary.txt` 可以改名为 `wall.dat`；
+- `inspect_config.toml` 可以改名为 `inspect.in`。
+
+清单和配置文件的内容必须符合 TOML 语法。
+
+坐标文件的内容必须符合 counted R-Z 格式。
+
+### 11.1 Boundary-list 清单
+
+`boundary_list.toml`：
 
 ```toml
 schema_version = 1
 
 [[boundaries]]
-file = "inner.pts"
+file = "inner_boundary.txt"
 curve_id = 1
 
 [[boundaries]]
-file = "outer.pts"
+file = "outer_boundary.txt"
 ```
 
-`curve_id` 可以省略。
+每个 `[[boundaries]]` 记录表示一条边界。
 
-省略后，LinkMesh 按清单顺序分配尚未被显式 ID 占用的最小正整数。
+字段：
 
-例如：
+- `file`：边界坐标文件路径；
+- `curve_id`：可选的正整数曲线编号。
+
+`file` 不要求使用特定扩展名。
+
+下面的引用都是合法的命名形式：
 
 ```toml
 [[boundaries]]
 file = "inner.pts"
+
+[[boundaries]]
+file = "wall.dat"
+
+[[boundaries]]
+file = "plasma_boundary"
+```
+
+清单中的相对路径相对于 boundary-list 文件所在目录解析。
+
+### 11.2 Curve ID
+
+`curve_id` 可以显式填写：
+
+```toml
+[[boundaries]]
+file = "inner_boundary.txt"
+curve_id = 10
+```
+
+也可以省略：
+
+```toml
+[[boundaries]]
+file = "outer_boundary.txt"
+```
+
+省略时，LinkMesh 按清单声明顺序分配尚未被显式 ID 占用的最小正整数。
+
+例如：
+
+```toml
+schema_version = 1
+
+[[boundaries]]
+file = "inner_boundary.txt"
 curve_id = 10
 
 [[boundaries]]
-file = "outer.pts"
+file = "outer_boundary.txt"
 ```
 
-第二条边界自动获得 `curve_id = 1`。
+第二条边界会自动获得：
 
-清单中的相对路径相对于 `boundaries.toml` 所在目录解析。
+```text
+curve_id = 1
+```
 
-同一个实际文件不能重复引用。重复文件路径、路径别名或符号链接指向同一文件时会失败。
+显式 `curve_id` 必须：
 
-### 9.2 独立坐标文件
+- 是正整数；
+- 在同一清单中唯一。
 
-Boundary-list 引用的每个坐标文件保存一条 counted R-Z 曲线：
+修改清单顺序或 `curve_id` 后，应重新执行 inspect。
+
+### 11.3 独立坐标文件
+
+Boundary-list 引用的每个坐标文件保存一条 counted R-Z 边界：
 
 ```text
 # Inner boundary
@@ -625,7 +792,7 @@ Boundary-list 引用的每个坐标文件保存一条 counted R-Z 曲线：
 0.950000 0.150000
 ```
 
-该输入方式允许：
+Boundary-list 引用的坐标文件允许：
 
 - 空行；
 - 以 `#` 开始的整行注释；
@@ -633,16 +800,20 @@ Boundary-list 引用的每个坐标文件保存一条 counted R-Z 曲线：
 
 注释和空行不计入点数 `N`。
 
-### 9.3 Boundary-list inspect
+一个被引用的坐标文件只保存一条边界。
 
-`inspect.toml`：
+同一个实际文件不能在清单中重复引用。
+
+### 11.4 Boundary-list inspect
+
+`inspect_config.toml`：
 
 ```toml
 schema_version = 1
 
 [regions]
 mode = "inspect"
-boundary_list = "boundaries.toml"
+boundary_list = "boundary_list.toml"
 regions_map = "regions.toml"
 plot = "inspect.png"
 
@@ -658,7 +829,7 @@ cd /absolute/path/to/boundary_list_case
 "$RELEASE/bin/linkmesh-check" plot
 
 "$RELEASE/bin/linkmesh" regions inspect \
-    --config "$PWD/inspect.toml"
+    --config "$PWD/inspect_config.toml"
 ```
 
 预期生成：
@@ -668,16 +839,16 @@ regions.toml
 inspect.png
 ```
 
-检查：
+查看：
 
 ```bash
 sed -n '1,240p' regions.toml
 ls -lh inspect.png
 ```
 
-### 9.4 Regions map
+## 12. Regions map
 
-生成的 map 类似：
+Inspect 生成的 `regions.toml` 类似：
 
 ```toml
 schema_version = 1
@@ -699,30 +870,48 @@ color = "#D55E00"
 physical_label = ""
 ```
 
-允许用户填写：
+字段含义：
+
+- `region_id`：最终 Region ID；
+- `curve_id`：对应输入曲线编号；
+- `parent_region_id`：包含该 Region 的父 Region；
+- `child_region_ids`：该 Region 直接包含的子 Region；
+- `color`：检查图中的显示颜色；
+- `physical_label`：可选的用户物理语义。
+
+用户可以填写：
 
 ```toml
 physical_label = "plasma"
 ```
 
-也可以保持：
+也可以保持为空：
 
 ```toml
 physical_label = ""
 ```
 
-不要手工修改：
+`physical_label` 允许为空，不参与网格编号和建网过程。
+
+通常不应手工修改：
 
 - `region_id`
 - `curve_id`
 - `parent_region_id`
 - `child_region_ids`
 
-如果原始边界、清单顺序或 `curve_id` 发生变化，应重新执行 inspect。
+如果修改了以下内容，应重新执行 inspect：
 
-## 10. 多区域 Generate
+- 原始边界坐标；
+- 曲线数量；
+- boundary-list 顺序；
+- 显式 `curve_id`；
+- multi-array block 顺序；
+- 曲线包含关系。
 
-Boundary-list 的 `generate.toml` 示例：
+## 13. 多区域 Generate
+
+Boundary-list 的 generate 配置示例：
 
 ```toml
 schema_version = 1
@@ -730,7 +919,7 @@ schema_version = 1
 [regions]
 mode = "generate"
 target = "mesh_only"
-boundary_list = "boundaries.toml"
+boundary_list = "boundary_list.toml"
 regions_map = "regions.toml"
 plot = "mesh.png"
 quality_plot = "mesh_quality.png"
@@ -746,7 +935,7 @@ verbose = true
 
 ```bash
 "$RELEASE/bin/linkmesh" regions generate \
-    --config "$PWD/generate.toml"
+    --config "$PWD/generate_config.toml"
 ```
 
 预期生成：
@@ -756,30 +945,32 @@ mesh.png
 mesh_quality.png
 ```
 
-使用 multi-array 时，只需把输入来源改为：
+使用 multi-array 输入时，将来源写为：
 
 ```toml
 [regions]
 multi_array_file = "boundaries.txt"
 ```
 
-不能同时写：
+不能同时设置：
 
 ```toml
 multi_array_file = "boundaries.txt"
-boundary_list = "boundaries.toml"
+boundary_list = "boundary_list.toml"
 ```
 
-## 11. 分 Region 尺度
+Inspect 和 generate 应使用同一组原始边界。
 
-可以为全部 Region 提供默认尺度：
+## 14. 分 Region 网格尺度
+
+为全部 Region 设置默认尺度：
 
 ```toml
 [regions.mesh]
 mesh_dx = 0.08
 ```
 
-也可以按最终 Region ID 覆盖：
+按最终 Region ID 覆盖尺度：
 
 ```toml
 [regions.mesh]
@@ -791,7 +982,9 @@ mesh_dx = 0.08
 "3" = 0.070
 ```
 
-如果不提供全局 `mesh_dx`，则 `region_dx` 必须覆盖全部最终 Region：
+`region_dx` 中的键是 inspect 生成的最终 Region ID。
+
+如果不提供全局 `mesh_dx`，则 `region_dx` 必须覆盖所有最终 Region：
 
 ```toml
 [regions.mesh.region_dx]
@@ -800,13 +993,15 @@ mesh_dx = 0.08
 "3" = 0.070
 ```
 
-Region ID 应以 inspect 生成的 `regions.toml` 为准。
+所有尺度单位均为米。
 
-## 12. Interface Transition
+## 15. Interface Transition
+
+当相邻 Region 使用不同目标尺度时，可以设置 interface transition。
 
 两种 transition 模式互斥。
 
-### 12.1 固定宽度
+### 15.1 固定变化层宽度
 
 ```toml
 [regions.mesh]
@@ -817,9 +1012,7 @@ transition_width = 0.30
 
 `0` 表示关闭。
 
-变化层位于不同尺度 interface 的粗侧。
-
-### 12.2 对数尺度梯度
+### 15.2 对数尺度梯度
 
 ```toml
 [regions.mesh]
@@ -828,18 +1021,18 @@ transition_gradient = 5.0
 
 单位为 `1/m`。
 
-LinkMesh 按每条不同尺度 interface 的细、粗 baseline 尺度推导各自的变化层宽度。
+LinkMesh 根据相邻 Region 的目标尺度，为每条不同尺度 interface 计算对应的变化层宽度。
 
-不能同时配置：
+不能同时设置：
 
 ```toml
 transition_width = 0.30
 transition_gradient = 5.0
 ```
 
-## 13. 多区域局部加密
+## 16. 多区域局部加密
 
-可重复配置 R-Z point local refinement：
+可以重复配置 R-Z point local refinement：
 
 ```toml
 [[regions.mesh.local_refinement]]
@@ -855,76 +1048,70 @@ dx = 0.015
 width = 0.30
 ```
 
-LinkMesh 自动判断每个点所属的 Region。
+字段含义：
 
-点源不会改变 Region 拓扑，也不要求该点成为 mesh node。
+- `r`：加密点的 R 坐标，单位为米；
+- `z`：加密点的 Z 坐标，单位为米；
+- `dx`：目标尺度，单位为米；
+- `width`：影响宽度，单位为米。
 
-启用 `--verbose` 后会报告：
+LinkMesh 自动判断加密点所属的 Region。
 
-- 点坐标；
-- 自动识别的 Region；
-- point target dx；
-- Region baseline dx；
-- 影响宽度；
-- affected triangle 数量；
-- maximum area excess。
+点源不要求成为最终 mesh node，也不会改变 Region 拓扑。
 
-## 14. PNG 输出
+## 17. PNG 输出
 
-### 14.1 几何网格图
+### 17.1 网格几何图
 
-单区域：
+单区域配置：
 
 ```toml
 [output]
 plot = "mesh.png"
 ```
 
-多区域：
+多区域配置：
 
 ```toml
 [regions]
 plot = "mesh.png"
 ```
 
-### 14.2 Shape quality Q 图
+### 17.2 Shape quality Q 图
 
-单区域：
+单区域配置：
 
 ```toml
 [output]
 quality_plot = "mesh_quality.png"
 ```
 
-多区域：
+多区域配置：
 
 ```toml
 [regions]
 quality_plot = "mesh_quality.png"
 ```
 
-颜色固定为：
+颜色含义：
 
 - `Q = 0`：红色；
 - `Q = 0.5`：蓝色；
 - `Q = 1`：绿色。
 
-颜色范围固定为 `[0,1]`，不会按每个 Case 的最小和最大 Q 自动拉伸。
+颜色范围固定为 `[0,1]`，便于比较不同 Case。
 
-质量图使用所有 refinement 完成后的 final Mesh2D。
+建议在 generate 后检查：
 
-质量图是数值报告的视觉补充，不替代：
+- 边界形状；
+- Region 关系；
+- 局部加密位置；
+- interface 过渡；
+- 是否存在明显异常三角形。
 
-- 结构检查；
-- 外部程序加载；
-- 初始化；
-- 时间推进；
-- 稳定性验证；
-- 物理验证。
+## 18. TRIMEG HDF5 输出
 
-## 15. TRIMEG 输出
-
-单区域配置：
+### 18.1 单区域示例
 
 ```toml
 schema_version = 1
@@ -933,7 +1120,7 @@ schema_version = 1
 target = "trimeg"
 
 [input]
-array_file = "boundary.pts"
+array_file = "boundary.txt"
 
 [domain]
 boundary_source = "array_file"
@@ -950,31 +1137,59 @@ quality_plot = "mesh_quality.png"
 verbose = true
 ```
 
-检查：
+运行检查：
 
 ```bash
 "$RELEASE/bin/linkmesh-check" trimeg
 "$RELEASE/bin/linkmesh-check" plot
 ```
 
-运行：
+生成：
 
 ```bash
 "$RELEASE/bin/linkmesh" \
     --config "$PWD/generate.toml"
 ```
 
-文件成功生成只表示：
+预期输出：
 
 ```text
-GENERATED
+mesh.h5
+mesh.png
+mesh_quality.png
 ```
 
-不自动表示 TRIMEG 或 MATLAB 已成功读取。
+### 18.2 多区域示例
 
-## 16. M3D-C1 输出
+```toml
+schema_version = 1
 
-单区域配置：
+[regions]
+mode = "generate"
+target = "trimeg"
+boundary_list = "boundary_list.toml"
+regions_map = "regions.toml"
+hdf5 = "mesh.h5"
+plot = "mesh.png"
+quality_plot = "mesh_quality.png"
+
+[regions.mesh]
+mesh_dx = 0.08
+
+[runtime]
+verbose = true
+```
+
+运行：
+
+```bash
+"$RELEASE/bin/linkmesh" regions generate \
+    --config "$PWD/generate_config.toml"
+```
+
+## 19. M3D-C1 输出
+
+### 19.1 单区域示例
 
 ```toml
 schema_version = 1
@@ -983,7 +1198,7 @@ schema_version = 1
 target = "m3dc1"
 
 [input]
-array_file = "boundary.pts"
+array_file = "boundary.txt"
 
 [domain]
 boundary_source = "array_file"
@@ -1001,84 +1216,125 @@ quality_plot = "mesh_quality.png"
 verbose = true
 ```
 
-检查：
+运行环境检查：
 
 ```bash
 "$RELEASE/bin/linkmesh-check" m3dc1
 "$RELEASE/bin/linkmesh-check" plot
 ```
 
-运行：
+生成：
 
 ```bash
 "$RELEASE/bin/linkmesh" \
     --config "$PWD/generate.toml"
 ```
 
-SCOREC helper 管理 rank-0 文件名。传入：
+### 19.2 多区域示例
+
+```toml
+schema_version = 1
+
+[regions]
+mode = "generate"
+target = "m3dc1"
+boundary_list = "boundary_list.toml"
+regions_map = "regions.toml"
+model = "mesh.txt"
+smb = "mesh.smb"
+plot = "mesh.png"
+quality_plot = "mesh_quality.png"
+
+[regions.mesh]
+mesh_dx = 0.08
+
+[runtime]
+verbose = true
+```
+
+运行：
+
+```bash
+"$RELEASE/bin/linkmesh" regions generate \
+    --config "$PWD/generate_config.toml"
+```
+
+SCOREC helper 管理 rank-0 SMB 文件名。
+
+如果配置中指定：
 
 ```text
 mesh.smb
 ```
 
-时，实际输出通常为：
+实际输出通常为：
 
 ```text
 mesh0.smb
 ```
 
-M3D-C1 SMB 输出还需要：
+M3D-C1 SMB 输出要求：
 
 - Linux x86-64；
-- 兼容 MPI；
-- 可解析的 `libmpi.so.40`；
-- 兼容 glibc；
-- 兼容 libstdc++。
+- 与当前 `linkmesh-scorec-helper` 兼容的 MPI runtime；
+- 兼容的 glibc；
+- 兼容的 libstdc++。
 
-文件生成成功不自动表示 M3D-C1 已完成加载或初始化。
+首次在一台服务器上使用 M3D-C1 输出前，应运行：
 
-## 17. CLI 运行
+```bash
+"$RELEASE/bin/linkmesh-check" m3dc1
+```
 
-单区域可通过 CLI 显式运行：
+当前 Release 中 helper 的具体动态库信息记录在：
+
+```text
+manifest/build-info.txt
+manifest/native-requirements.txt
+```
+
+## 20. 使用 CLI 参数
+
+### 20.1 单区域
+
+不使用配置文件时，可以通过 CLI 显式提供参数：
 
 ```bash
 "$RELEASE/bin/linkmesh" \
     --no-config \
     --target mesh_only \
     --boundary-source array_file \
-    --array-file "$PWD/boundary.pts" \
+    --array-file "$PWD/boundary.txt" \
     --mesh-dx 0.04 \
     --plot "$PWD/mesh.png" \
     --quality-plot "$PWD/mesh_quality.png" \
     --verbose
 ```
 
-多区域 inspect：
+### 20.2 Boundary-list inspect
 
 ```bash
 "$RELEASE/bin/linkmesh" regions inspect \
-    --config "$PWD/inspect.toml"
-```
-
-也可以显式使用 boundary-list：
-
-```bash
-"$RELEASE/bin/linkmesh" regions inspect \
-    --config "$PWD/inspect.toml" \
-    --boundary-list "$PWD/boundaries.toml" \
+    --boundary-list "$PWD/boundary_list.toml" \
     --regions-map "$PWD/regions.toml" \
     --plot "$PWD/inspect.png" \
     --verbose
 ```
 
-多区域 generate：
+### 20.3 Boundary-list generate
 
 ```bash
 "$RELEASE/bin/linkmesh" regions generate \
-    --config "$PWD/generate.toml"
+    --boundary-list "$PWD/boundary_list.toml" \
+    --regions-map "$PWD/regions.toml" \
+    --target mesh_only \
+    --mesh-dx 0.08 \
+    --plot "$PWD/mesh.png" \
+    --quality-plot "$PWD/mesh_quality.png" \
+    --verbose
 ```
 
-CLI 参数和 TOML 路径的最新映射应以对应 `-h` 输出为准：
+CLI 参数和 TOML 字段的完整映射以帮助信息为准：
 
 ```bash
 "$RELEASE/bin/linkmesh" -h
@@ -1086,7 +1342,7 @@ CLI 参数和 TOML 路径的最新映射应以对应 `-h` 输出为准：
 "$RELEASE/bin/linkmesh" regions generate -h
 ```
 
-## 18. Verbose 质量报告
+## 21. 网格质量报告
 
 启用：
 
@@ -1095,19 +1351,19 @@ CLI 参数和 TOML 路径的最新映射应以对应 `-h` 输出为准：
 verbose = true
 ```
 
-或：
+或使用：
 
 ```bash
 --verbose
 ```
 
-后，LinkMesh 会报告 final Mesh2D 的数值质量。
+LinkMesh 会报告最终网格的数值质量。
 
 主要指标：
 
 - `angle min/P01/P05/max`：三角形角度分布；
 - `shape Q min/P01/P05/median`：三角形形状质量；
-- `equivalent size`：等效尺寸；
+- `equivalent size`：三角形等效尺寸；
 - `adjacent size ratio`：相邻三角形尺寸比；
 - `degenerate`：退化三角形数量；
 - `duplicate`：重复三角形数量；
@@ -1128,95 +1384,92 @@ shape Q [-]: min=0.62, P01=0.74, P05=0.78, median=0.94
 - 最差三角形的 Q 约为 `0.62`；
 - 约 1% 的三角形 Q 不高于 `0.74`；
 - 约 5% 的三角形 Q 不高于 `0.78`；
-- 一半三角形的 Q 不高于 `0.94`，另一半不低于该值。
+- 一半三角形的 Q 不低于约 `0.94`。
 
-低 Q 不会自动代表求解器失败。网格质量应结合结构检查、尺寸过渡和真实消费端结果判断。
+建议同时检查 PNG、结构计数和目标求解器的实际加载结果。
 
-## 19. 常见问题
+## 22. 常见问题
 
-### 19.1 `OpenFUSIONToolkit==26.6 required`
+### 22.1 找不到 NumPy、h5py 或 Matplotlib
 
-Release 固定携带并要求 OpenFUSIONToolkit 26.6。
-
-如果检查报告导入了 Release 外部的 OFT，确认使用的是：
-
-```bash
-"$RELEASE/bin/linkmesh"
-```
-
-而不是：
-
-```bash
-python -m linkmesh
-```
-
-### 19.2 缺少 NumPy、h5py 或 Matplotlib
-
-检查：
+运行：
 
 ```bash
 "$RELEASE/bin/linkmesh-check" all
 ```
 
-确认实际 Python：
+确认 LinkMesh 使用的 Python：
 
 ```bash
 printf '%s\n' "${LINKMESH_PYTHON:-not explicitly set}"
 ```
 
-在所选 Python 环境中安装缺失依赖。
-
-### 19.3 Helper 或 MPI 失败
-
-运行：
+如果没有显式设置，可查看：
 
 ```bash
-"$RELEASE/bin/linkmesh-check" m3dc1
+command -v python3 || command -v python
 ```
 
-重点检查：
+在所选 Python 环境中安装缺失依赖。
 
-- helper 是否为 Linux x86-64 ELF；
-- `ldd` 是否存在 `not found`；
-- `libmpi.so.40` 是否可解析；
-- glibc 和 libstdc++ 是否兼容。
+### 22.2 Boundary-list 引用的文件不存在
 
-TRIMEG 和普通 PNG 输出不调用 SCOREC helper，不应因为 helper 或 MPI 缺失而被阻塞。
+Boundary-list 中的相对路径相对于清单文件所在目录。
 
-### 19.4 Boundary-list 文件缺失
+例如：
 
-清单中的相对路径相对于清单文件所在目录，而不是当前终端目录。
+```text
+case/
+├── lists/
+│   └── boundary_list.toml
+└── coordinates/
+    ├── inner.txt
+    └── outer.txt
+```
 
-检查：
+清单中可以写：
+
+```toml
+schema_version = 1
+
+[[boundaries]]
+file = "../coordinates/inner.txt"
+
+[[boundaries]]
+file = "../coordinates/outer.txt"
+```
+
+检查文件：
 
 ```bash
-sed -n '1,240p' boundaries.toml
 find . -maxdepth 3 -type f -print
 ```
 
-### 19.5 Multi-array 与 boundary-list 冲突
+### 22.3 Multi-array 与 boundary-list 冲突
 
-同一个 effective 配置只能选择一种来源：
+同一个多区域配置只能选择一种来源。
+
+使用 multi-array：
 
 ```toml
 multi_array_file = "boundaries.txt"
 ```
 
-或者：
+或者使用 boundary-list：
 
 ```toml
-boundary_list = "boundaries.toml"
+boundary_list = "boundary_list.toml"
 ```
 
-不能同时使用。
+不能同时设置。
 
-### 19.6 Regions map 不匹配
+### 22.4 Regions map 与边界不匹配
 
-如果修改了以下任一内容，应重新 inspect：
+修改以下内容后，应重新执行 inspect：
 
-- 曲线坐标；
-- 曲线数量；
-- 清单顺序；
+- 边界坐标；
+- 边界数量；
+- boundary-list 顺序；
 - 显式 `curve_id`；
 - multi-array block 顺序；
 - 曲线包含关系。
@@ -1225,14 +1478,96 @@ boundary_list = "boundaries.toml"
 
 ```bash
 "$RELEASE/bin/linkmesh" regions inspect \
-    --config "$PWD/inspect.toml"
+    --config "$PWD/inspect_config.toml"
 ```
 
-人工检查新的 PNG 和 map 后，再执行 generate。
+检查新的 `inspect.png` 和 `regions.toml` 后，再执行 generate。
 
-## 20. 建议反馈内容
+### 22.5 Helper 或 MPI 检查失败
 
-请提供系统信息：
+运行：
+
+```bash
+"$RELEASE/bin/linkmesh-check" m3dc1
+```
+
+该命令会检查：
+
+- helper 是否存在并可执行；
+- helper 是否为 Linux x86-64 ELF；
+- helper 所需动态库是否可以解析；
+- MPI runtime 是否可以解析。
+
+具体依赖名称以以下文件为准：
+
+```text
+manifest/build-info.txt
+manifest/native-requirements.txt
+```
+
+TRIMEG HDF5 和普通 PNG 输出不调用 SCOREC helper，因此不要求 M3D-C1 helper 和 MPI 检查成功。
+
+### 22.6 输出的 SMB 文件名多了一个 `0`
+
+这是 rank-0 native SMB 的正常命名方式。
+
+例如配置：
+
+```text
+mesh.smb
+```
+
+实际输出通常为：
+
+```text
+mesh0.smb
+```
+
+### 22.7 如何确认使用的是当前 Release
+
+运行：
+
+```bash
+"$RELEASE/bin/linkmesh-check" core
+```
+
+输出中的 LinkMesh 和 OpenFUSIONToolkit 路径应位于：
+
+```text
+$RELEASE/python/site-packages/
+```
+
+## 23. 建议的使用流程
+
+### 单区域
+
+```text
+准备GFile或单条边界
+→ 编写配置
+→ 运行环境检查
+→ 生成网格
+→ 检查PNG和质量报告
+→ 使用目标输出文件
+```
+
+### 多区域
+
+```text
+准备multi-array或boundary-list输入
+→ regions inspect
+→ 检查inspect.png
+→ 检查regions.toml
+→ 按需要填写physical_label
+→ regions generate
+→ 检查mesh PNG和质量报告
+→ 使用目标输出文件
+```
+
+## 24. 反馈运行问题
+
+反馈问题时，建议提供：
+
+系统信息：
 
 ```bash
 uname -a
@@ -1255,7 +1590,7 @@ fi
 "$RELEASE/bin/linkmesh-check" all
 ```
 
-生成文件：
+输出文件：
 
 ```bash
 find . \
@@ -1268,10 +1603,31 @@ find . \
 同时提供：
 
 - 实际执行的 LinkMesh 命令；
-- 配置文件；
-- boundary list 和 regions map；
-- 完整 stdout；
-- 完整 stderr；
+- 使用的配置文件；
+- boundary-list 和 regions map；
+- 完整标准输出；
+- 完整错误输出；
 - Python 路径和版本；
 - 输出文件名称和大小；
-- 外部消费端达到的验证状态。
+- TRIMEG 或 M3D-C1 的实际加载结果。
+
+## 25. 结果状态说明
+
+建议分别描述以下状态：
+
+- `GENERATED`：目标文件已经生成；
+- `STRUCTURALLY CHECKED`：文件结构或网格结构已经检查；
+- `DELIVERED`：文件已经交付给下游测试者；
+- `LOADED`：外部程序已经成功读取；
+- `INITIALIZED`：外部程序已经完成初始化；
+- `TIME-STEPPED`：外部程序已经完成明确的时间推进；
+- `STABILITY-VALIDATED`：已经完成规定工况的稳定性检查；
+- `PHYSICALLY VALIDATED`：物理结果已经得到确认。
+
+文件生成成功表示已经达到：
+
+```text
+GENERATED
+```
+
+它不自动表示外部程序已经完成加载、初始化、时间推进或物理验证。
